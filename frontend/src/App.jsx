@@ -12,7 +12,9 @@
 // Organisation :
 //  - <AuthProvider> enveloppe tout (profil + jeton accessibles partout via useAuth).
 //  - <BrowserRouter> est ici (et non dans main.jsx) pour que les tests puissent
-//    monter <App /> avec un <MemoryRouter> s'ils le souhaitent.
+//    monter <App /> avec un <MemoryRouter> s'ils le souhaitent. Son `basename`
+//    suit la base de déploiement (voir basenameApp) pour que l'app fonctionne
+//    aussi dans un sous-dossier, comme GitHub Pages (/rejoins-moi/).
 //  - <Structure /> gère la barre du haut / bas de page commune. Le profil
 //    établissement est en plein écran (pas de bottom nav) : c'est une « fiche »
 //    qu'on partage, elle doit ressembler à une page, pas à un onglet.
@@ -42,10 +44,32 @@ import Login from './pages/Login.jsx';
 /** Routes affichées en plein écran : ni TopBar ni BottomNav. */
 const ROUTES_PLEIN_ECRAN = [/^\/etablissement\//];
 
+/**
+ * Base de déploiement de l'app, telle que Vite l'a compilée :
+ *  - « / » à la racine d'un domaine (Vercel, Netlify, serveur mutualisé) ;
+ *  - « /rejoins-moi/ » si l'app est dans un sous-dossier (GitHub Pages).
+ * L'option `base` de Vite ne réécrit que les URL des fichiers (JS, CSS,
+ * manifeste, service worker) : React Router, lui, compare le chemin de la barre
+ * d'adresse à ses routes et a donc besoin du même préfixe via `basename`. Sans
+ * lui, « /rejoins-moi/profil » ne correspondrait à aucune route et la route de
+ * secours renverrait tout le monde à la racine du domaine.
+ * Hors build Vite (essai hors navigateur), on retombe sur « / ».
+ */
+function basenameApp() {
+  let base = '/';
+  try {
+    base = import.meta.env?.BASE_URL || '/';
+  } catch {
+    base = '/';
+  }
+  // React Router attend « /rejoins-moi » (sans barre finale) ; « / » reste « / ».
+  return base.replace(/\/+$/, '') || '/';
+}
+
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
+      <BrowserRouter basename={basenameApp()}>
         <Structure />
       </BrowserRouter>
     </AuthProvider>

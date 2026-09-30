@@ -7,8 +7,9 @@
 //    (vite.config.js) redirige `/api` vers http://localhost:4000. En production,
 //    définir VITE_API_URL.
 //  - Le JWT est conservé dans localStorage et envoyé en en-tête `Authorization`.
-//  - Un backend indisponible (503 ou erreur réseau) lève une ApiError marquée
-//    `offline: true` : les écrans basculent alors sur les données de démonstration
+//  - Un backend indisponible (503, erreur réseau, ou réponse non-JSON servie par
+//    un hébergeur statique) lève une ApiError marquée `offline: true` : les
+//    écrans basculent alors sur les données de démonstration
 //    (src/data/demoData.js) au lieu d'afficher un écran vide — indispensable
 //    pendant la phase de tournée terrain où le réseau est instable.
 
@@ -118,10 +119,32 @@ export async function requete(chemin, { method = 'GET', body, auth = true, signa
     }
   }
 
-  if (!reponse.ok) {
+  // Notre API répond TOUJOURS du JSON, y compris pour ses erreurs (errorHandler
+  // côté backend). Une réponse non-JSON ne vient donc pas d'elle : c'est la page
+  // d'erreur d'un hébergeur, l'index.html d'un site statique (GitHub Pages), ou
+  // un portail Wi-Fi captif. On la classe « serveur injoignable », comme une
+  // panne réseau : les écrans affichent alors les données d'exemple au lieu
+  // d'une erreur incompréhensible, et la connexion en mode démonstration reste
+  // possible. Sans cette règle, un site statique renvoyant du HTML sur /api
+  // ferait passer un 200 HTML pour une réponse valide (données absurdes) et un
+  // 404 HTML pour un refus métier (connexion impossible).
+  // ⚠️ Aucun risque côté argent : utils/abonnement.js et utils/payment.js
+  // traduisent « injoignable » par « réessayez », jamais par un faux abonnement.
+  const contenuJson = (reponse.headers.get('content-type') || '').includes('json');
+  const sansCorps = reponse.status === 204 || texte.trim() === '';
+  const repondueParApi = contenuJson || sansCorps;
+
+  if (!reponse.ok || !repondueParApi) {
     // 503 = base indisponible (backend en mode démo) : on marque `offline`.
-    const offline = reponse.status === 503 || donnees?.offline === true;
-    throw new ApiError(reponse.status, donnees?.error || `Erreur ${reponse.status}`, donnees?.details, offline);
+    const offline = reponse.status === 503 || donnees?.offline === true || !repondueParApi;
+    throw new ApiError(
+      reponse.status,
+      offline
+        ? 'Serveur injoignable. Vérifiez votre connexion internet.'
+        : donnees?.error || `Erreur ${reponse.status}`,
+      donnees?.details,
+      offline
+    );
   }
 
   return donnees;

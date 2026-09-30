@@ -230,6 +230,47 @@ données de démonstration.
 
 ---
 
+### Version de test déjà en ligne : GitHub Pages
+
+Le dépôt du projet publie une version de démonstration du frontend sur
+
+**https://ouatthamed250-bit.github.io/rejoins-moi/**
+
+Elle sert à montrer l'app en tournée terrain (et à l'installer sur un téléphone)
+**avant** que l'API et Atlas soient en place :
+
+- HTTPS automatique → l'application s'installe sur l'écran d'accueil (service
+  worker actif sur le périmètre `/rejoins-moi/`) ;
+- l'API n'étant pas exposée, l'app tourne en **mode démonstration** : les données
+  affichées viennent de `frontend/src/data/demoData.js` et un bandeau
+  « Mode démonstration » le rappelle. La connexion avec n'importe quel numéro
+  ouvre le profil artisan, donc **les deux formules d'abonnement sont
+  visibles** — mais rien n'est encaissé ni conservé ;
+- un accès direct à une page (`/rejoins-moi/profil`) répond un code HTTP 404 tout
+  en affichant correctement l'app : limite connue de GitHub Pages, sans effet
+  pour l'utilisateur.
+
+Mettre à jour cette version après n'importe quelle modification du frontend :
+
+```bash
+cd frontend
+npm run deploy:pages      # build avec la base /rejoins-moi/ puis publication sur la branche gh-pages
+```
+
+> Cette version utilise la branche `gh-pages` (site compilé uniquement). Le code
+> source vit dans `main` : les deux ne se mélangent jamais.
+> ⚠️ Ce déploiement est un **confort de test**. La mise en service réelle (URL à la
+> racine du domaine, API branchée, paiements) passe par Vercel ou Netlify ci-dessus.
+
+> ℹ️ Une simple **adresse IP** ne suffit pas à héberger l'app : le navigateur
+> n'autorise l'installation sur l'écran d'accueil (service worker) qu'en `https://`
+> ou sur `localhost`. Il faut donc un nom de domaine (ou un sous-domaine) **et** un
+> certificat. Render, Vercel et Netlify fournissent les deux gratuitement ; sur un
+> VPS, il faut ajouter un domaine puis Let's Encrypt (certbot) devant un reverse
+> proxy Nginx.
+
+---
+
 ## §5. Vérifier l'installation PWA (elle exige HTTPS, donc l'URL publique)
 
 Sur l'URL HTTPS du §4 (`https://rejoins-moi.vercel.app`) :

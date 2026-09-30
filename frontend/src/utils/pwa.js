@@ -21,8 +21,26 @@ export const CLE_INVITATIONS_IGNOREES = 'rejoinsmoi.installationIgnoree';
 /** Au-delà de ce nombre d'ignorances, l'invitation ne s'affiche plus. */
 export const IGNORANCES_MAX = 3;
 
-/** Emplacement du service worker (fichier statique de public/, à la racine). */
-export const CHEMIN_SERVICE_WORKER = '/sw.js';
+/**
+ * Base d'installation de l'application, telle que Vite l'a compilée :
+ *  - « / » si l'app est à la racine d'un domaine (Vercel, Netlify, mutualisé) ;
+ *  - « /rejoins-moi/ » si l'app est dans un sous-dossier (GitHub Pages).
+ *  Hors build Vite (essai hors navigateur, rendu serveur), on retombe sur « / ».
+ */
+function baseApplication() {
+  try {
+    return import.meta.env?.BASE_URL || '/';
+  } catch {
+    return '/';
+  }
+}
+
+/**
+ * Emplacement du service worker : à la base de l'app (jamais « /sw.js » en dur,
+ * sinon GitHub Pages — qui sert l'app depuis /rejoins-moi/ — renverrait 404 et
+ * l'installation sur l'écran d'accueil deviendrait impossible).
+ */
+export const CHEMIN_SERVICE_WORKER = `${baseApplication()}sw.js`;
 
 /* ────────────────────────── État capturé au chargement ─────────────────────── */
 

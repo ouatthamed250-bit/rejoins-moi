@@ -38,6 +38,12 @@ rejoins-moi/
 (base de données MongoDB Atlas gratuite, déploiement de l'API et du frontend en HTTPS,
 vérifications pas à pas).
 
+**Version de démonstration déjà en ligne (à montrer aux artisans) :**
+<https://ouatthamed250-bit.github.io/rejoins-moi/> — HTTPS, installable sur l'écran
+d'accueil, en mode démonstration tant que l'API n'est pas branchée (connexion avec
+n'importe quel numéro, les deux formules d'abonnement s'affichent, rien n'est
+encaissé). Mise à jour : `cd frontend` puis `npm run deploy:pages`.
+
 Sans base de données branchée, l'API répond `503` sur les routes `/jobs`, `/users/artisans`
 et `/subscriptions`, et le frontend bascule sur ses données de démonstration.
 

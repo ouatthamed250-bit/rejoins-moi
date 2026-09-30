@@ -15,20 +15,27 @@
  *     quelle. Le serveur reste seul juge du paiement (règle de sécurité du projet).
  */
 
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];
 
+/* Base d'installation, déduite de l'emplacement du worker lui-même :
+ *  - « / » si l'app est à la racine d'un domaine (Vercel, Netlify) ;
+ *  - « /rejoins-moi/ » si l'app est dans un sous-dossier (GitHub Pages).
+ * Sans cela, la coquille serait préchargée à la racine du domaine : sur Pages,
+ * les 7 fichiers répondraient 404 et le mode hors ligne serait inopérant. */
+const BASE_APPLICATION = new URL(self.location.href).pathname.replace(/[^/]*$/, '');
+
 /* Fichiers strictement nécessaires au premier écran (l'app shell). */
 const APP_SHELL = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/icon.svg',
-  '/icons/icone-192.png',
-  '/icons/icone-512.png',
-  '/icons/apple-touch-icon-180.png',
+  BASE_APPLICATION,
+  `${BASE_APPLICATION}index.html`,
+  `${BASE_APPLICATION}manifest.json`,
+  `${BASE_APPLICATION}icon.svg`,
+  `${BASE_APPLICATION}icons/icon-192.png`,
+  `${BASE_APPLICATION}icons/icon-512.png`,
+  `${BASE_APPLICATION}icons/apple-touch-icon-180.png`,
 ];
 
 /* Zones interdites au cache : on ne touche même pas à la requête. */
@@ -120,14 +127,14 @@ async function gererNavigation(event) {
     const reponse = await (event.preloadResponse || fetch(event.request));
     if (reponse && reponse.ok) {
       const cache = await caches.open(CACHE_APP);
-      cache.put('/index.html', reponse.clone()).catch(() => null);
+      cache.put(`${BASE_APPLICATION}index.html`, reponse.clone()).catch(() => null);
     }
     return reponse;
   } catch {
     const cache = await caches.open(CACHE_APP);
     return (
-      (await cache.match('/index.html')) ||
-      (await cache.match('/')) ||
+      (await cache.match(`${BASE_APPLICATION}index.html`)) ||
+      (await cache.match(BASE_APPLICATION)) ||
       new Response('Rejoins’Moi est hors ligne.', {
         status: 503,
         headers: { 'Content-Type': 'text/plain; charset=utf-8' },

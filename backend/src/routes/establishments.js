@@ -85,6 +85,153 @@ export const CATEGORIES = [
   { slug: 'autre', label: 'Autre', icone: 'dot' },
 ];
 
+/** Slug des catégories utilisables comme filtre (tout sauf le pseudo-onglet « tous »). */
+const CATEGORIES_FILTRABLES = CATEGORIES.filter((cat) => cat.slug !== 'tous').map((cat) => cat.slug);
+
+/**
+ * Profondeur maximale du mélange équilibré (onglet « Tous »), en nombre de fiches.
+ * Au-delà, l'API repasse en proximité pure et le DIT (`diversite: false`) : le client
+ * sait alors qu'il ne doit plus paginer dans ce mode, sinon la page suivante
+ * rejouerait des fiches déjà affichées (la proximité pure ramène les plus proches).
+ * 150 = cinq pages de 30.
+ */
+const DIVERSITE_PROFONDEUR_MAX = 150;
+
+/**
+ * Les `n` fiches les plus proches d'un point, dans l'ordre réel des distances
+ * (index 2dsphere). `filtre` est exactement celui du comptage — rayon inclus — pour
+ * que la liste et `total` portent toujours sur le même ensemble de fiches.
+ *
+ * ⚠️ Le `$limit` est une étape SÉPARÉE, pas une option : celle de `$geoNear` a été
+ * retirée de MongoDB (« $geoNear no longer supports the 'limit' parameter. Use a
+ * $limit stage instead. » — message reçu le 30/09 en la testant). Le motif
+ * `$geoNear` suivi de `$limit` est celui que le serveur reconnaît.
+ */
+function plusProches(filtre, coords, n) {
+  return Establishment.aggregate([
+    {
+      $geoNear: {
+        near: { type: 'Point', coordinates: [coords.lng, coords.lat] },
+        key: 'position',
+        distanceField: 'distanceMetres',
+        query: filtre,
+      },
+    },
+    { $limit: n },
+  ]);
+}
+
+/** Les `n` fiches les plus récentes d'un ensemble (mode `recent`). */
+function plusRecents(filtre, n) {
+  return Establishment.find(filtre).sort({ createdAt: -1, _id: 1 }).limit(n).lean();
+}
+
+/**
+ * Mélange équilibré des catégories (« Tous ») — correction du 30/09.
+ *
+ * PROBLÈME RÉSOLU : trier 6 719 fiches par simple proximité rendait le feed
+ * mono-catégorie. Mesuré le 30/09 : les 60 fiches les plus proches du Plateau
+ * étaient 47 « alimentation » ; sans coordonnées, l'ancien tri « popular » donnait
+ * 56 « beauté » + les points « Transfert d'argent » en tête. L'utilisateur ne voyait
+ * donc pas son quartier, mais une seule rue commerçante.
+ *
+ * MÉTHODE (proximité) : UNE seule exploration de l'index 2dsphere ramène les
+ * `fenetre` fiches les plus proches ; MongoDB les regroupe par catégorie, on garde
+ * les `profondeur` premières de chaque catégorie, et l'indice dans le groupe
+ * (`rang`) reconstruit l'interclassement EN TOURS : au tour n, la n-ième fiche la
+ * plus proche de chaque catégorie, les fiches d'un tour étant classées par distance
+ * réelle.
+ *
+ * POURQUOI PAS UNE REQUÊTE PAR CATÉGORIE (première tentative, abandonnée) : un
+ * `$geoNear` filtré par catégorie force MongoDB à descendre l'index des distances
+ * jusqu'à trouver 30 fiches d'une catégorie rare — mesuré à 3-5 s par feed (8
+ * requêtes), contre ~1 s en une seule passe.
+ *
+ * POURQUOI PAS UN SIMPLE TRI PAR DISTANCE : interclasser les têtes de liste (« la
+ * plus proche d'abord, toutes catégories confondues ») redonne exactement l'ordre
+ * par proximité global — vérifié : 24 « alimentation » sur 30 près du Plateau. Un tour
+ * par catégorie est la seule règle qui garantisse un vrai mélange.
+ *
+ * Conséquence assumée : dans chaque catégorie les distances augmentent (vraie
+ * proximité), mais d'un tour à l'autre la distance « repart de près » pour une autre
+ * catégorie. C'est le prix d'un annuaire équilibré — et c'est réversible avec
+ * `diversite=0`, qui rend le tri par proximité pur.
+ *
+ * @returns {Promise<Array>} fiches brutes (champ `distanceMetres`) déjà interclassées
+ */
+
+/**
+ * Fenêtre d'exploration du mélange, en fiches — FIXE, indépendante de la page.
+ * Deux raisons : (1) les pages doivent rester les tranches successives d'UNE SEULE
+ * séquence, or une fenêtre qui grandit avec la page change la longueur des listes par
+ * catégorie et fait diverger l'interclassement (des fiches réapparaîtraient d'une page
+ * à l'autre) ; (2) elle doit rester ≥ DIVERSITE_PROFONDEUR_MAX pour que chaque page du
+ * mélange soit pleine. 240 = de quoi laisser ~8 fiches à chacune des catégories
+ * présentes dans la première page (4 catégories × 60 tours), sans charger la mémoire.
+ */
+const FENETRE_MELANGE = 240;
+
+/**
+ * Interclassement en tours de listes DÉJÀ triées : au tour n, on prend la n-ième
+ * fiche de chaque liste. Utilisé pour le mode `recent` (sans coordonnées, l'index
+ * géographique ne sert à rien : on interclasse les 8 listes « plus récentes par
+ * catégorie », petites et déjà triées).
+ */
+function interclasser(listes, profondeur, mode) {
+  const melange = [];
+  for (let tour = 0; melange.length < profondeur; tour += 1) {
+    const duTour = [];
+    for (const docs of listes) {
+      if (docs[tour]) duTour.push(docs[tour]);
+    }
+    if (!duTour.length) break; // toutes les catégories sont épuisées
+    duTour.sort((a, b) =>
+      mode === 'recent'
+        ? new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        : a.distanceMetres - b.distanceMetres
+    );
+    melange.push(...duTour);
+  }
+  return melange.slice(0, profondeur);
+}
+
+async function melangeParCategorie(mode, filtre, coords, profondeur) {
+  if (mode === 'recent') {
+    // Sans coordonnées, on doit demander à CHAQUE catégorie ses fiches les plus
+    // récentes : une simple fenêtre « les plus récentes de l'annuaire » ne mélange
+    // rien ici, car les 240 fiches les plus récentes appartiennent toutes à la même
+    // catégorie (import OSM groupé par catégorie — vérifié : 30 « services » d'affilée).
+    // Ces 8 requêtes sont servies par l'index { categorie, createdAt } du modèle.
+    return interclasser(
+      await Promise.all(
+        CATEGORIES_FILTRABLES.map((slug) => plusRecents({ ...filtre, categorie: slug }, profondeur))
+      ),
+      profondeur,
+      'recent'
+    );
+  }
+
+  return Establishment.aggregate([
+    {
+      $geoNear: {
+        near: { type: 'Point', coordinates: [coords.lng, coords.lat] },
+        key: 'position',
+        distanceField: 'distanceMetres',
+        query: filtre,
+      },
+    },
+    { $limit: FENETRE_MELANGE },
+    { $group: { _id: '$categorie', docs: { $push: '$$ROOT' } } },
+    { $project: { _id: 0, docs: { $slice: ['$docs', FENETRE_MELANGE] } } },
+    { $unwind: { path: '$docs', includeArrayIndex: 'rang' } },
+    { $replaceRoot: { newRoot: { $mergeObjects: ['$docs', { rang: '$rang' }] } } },
+    // Un tour à la fois, et dans un tour la plus proche d'abord.
+    { $sort: { rang: 1, distanceMetres: 1 } },
+    { $limit: profondeur },
+    { $project: { rang: 0 } },
+  ]);
+}
+
 /** GET /api/establishments/categories — liste extensible des catégories (utilisée par CategoryFilter). */
 router.get('/categories', (req, res) => {
   res.json({ categories: CATEGORIES });
@@ -92,8 +239,13 @@ router.get('/categories', (req, res) => {
 
 /**
  * GET /api/establishments
- * Query : q, categorie, tags (séparés par virgule), lat, lng, radiusKm, sort, page, limit
+ * Query : q, categorie, tags (séparés par virgule), lat, lng, radiusKm, sort, page,
+ *         limit, diversite
  * sort : proximity (défaut si lat/lng fournis) | note | popular | recent
+ *         (défaut SANS coordonnées : recent — « popular » favorisait de fait une
+ *         seule catégorie, voir la note dans le corps de la route)
+ * diversite : 1 (défaut) = mélange équilibré des catégories quand aucune catégorie
+ *         n'est demandée (onglet « Tous ») ; 0 = tri pur. Voir melangeParCategorie.
  *
  * Note d'architecture : le backend renvoie une liste DÉJÀ triée selon des critères
  * simples et explicables (proximité, note, popularité). La personnalisation fine
@@ -135,7 +287,12 @@ router.get(
 
     // 1) Ordre demandé. Sans coordonnées, « proximité » n'a aucun point de
     //    référence : on retombe sur les fiches les plus récentes.
-    let mode = sort || (coords ? 'proximity' : 'popular');
+    //    Correction du 30/09 : le défaut sans position était « popular ». Mesuré en
+    //    production, il triait de fait par COMMUNAUTÉ (points « Transfert d'argent »
+    //    puis 56 fiches « Beauté » sur 60) : une catégorie occupait tout l'écran, ce
+    //    qui n'est pas ce qu'on attend d'un annuaire de quartier. « popular » reste
+    //    disponible, mais uniquement sur demande explicite (`sort=popular`).
+    let mode = sort || (coords ? 'proximity' : 'recent');
     if (mode === 'proximity' && !coords) mode = 'recent';
     const parProximite = mode === 'proximity';
 
@@ -161,11 +318,28 @@ router.get(
     const limitNum = Math.min(LIMITE_MAX, Math.max(1, Number(limit) || 20));
     const skip = (pageNum - 1) * limitNum;
 
+    // 3 bis) Mélange équilibré des catégories (« Tous ») — correction du 30/09.
+    //    Il s'applique quand AUCUNE catégorie n'est demandée, en tri par proximité
+    //    réelle, et tant que la fenêtre demandée tient dans DIVERSITE_PROFONDEUR_MAX
+    //    (au-delà, on retombe franchement sur la proximité pure, annoncée au client).
+    const diversiteDemandee = req.query.diversite !== '0';
+    const diversifie =
+      (parProximite || mode === 'recent') &&
+      !filtre.categorie &&
+      diversiteDemandee &&
+      skip + limitNum <= DIVERSITE_PROFONDEUR_MAX;
+
     // 4) Récupération de LA page demandée, triée par la base : index 2dsphere pour
     //    la proximité, score pondéré pour la popularité, index `noteMoyenne` pour
     //    la note, `createdAt` pour les plus récentes.
     let docs;
-    if (parProximite) {
+    if (diversifie) {
+      // Le mélange est calculé sur `skip + limit` fiches (et non sur la seule page) :
+      // la nième page est ainsi la tranche [skip, skip+limit) du même mélange, donc
+      // aucune répétition ni fiche sautée d'une page à l'autre.
+      const melange = await melangeParCategorie(mode, filtreCompte, coords, skip + limitNum);
+      docs = melange.slice(skip, skip + limitNum);
+    } else if (parProximite) {
       docs = await Establishment.aggregate([
         {
           $geoNear: {
@@ -219,6 +393,11 @@ router.get(
       centre: coords,
       rayonKm: coords && radiusKm ? radiusKm : null,
       tri: mode,
+      // `true` = la page vient d'un MÉLANGE équilibré des catégories (onglet
+      // « Tous »). `false` = tri pur (catégorie choisie, tri explicite, ou fenêtre
+      // au-delà de DIVERSITE_PROFONDEUR_MAX) : le client ne doit alors pas paginer
+      // dans le mélange, car l'ordre n'est plus comparable d'une page à l'autre.
+      diversite: diversifie,
     });
   })
 );

@@ -17,12 +17,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Icon } from './Icons.jsx';
 import {
+  CHEMIN_SERVICE_WORKER,
   IGNORANCES_MAX,
   demanderInstallation,
   ecouterInvitation,
   etatInvitation,
+  etatServiceWorker,
   ignorerInvitation,
+  invitationForcee,
   invitationMasquee,
+  lireIgnorances,
+  reinitialiserInvitation,
 } from '../utils/pwa.js';
 
 /** Libellés et icône pour chaque état. Un seul endroit à relire pour le support. */
@@ -64,9 +69,26 @@ export default function InstallAppButton({ className = '' }) {
   const [fermeeSession, setFermeeSession] = useState(false);
   const [enCours, setEnCours] = useState(false);
   const [note, setNote] = useState(null);
+  // `?pwa=1` dans l'adresse : affichage forcé + diagnostic à l'écran (voir pwa.js).
+  // C'est aussi la sortie de secours si l'invitation a été fermée trois fois.
+  const [forcee] = useState(invitationForcee);
+  const [diagnostic, setDiagnostic] = useState(null);
   const banniere = useRef(null);
 
   useEffect(() => ecouterInvitation(setEtat), []);
+
+  // Diagnostic demandé explicitement : on affiche ce que le navigateur voit vraiment
+  // (service worker enregistré ? jusqu'où son périmètre s'étend ?), au lieu de deviner.
+  useEffect(() => {
+    if (!forcee) return undefined;
+    let monte = true;
+    etatServiceWorker().then((etatSw) => {
+      if (monte) setDiagnostic(etatSw);
+    });
+    return () => {
+      monte = false;
+    };
+  }, [forcee]);
 
   // ── Réserve d'espace sous la page (correctif du 29/09) ──
   // La bannière est en `position: fixed` : elle ne pousse pas le contenu, elle
@@ -106,7 +128,31 @@ export default function InstallAppButton({ className = '' }) {
     if (total >= IGNORANCES_MAX) setMasquee(true);
   }, []);
 
-  if (masquee || fermeeSession) return null;
+  // ── Invitation fermée trop de fois (3 refus, compteur localStorage) ──
+  // Avant, on renvoyait carrément `null` : le bouton d'installation disparaissait
+  // DÉFINITIVEMENT de l'app (bug signalé le 30/09 : « le bandeau ne s'affiche plus
+  // du tout »), alors que le service worker, lui, n'était pas en cause. On affiche
+  // donc une pastille discrète : l'invitation automatique reste retirée, mais
+  // l'installation reste accessible en un clic si l'utilisateur la cherche.
+  if ((masquee || fermeeSession) && !forcee) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          reinitialiserInvitation();
+          setFermeeSession(false);
+          setMasquee(false);
+        }}
+        aria-label="Réafficher l’invitation d’installation"
+        className="fixed right-3 z-30 inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-2 text-[11px] font-bold text-white shadow-card transition active:scale-95"
+        // Même marge que la bannière : au-dessus de la bottom nav (§8).
+        style={{ bottom: 'calc(env(safe-area-inset-bottom) + 96px)' }}
+      >
+        <Icon name="download" size={14} />
+        Installer l’app
+      </button>
+    );
+  }
 
   const contenu = CONTENUS[etat] || CONTENUS.manuel;
   const installee = etat === 'installee';
@@ -121,6 +167,13 @@ export default function InstallAppButton({ className = '' }) {
       style={{ bottom: 'calc(env(safe-area-inset-bottom) + 96px)' }}
     >
       <div className="ecran">
+        {forcee && (
+          <p className="mb-1 rounded-md bg-white/95 px-2 py-1 text-center text-[10px] leading-snug text-ink-muted shadow-card">
+            Diagnostic PWA — état : {etat} · invitations fermées : {lireIgnorances()} · service worker :{' '}
+            {diagnostic || 'vérification…'} · worker attendu : {CHEMIN_SERVICE_WORKER}
+          </p>
+        )}
+
         <div
           className={`flex items-center gap-3 rounded-md border px-3 py-2 shadow-card animate-fade-up ${
             installee ? 'border-line bg-white text-ink' : 'border-primary-dark bg-primary text-white'

@@ -174,6 +174,14 @@ establishmentSchema.index({
 // $geoNear »). Créé automatiquement par Mongoose au démarrage du serveur.
 establishmentSchema.index({ position: '2dsphere' });
 
+// Listing par CATÉGORIE, du plus récent au plus ancien.
+// Utile au mélange équilibré demandé sans position (GET /api/establishments avec
+// diversite=1 et sans lat/lng) : il faut les fiches les plus récentes DE CHAQUE
+// catégorie, or les 240 fiches les plus récentes de l'annuaire appartiennent toutes à
+// la même catégorie (l'import OSM est groupé par catégorie). Sans cet index, chacune
+// de ces 8 requêtes triait tout l'annuaire — mesuré à 8 s pour un appel.
+establishmentSchema.index({ categorie: 1, createdAt: -1 });
+
 /**
  * Copie `localisation` vers le point GeoJSON `position` (voir le champ `position`).
  * Tolérant : une localisation absente ou hors bornes laisse `position` vide

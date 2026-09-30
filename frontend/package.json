@@ -8,6 +8,7 @@
     "build": "vite build",
     "build:pages": "vite build --base=/rejoins-moi/",
     "deploy:pages": "npm run build:pages && node scripts/publier-pages.mjs",
+    "verifier:pwa": "node scripts/verifier-pwa.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

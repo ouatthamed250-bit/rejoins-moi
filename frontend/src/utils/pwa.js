@@ -228,6 +228,45 @@ if (typeof window !== 'undefined') {
   }
 }
 
+/* ───────────────────────────── Diagnostic (support) ───────────────────────── */
+
+/**
+ * Affichage forcé + diagnostic : il suffit d'ouvrir l'app avec `?pwa=1`.
+ *
+ * Pourquoi c'est là : sur un téléphone où l'invitation a été fermée trois fois (ou
+ * pendant un test terrain), on ne sait plus si le bandeau manque parce que le
+ * navigateur ne propose pas l'installation, parce que le service worker n'est pas
+ * enregistré, ou parce que l'invitation a été masquée volontairement. `?pwa=1`
+ * répond aux trois questions à l'écran, et remet le compteur à zéro.
+ */
+export function invitationForcee() {
+  if (typeof window === 'undefined') return false;
+  try {
+    return new URL(window.location.href).searchParams.get('pwa') === '1';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * État réel du service worker, affiché par le diagnostic `?pwa=1`.
+ * L'installation sur l'écran d'accueil dépend de trois choses côté navigateur :
+ * HTTPS, un manifeste valide, et un service worker ACTIF (avec gestionnaire
+ * `fetch`). Savoir lequel manque évite de deviner. Renvoie une phrase lisible.
+ */
+export async function etatServiceWorker() {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return 'non supporté';
+  try {
+    const enregistrement = await navigator.serviceWorker.getRegistration();
+    if (!enregistrement) return 'non enregistré';
+    if (enregistrement.active) return `actif (${enregistrement.scope})`;
+    if (enregistrement.installing) return 'installation en cours';
+    return 'en attente d’activation';
+  } catch {
+    return 'indisponible';
+  }
+}
+
 export default {
   CLE_INVITATIONS_IGNOREES,
   IGNORANCES_MAX,
@@ -242,4 +281,6 @@ export default {
   ignorerInvitation,
   reinitialiserInvitation,
   enregistrerServiceWorker,
+  invitationForcee,
+  etatServiceWorker,
 };

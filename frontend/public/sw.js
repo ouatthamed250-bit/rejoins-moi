@@ -16,10 +16,15 @@
  */
 
 // v3 : passage aux icônes DÉFINITIVES (logo du fondateur, jeu PNG).
-// Changer la version est indispensable : les icônes sont servies « cache d'abord »,
-// donc sans nouveau nom de cache un téléphone déjà installé garderait indéfiniment
-// l'ancien logo provisoire. `activate` supprime les caches des versions passées.
-const VERSION = 'v3';
+// v4 : refonte visuelle du 30/09 (fond ivoire dominant, orange en accent).
+//      L'app shell est servi « stale-while-revalidate » : sans nouveau nom de
+//      cache, un téléphone déjà installé afficherait l'ANCIEN thème à la
+//      première visite après la mise à jour (l'utilisateur croirait que la
+//      refonte n'est pas passée). `activate` supprime les caches des versions
+//      passées, donc le nouveau thème est visible dès le premier chargement.
+// Changer la version est indispensable dès que les fichiers « cache d'abord »
+// (icônes) ou l'app shell changent de façon visible.
+const VERSION = 'v4';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

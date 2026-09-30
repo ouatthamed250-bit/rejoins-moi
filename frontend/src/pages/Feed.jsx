@@ -51,6 +51,11 @@ export default function Feed() {
 
     try {
       const requete = new URLSearchParams({ limit: '30' });
+      // La catégorie est filtrée par le SERVEUR (indexé en base), pas sur les 30
+      // cartes déjà reçues : avec 6 719 fiches importées, filtrer côté client
+      // revenait à chercher « Beauté » parmi 30 fiches choisies par proximité —
+      // résultat presque toujours vide. Correction du 30/09.
+      if (categorie !== 'tous') requete.set('categorie', categorie);
       if (coords) {
         requete.set('lat', coords.lat);
         requete.set('lng', coords.lng);
@@ -60,12 +65,12 @@ export default function Feed() {
       setHorsLigne(false);
     } catch {
       // Repli : données de démonstration (jamais d'écran vide, cf. tournée terrain).
-      setBruts(filtrerEtablissementsDemo({ categorie: 'tous' }));
+      setBruts(filtrerEtablissementsDemo({ categorie }));
       setHorsLigne(true);
     } finally {
       setChargement(false);
     }
-  }, [position.position]);
+  }, [position.position, categorie]);
 
   useEffect(() => {
     charger();

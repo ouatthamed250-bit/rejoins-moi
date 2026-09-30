@@ -29,6 +29,44 @@ const router = express.Router();
 router.use(requireDb);
 
 /**
+ * Rayon sphérique utilisé par MongoDB pour les calculs 2dsphere (en km) :
+ * c'est la valeur que $centerSphere attend en radians (distance / rayon) et
+ * celle sur laquelle $geoNear renvoie `distanceMetres`. Utiliser LA MÊME
+ * constante des deux côtés garantit que le comptage `total` et la liste
+ * paginée portent exactement sur le même ensemble de fiches.
+ *
+ * (Attention : utils/geo.js calcule ses distances d'affichage avec un rayon de
+ * 6 371 km — écart < 0,2 %, sans effet sur l'ordre des résultats.)
+ */
+const RAYON_TERRE_KM = 6378.137;
+
+/** Plafond de pagination : au-delà, la réponse devient inutilement lourde en 4G. */
+const LIMITE_MAX = 60;
+
+/**
+ * Tri MongoDB équivalent au tri en mémoire historique.
+ * `null` = ordre calculé par une agrégation ($geoNear pour la proximité, score
+ * pondéré pour la popularité) : voir le corps de la route.
+ *
+ * `_id` est TOUJOURS le dernier critère : sans départage unique, deux pages
+ * successives peuvent répéter ou sauter des fiches quand des milliers d'entre
+ * elles partagent la même clé de tri (cas réel : import à compteurs nuls).
+ */
+function triMongo(mode) {
+  if (mode === 'note') return { noteMoyenne: -1, nombreAvis: -1, _id: 1 };
+  if (mode === 'recent') return { createdAt: -1, _id: 1 };
+  return null;
+}
+
+/**
+ * Score du tri « popular » — règle produit conservée : les UTILISATEURS (clic sur
+ * « Aller chez… ») pèsent trois fois plus lourd que les simples visites de fiche.
+ * Les deux compteurs restent séparés en base ; le score n'existe que le temps de
+ * la requête et n'est jamais stocké.
+ */
+const SCORE_POPULARITE = { $add: [{ $multiply: ['$compteurUtilisateurs', 3] }, '$compteurVisites'] };
+
+/**
  * Catégories du feed (§4 : Tous / Alimentation / Beauté / Services / Artisanat, extensible).
  * Décision produit (à valider) : j'ai ajouté « commerce », « santé », « spiritualité »
  * et « autre » pour couvrir les exemples cités dans le cahier des charges
@@ -61,14 +99,24 @@ router.get('/categories', (req, res) => {
  * simples et explicables (proximité, note, popularité). La personnalisation fine
  * (affinité apprise des interactions) est appliquée côté frontend dans
  * hooks/useFeedAlgorithm.js — c'est plus réactif et évite un aller-retour réseau
- * à chaque clic. `distanceKm` est recalculé en JS (voir utils/geo.js).
+ * à chaque clic.
+ *
+ * PAGINATION (correction du 30/09) : le tri ET la pagination sont désormais faits
+ * par MongoDB (`sort` / `$skip` / `$limit`), plus en mémoire sur les 400 fiches
+ * les plus récentes. L'ancienne version chargeait `.limit(400)` puis triait ce
+ * paquet : sur les 6 719 fiches importées, 583 fiches « Beauté » et une grande
+ * partie de l'annuaire étaient inaccessibles, et `total` annonçait 400 au lieu
+ * du compte réel. Le tri par proximité utilise maintenant l'index 2dsphere
+ * (`$geoNear`, champ `position`) et `total` vient d'un `countDocuments` réel.
  */
 router.get(
   '/',
   asyncHandler(async (req, res) => {
     const { q, categorie, tags, sort, page = 1, limit = 20 } = req.query;
     const coords = parseCoords(req.query);
-    const radiusKm = req.query.radiusKm ? Number(req.query.radiusKm) : null;
+    // Une valeur non numérique (« abc ») donnerait NaN : on la traite comme absente.
+    const rayonDemande = Number(req.query.radiusKm);
+    const radiusKm = Number.isFinite(rayonDemande) && rayonDemande > 0 ? rayonDemande : null;
 
     const filtre = {};
     if (categorie && categorie !== 'tous') filtre.categorie = categorie;
@@ -85,50 +133,91 @@ router.get(
       filtre.$or = [{ nom: rx }, { tags: rx }, { quartier: rx }, { commune: rx }, { description: rx }];
     }
 
-    const docs = await Establishment.find(filtre).sort({ createdAt: -1 }).limit(400);
+    // 1) Ordre demandé. Sans coordonnées, « proximité » n'a aucun point de
+    //    référence : on retombe sur les fiches les plus récentes.
+    let mode = sort || (coords ? 'proximity' : 'popular');
+    if (mode === 'proximity' && !coords) mode = 'recent';
+    const parProximite = mode === 'proximity';
 
-    let items = docs.map((doc) => {
-      const distanceKm = coords
-        ? getDistanceKm(coords.lat, coords.lng, doc.localisation.lat, doc.localisation.lng)
-        : null;
-      return { doc, distanceKm, json: doc.toCardJSON({ distanceKm }) };
-    });
-
+    // 2) Filtre réellement compté. Le rayon n'est plus appliqué en JS après coup :
+    //    il devient une contrainte géographique traitée par l'index 2dsphere.
+    const filtreCompte = { ...filtre };
     if (coords && radiusKm) {
-      items = items.filter((it) => it.distanceKm != null && it.distanceKm <= radiusKm);
+      filtreCompte.position = {
+        $geoWithin: { $centerSphere: [[coords.lng, coords.lat], radiusKm / RAYON_TERRE_KM] },
+      };
+    }
+    if (parProximite) {
+      // $geoNear ignore les fiches sans point géographique : on compte donc le
+      // MÊME ensemble, sinon `total` annoncerait plus de résultats que la liste
+      // n'en contient (et `hasMore` mentirait à la dernière page).
+      filtreCompte.position = filtreCompte.position || { $exists: true };
+    }
+    const total = await Establishment.countDocuments(filtreCompte);
+
+    // 3) Pagination calculée AVANT la requête : c'est MongoDB qui saute et coupe,
+    //    même quand il reste des milliers de fiches à parcourir.
+    const pageNum = Math.max(1, Number(page) || 1);
+    const limitNum = Math.min(LIMITE_MAX, Math.max(1, Number(limit) || 20));
+    const skip = (pageNum - 1) * limitNum;
+
+    // 4) Récupération de LA page demandée, triée par la base : index 2dsphere pour
+    //    la proximité, score pondéré pour la popularité, index `noteMoyenne` pour
+    //    la note, `createdAt` pour les plus récentes.
+    let docs;
+    if (parProximite) {
+      docs = await Establishment.aggregate([
+        {
+          $geoNear: {
+            near: { type: 'Point', coordinates: [coords.lng, coords.lat] },
+            key: 'position',
+            distanceField: 'distanceMetres',
+            // Même filtre que le comptage, rayon inclus : les deux requêtes
+            // portent ainsi exactement sur le même ensemble de fiches.
+            query: filtreCompte,
+          },
+        },
+        { $skip: skip },
+        { $limit: limitNum },
+      ]);
+    } else if (mode === 'popular') {
+      docs = await Establishment.aggregate([
+        { $match: filtreCompte },
+        { $addFields: { scorePopularite: SCORE_POPULARITE } },
+        { $sort: { scorePopularite: -1, _id: 1 } },
+        { $skip: skip },
+        { $limit: limitNum },
+        // Le score est un détail d'implémentation : on ne le sérialise pas.
+        { $project: { scorePopularite: 0 } },
+      ]);
+    } else {
+      docs = await Establishment.find(filtreCompte).sort(triMongo(mode)).skip(skip).limit(limitNum);
     }
 
-    const mode = sort || (coords ? 'proximity' : 'popular');
-    items.sort((a, b) => {
-      if (mode === 'note') {
-        return b.json.noteMoyenne - a.json.noteMoyenne || (a.distanceKm ?? 999) - (b.distanceKm ?? 999);
-      }
-      if (mode === 'recent') {
-        return new Date(b.json.createdAt) - new Date(a.json.createdAt);
-      }
-      if (mode === 'popular') {
-        // Deux compteurs pondérés séparément, jamais fusionnés en un champ unique :
-        // les "utilisateurs" pèsent plus lourd que les simples visites de profil.
-        const scoreA = a.json.compteurUtilisateurs * 3 + a.json.compteurVisites;
-        const scoreB = b.json.compteurUtilisateurs * 3 + b.json.compteurVisites;
-        return scoreB - scoreA;
-      }
-      // proximity (défaut quand la position est connue)
-      return (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999);
+    const items = docs.map((brut) => {
+      // `aggregate` renvoie des objets bruts : on les réhydrate pour retrouver les
+      // méthodes du modèle (toCardJSON), exactement comme le fait `find`.
+      const doc = brut instanceof Establishment ? brut : Establishment.hydrate(brut);
+      const distanceKm = Number.isFinite(doc.distanceMetres)
+        ? // Distance calculée par MongoDB (index 2dsphere) : la plus exacte.
+          doc.distanceMetres / 1000
+        : coords
+          ? getDistanceKm(coords.lat, coords.lng, doc.localisation?.lat, doc.localisation?.lng)
+          : null;
+      return doc.toCardJSON({ distanceKm });
     });
 
-    const pageNum = Math.max(1, Number(page) || 1);
-    const limitNum = Math.min(60, Math.max(1, Number(limit) || 20));
-    const start = (pageNum - 1) * limitNum;
-    const pageItems = items.slice(start, start + limitNum);
-
     res.json({
-      items: pageItems.map((it) => it.json),
-      total: items.length,
+      items,
+      // Compte RÉEL en base (et non plus le nombre de fiches chargées : 400 au
+      // maximum auparavant). C'est lui qui permet au client de savoir qu'il reste
+      // des pages — indispensable avec 6 719 fiches.
+      total,
       page: pageNum,
       limit: limitNum,
-      hasMore: start + limitNum < items.length,
+      hasMore: pageNum * limitNum < total,
       centre: coords,
+      rayonKm: coords && radiusKm ? radiusKm : null,
       tri: mode,
     });
   })

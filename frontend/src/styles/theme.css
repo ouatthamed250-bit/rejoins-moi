@@ -1,7 +1,29 @@
 /*
   Rejoins'Moi — Design tokens + styles globaux
-  Palette générale : orange chaleureux (pas trop foncé) + blanc, varié selon les pages.
-  Palette Pharmacies & Cliniques : vert + blanc, ambiance rassurante façon VTC/taxi-moto.
+  ========================================================================
+  REFONTE DU 30/09 — « pas trop orange » (v2)
+
+  constat : la v1 peignait des APLATS orange pleins (barre du haut, bannière
+  d'accueil, boutons) — l'interface était jugée agressive. La v2 inverse le
+  rapport de force : le blanc/ivoire domine, l'orange ne revient que par
+  petites touches (boutons, badges, icônes) et par un DÉGRADÉ d'en-tête qui
+  s'estompe progressivement vers le bas.
+
+  Cette v2 est la fusion du fichier de tokens proposé (theme-rejoins-moi.css)
+  avec la structure de la v1, que l'on ne peut PAS supprimer :
+    - les directives @tailwind base/components/utilities (sans elles, plus
+      aucune classe utilitaire du projet ne serait générée) ;
+    - les classes structurantes .ecran, .btn*, .puces, .espace-barre-* ;
+    - la variable --reserve-banniere (dégagement du contenu sous la bannière
+      d'installation PWA, écrite par InstallAppButton) ;
+    - les alias historiques (--color-bg-soft, --font-family-display...).
+
+  Nouveautés de la v2 : .entete-degrade (en-têtes), .fond-traits-fins (motif de
+  fond discret), .bouton-principal (+ --cta-majeur), .bouton-secondaire,
+  .lueur-ambiante.
+
+  Palette Pharmacies & Cliniques : vert + blanc, ambiance rassurante façon
+  VTC/taxi-moto. Elle est VOLONTAIREMENT INCHANGÉE par cette refonte (§6).
 
   Ce fichier est la SOURCE DE VÉRITÉ du design : les mêmes valeurs sont dupliquées
   dans tailwind.config.js pour permettre les classes utilitaires (bg-primary,
@@ -18,26 +40,31 @@
 
 
 :root {
-  /* Palette principale — orange chaleureux */
-  --color-primary: #FF7A2E;          /* orange dominant, pas trop foncé */
-  --color-primary-light: #FFA366;
-  --color-primary-dark: #E85D0A;
+  /* ── Palette principale (v2) — blanc/ivoire dominant, orange en ACCENT ──
+     L'orange n'est plus jamais un aplat de fond : il vit dans les boutons, les
+     badges, les icônes et le dégradé d'en-tête (--gradient-header). */
+  --color-primary: #FF7A18;          /* orange d'accent, un ton en dessous de la v1 */
+  --color-primary-light: #FF9A4D;
+  --color-primary-pale: #FFF0DF;     /* fond orangé très pâle (badges, survols) */
+  --color-primary-dark: #F9680B;
   --color-secondary: #FFFFFF;
 
-  /* Palette secondaire — Pharmacies & Cliniques */
+  /* Palette secondaire — Pharmacies & Cliniques (§6)
+     INCHANGÉE : la refonte orange ne doit pas toucher cette section (vert). */
   --color-health-primary: #2EAE5C;   /* vert rassurant */
   --color-health-light: #E9F9EF;
   --color-health-dark: #1E8A45;
 
   /* Neutres */
-  --color-bg: #FFFFFF;
-  --color-bg-soft: #FFF6EE;          /* fond doux teinté orange pour cartes */
-  --color-text: #1A1A1A;
-  --color-text-muted: #6B6B6B;
-  --color-border: #F0E4D8;
+  --color-bg: #FFFCF8;               /* ivoire : fond dominant de toute l'app */
+  --color-surface: #FFFFFF;          /* cartes, feuilles, barres */
+  --color-bg-soft: #FFF0DF;          /* fond doux teinté orange pour cartes (alias de --color-primary-pale) */
+  --color-text: #17212B;
+  --color-text-muted: #66717C;
+  --color-border: #ECE8E2;
 
   /* Feedback */
-  --color-success: #2EAE5C;
+  --color-success: #2EAE5C;          /* aligné sur le vert de la section santé */
   --color-warning: #F5A623;
   --color-danger: #E5484D;
   --color-star: #FFB020;             /* couleur des étoiles de notation */
@@ -52,11 +79,30 @@
   --font-size-xl: 1.5rem;
 
   /* Rayons / ombres — pour garder un style "chic" et doux, pas anguleux */
-  --radius-sm: 8px;
-  --radius-md: 14px;
+  --radius-sm: 10px;
+  --radius-md: 16px;
   --radius-lg: 22px;
-  --shadow-card: 0 4px 14px rgba(255, 122, 46, 0.12);
-  --shadow-card-health: 0 4px 14px rgba(46, 174, 92, 0.12);
+  /* Ombre neutre et diffuse : c'est ce qui remplace l'ombre orange de la v1 et
+     fait ressortir les cartes blanches sur le fond ivoire. */
+  --shadow-card: 0 10px 35px rgba(20, 30, 40, 0.055), 0 2px 8px rgba(20, 30, 40, 0.035);
+  --shadow-card-health: 0 4px 14px rgba(46, 174, 92, 0.12);   /* inchangée (santé) */
+  --shadow-fab: 0 8px 20px rgba(249, 104, 11, 0.35);
+
+  /* ── En-tête (TopBar, bannière d'accueil, en-tête de section) ──
+     Dégradé orange DOUX en très haut, déjà atténué à 32 %, totalement fondu
+     vers l'ivoire à 100 % : jamais d'aplat, l'orange "s'éteint" vers le bas. */
+  --gradient-header: linear-gradient(
+    180deg,
+    rgba(255, 122, 24, 0.18) 0%,
+    rgba(255, 154, 77, 0.09) 32%,
+    rgba(255, 252, 248, 0) 100%
+  );
+
+  /* ── Boutons principaux : dégradé « premium » + ombre douce ──
+     (remplace le fond plat `bg-primary` de la v1) */
+  --gradient-button: linear-gradient(135deg, #FF8A2A 0%, #FF7412 55%, #F9680B 100%);
+  --shadow-button: 0 8px 20px rgba(255, 122, 24, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  --shadow-button-active: 0 4px 10px rgba(255, 122, 24, 0.16);
 
   /* Espace réservé sous le contenu pour les éléments FIXES du bas d'écran.
      Mis à jour dynamiquement par InstallAppButton : quand la bannière
@@ -66,8 +112,9 @@
 
   /* Durées d'animation — transitions "captives" mais pas lourdes */
   --transition-fast: 150ms ease;
-  --transition-base: 250ms ease;
+  --transition-base: 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
   --transition-slow: 400ms ease;
+  --duration-glow: 9s;               /* respiration de la lueur d'ambiance */
 }
 
 @layer base {
@@ -139,22 +186,59 @@
 
   .carte {
     @apply rounded-lg bg-white shadow-card overflow-hidden;
+    /* v2 : un simple liseré très clair détache la carte du fond ivoire — plus
+       besoin de l'ombre orange de la v1, la page redevient calme. */
+    border: 1px solid rgba(20, 30, 40, 0.06);
   }
 
   .carte-health {
     @apply rounded-lg bg-white shadow-card-health overflow-hidden;
   }
 
-  /* Bouton principal (orange) — utilisé hors section santé */
+  /* ── Boutons ─────────────────────────────────────────────────────────────
+     `btn` (v1) et `bouton-principal` (v2) portent volontairement les MÊMES
+     utilitaires de base : les deux classes sont interchangeables dans le JSX.
+     (Utilitaires recopiés à dessein plutôt que factorisés : `@apply btn` doit
+     rester la base intacte des boutons secondaires et santé.) */
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-3 font-semibold transition active:scale-[0.98];
   }
+  .bouton-principal {
+    @apply inline-flex items-center justify-center gap-2 rounded-md font-semibold transition;
+    background: var(--gradient-button);
+    color: #FFFFFF;
+    border: none;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-button);
+    padding: 14px 24px;
+  }
+  /* Alias historique de `.bouton-principal` — MÊME rendu. Le code comptait une
+     vingtaine de `btn-primary` : cet alias garantit qu'aucun bouton principal
+     ne reste sur l'aplat orange de la v1, même oublié dans un écran. */
   .btn-primary {
-    @apply btn bg-primary text-white hover:bg-primary-dark;
+    background: var(--gradient-button);
+    color: #FFFFFF;
+    border: none;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-button);
+    padding: 14px 24px;
   }
+  .bouton-principal:active,
+  .btn-primary:active {
+    transform: scale(0.97);
+    box-shadow: var(--shadow-button-active);
+  }
+  /* Bouton secondaire : blanc/ivoire, texte orange foncé, liseré clair.
+     C'est le pendant v2 de `.btn-ghost` (action utile mais non prioritaire). */
   .btn-ghost {
-    @apply btn bg-white text-ink border border-line hover:bg-soft;
+    @apply btn bg-white text-primary-dark border border-line;
+    box-shadow: none;
   }
+  .btn-ghost:hover,
+  .btn-ghost:active {
+    background: var(--color-primary-pale);
+  }
+
   /* Bouton de la section Pharmacies & Cliniques : vert, jamais orange (§6) */
   .btn-health {
     @apply btn bg-health text-white hover:bg-health-dark;
@@ -195,4 +279,83 @@
   .anim-differe-4 { animation-delay: 160ms; }
   .anim-differe-5 { animation-delay: 200ms; }
 }
+
+/* ==========================================================================
+   CLASSES v2 — en-tête en dégradé, motif de fond, boutons « premium »
+   (refonte du 30/09 : le blanc/ivoire domine, l'orange ne revient qu'en accent)
+   ========================================================================== */
+
+/* ── En-tête : dégradé orange doux qui s'estompe vers le bas ──
+   À poser sur la barre du haut, la bannière d'accueil et l'en-tête du menu, à
+   la place de l'ancien aplat orange plein.
+   Le dégradé est SOMMÉ au fond ivoire : sous le fondu, l'en-tête est donc
+   opaque — indispensable pour la barre `sticky`, sinon le contenu défilerait
+   visiblement derrière elle. */
+.entete-degrade {
+  background: var(--gradient-header), var(--color-bg);
+}
+
+/* ── Motif de fond : TRAITS FINS façon carte/itinéraire ──
+   Quelques courbes très fines et très pâles, répétées en tuile discrète,
+   posées DERRIÈRE le contenu. À utiliser sur le conteneur principal des pages
+   riches en contenu (Feed, Search) — jamais sur les cartes, qui restent
+   blanches.
+   Détail d'implémentation : la tuile est passée en `z-index: -1` dans un
+   contexte d'empilement propre (`isolation`) au lieu de surélever tous les
+   enfants. La technique « .fond-traits-fins > * { position: relative } » du
+   fichier de tokens initial écrasait le `position: sticky` de la barre de
+   filtres du feed, qui ne serait plus restée collée en haut au défilement. */
+.fond-traits-fins {
+  position: relative;
+  isolation: isolate;
+}
+.fond-traits-fins::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.5;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220' viewBox='0 0 220 220'%3E%3Cg fill='none' stroke='%23FF7A18' stroke-width='1' stroke-linecap='round'%3E%3Cpath d='M-10 40 Q 60 10, 110 60 T 230 50' opacity='0.10'/%3E%3Cpath d='M-10 140 Q 70 190, 120 130 T 230 160' opacity='0.08'/%3E%3Ccircle cx='30' cy='100' r='2' opacity='0.12'/%3E%3Ccircle cx='170' cy='60' r='2' opacity='0.10'/%3E%3Ccircle cx='190' cy='180' r='2' opacity='0.10'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 220px 220px;
+}
+
+/* ── Lueur ambiante : respiration très lente derrière un hero ou un CTA ──
+   Fournie par le thème mais NON posée par défaut : c'est une animation en
+   boucle, or les listes ne doivent rien animer en continu (batterie des
+   smartphones d'entrée de gamme, voir l'en-tête de ce fichier). À réserver à
+   1-2 écrans, dans un parent `position: relative; overflow: hidden`. */
+.lueur-ambiante {
+  position: absolute;
+  width: 280px;
+  height: 280px;
+  background: radial-gradient(
+    circle,
+    rgba(255, 122, 24, 0.13) 0%,
+    rgba(255, 154, 77, 0.06) 35%,
+    transparent 70%
+  );
+  filter: blur(20px);
+  animation: ambientGlow var(--duration-glow) ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+@keyframes ambientGlow {
+  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.55; }
+  50% { transform: translate(20px, 10px) scale(1.08); opacity: 0.8; }
+}
+
+/* ── Effet « softGlow » réservé au TOUT PREMIER CTA de l'onboarding ──
+   La consigne est explicite : pas de halo sur tous les boutons principaux,
+   uniquement sur le premier appel à l'action du parcours d'inscription
+   (voir RegisterEstablishment.jsx, étape 0). */
+.bouton-principal--cta-majeur {
+  animation: softGlow 4s ease-in-out infinite;
+}
+@keyframes softGlow {
+  0%, 100% { box-shadow: 0 10px 24px rgba(249, 115, 22, 0.14); }
+  50% { box-shadow: 0 12px 30px rgba(249, 115, 22, 0.22); }
+}
+
 

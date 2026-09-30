@@ -40,12 +40,23 @@ export default function TopBar({
   const nom = profil?.nomComplet || '';
   const photo = profil?.photoProfil;
 
+  // v2 du 30/09 : la variante par défaut n'est PLUS un aplat orange (jugé trop
+  // agressif) mais un dégradé orange doux qui s'estompe vers le bas
+  // (`entete-degrade`, theme.css), avec le texte en encre foncée. La variante
+  // santé, elle, garde son vert plein : cette refonte ne la touche pas (§6).
   const fond =
     variante === 'health'
       ? 'bg-health text-white shadow-card-health'
       : variante === 'transparent'
         ? 'bg-white/90 text-ink backdrop-blur border-b border-line'
-        : 'bg-primary text-white shadow-card';
+        : 'entete-degrade text-ink border-b border-line/70';
+
+  // Sur un fond clair, un survol blanc (v1) ne se verrait plus : on l'adapte.
+  const survolPuce = variante === 'health' ? 'hover:bg-white/15' : 'hover:bg-primary/10';
+  // Cadre de l'avatar : anneau blanc translucide sur le vert santé, liseré +
+  // fond pâle sur l'en-tête clair — un anneau blanc disparaîtrait dans l'ivoire.
+  const cadreAvatar =
+    variante === 'health' ? 'border-white/70 bg-white/20' : 'border-primary/25 bg-white/70';
 
   return (
     <>
@@ -57,7 +68,7 @@ export default function TopBar({
             type="button"
             aria-label="Revenir en arrière"
             onClick={() => navigate(-1)}
-            className="-ml-1 rounded-full p-1.5 transition hover:bg-white/15 active:scale-95"
+            className={`-ml-1 rounded-full p-1.5 transition active:scale-95 ${survolPuce}`}
           >
             <Icon name="chevronLeft" size={24} />
           </button>
@@ -66,7 +77,7 @@ export default function TopBar({
             type="button"
             aria-label="Ouvrir le menu"
             onClick={() => (onMenuClick ? onMenuClick() : setMenuOuvert(true))}
-            className="-ml-1 rounded-full p-1.5 transition hover:bg-white/15 active:scale-95"
+            className={`-ml-1 rounded-full p-1.5 transition active:scale-95 ${survolPuce}`}
           >
             <Icon name={recherche ? 'search' : 'menu'} size={24} />
           </button>
@@ -91,7 +102,7 @@ export default function TopBar({
         <Link
           to="/profil"
           aria-label="Mon profil"
-          className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white/70 bg-white/20 text-xs font-bold transition active:scale-95"
+          className={`flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 text-xs font-bold transition active:scale-95 ${cadreAvatar}`}
         >
           {photo ? (
             <img src={photo} alt={nom || 'Profil'} className="h-full w-full object-cover" />

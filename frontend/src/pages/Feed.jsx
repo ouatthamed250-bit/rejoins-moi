@@ -193,8 +193,11 @@ export default function Feed() {
   const totalUtilisateurs = orderedEstablishments.reduce((s, e) => s + (e.compteurUtilisateurs || 0), 0);
 
   return (
-    <div className="ecran py-3">
-      <section className="mb-3">
+    <div className="ecran py-3 fond-traits-fins">
+      {/* Bannière d'accueil : MÊME dégradé descendant que la barre du haut (v2),
+          à la place de l'ancien aplat orange plein. `-mx-4` + `px-4` : elle
+          occupe toute la largeur de l'écran malgré la gouttière de `.ecran`. */}
+      <section className="entete-degrade -mx-4 mb-3 px-4 py-3">
         <h1 className="text-xl font-bold text-ink">{prenom ? `Bonjour ${prenom} 👋` : 'Bonjour 👋'}</h1>
         <p className="text-sm text-ink-muted">
           {bruts.length > 0

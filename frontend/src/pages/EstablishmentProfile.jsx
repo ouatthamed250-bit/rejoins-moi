@@ -502,7 +502,7 @@ export default function EstablishmentProfile() {
                 placeholder="Ce que vous avez aimé, ce qui peut être amélioré…"
                 className="mt-2 w-full rounded-md border border-line bg-white p-2 text-sm text-ink outline-none transition focus:border-primary"
               />
-              <button type="submit" className="btn-primary mt-2 w-full text-sm" disabled={envoi}>
+              <button type="submit" className="bouton-principal mt-2 w-full text-sm" disabled={envoi}>
                 {envoi ? 'Envoi…' : connecte ? 'Publier mon avis' : 'Se connecter pour noter'}
               </button>
               <p className="mt-1 text-[10px] text-ink-muted">
@@ -560,7 +560,7 @@ export default function EstablishmentProfile() {
           </div>
           <button
             type="button"
-            className={`${estSante ? 'btn-health' : 'btn-primary'} shrink-0 text-sm`}
+            className={`${estSante ? 'btn-health' : 'bouton-principal'} shrink-0 text-sm`}
             onClick={allerChez}
           >
             <Icon name="route" size={19} />

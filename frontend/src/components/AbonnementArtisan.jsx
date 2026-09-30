@@ -305,7 +305,7 @@ export default function AbonnementArtisan({ onChangement, compact = false }) {
           {transactionId ? (
             <button
               type="button"
-              className="btn-primary w-full text-sm"
+              className="bouton-principal w-full text-sm"
               onClick={verifierSouscription}
               disabled={enCours}
             >
@@ -315,7 +315,7 @@ export default function AbonnementArtisan({ onChangement, compact = false }) {
           ) : (
             <button
               type="button"
-              className="btn-primary w-full text-sm"
+              className="bouton-principal w-full text-sm"
               onClick={souscrireAbonnement}
               disabled={enCours || estDemo || etat.horsLigne}
             >

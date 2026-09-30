@@ -180,7 +180,7 @@ export default function Profile() {
           <p className="text-xs font-semibold text-ink-muted">Solde de mise en relation</p>
           <p className="text-base font-bold text-ink">{formatFcfa(profil.solde || 0)}</p>
         </div>
-        <button type="button" className="btn-primary px-3 py-2 text-xs" onClick={() => navigate('/main-doeuvre')}>
+        <button type="button" className="bouton-principal px-3 py-2 text-xs" onClick={() => navigate('/main-doeuvre')}>
           Débloquer un contact
         </button>
       </section>
@@ -304,7 +304,7 @@ export default function Profile() {
             </p>
           </fieldset>
 
-          <button type="submit" className="btn-primary w-full">
+          <button type="submit" className="bouton-principal w-full">
             Enregistrer
           </button>
         </form>

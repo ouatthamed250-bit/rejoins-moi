@@ -213,7 +213,7 @@ export default function EstablishmentCard({
         {/* Bouton d'action dynamique : « Aller chez <nom> » (§5) */}
         <button
           type="button"
-          className="btn-primary mt-3 w-full"
+          className="bouton-principal mt-3 w-full"
           onClick={() => (onAction ? onAction(etablissement || e) : navigate(fichier))}
         >
           <Icon name="route" size={18} />

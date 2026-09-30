@@ -715,15 +715,24 @@ export default function RegisterEstablishment() {
               <Icon name="chevronLeft" size={18} />
               Retour
             </button>
+            {/* Le halo `bouton-principal--cta-majeur` est réservé au TOUT PREMIER
+                CTA de l'onboarding : l'étape 0, juste après la question d'entrée
+                (et l'unique bouton du parcours « profil simple »). La consigne
+                est explicite : pas de halo sur tous les boutons principaux. */}
             {aEtablissement ? (
-              <button type="button" className="btn-primary flex-[2]" onClick={suivant} disabled={enCours}>
+              <button
+                type="button"
+                className={`bouton-principal flex-[2] ${etape === 0 ? 'bouton-principal--cta-majeur' : ''}`}
+                onClick={suivant}
+                disabled={enCours}
+              >
                 {enCours ? 'Envoi…' : etape === etapes.length - 1 ? 'Publier ma fiche' : 'Suivant'}
                 {!enCours && etape < etapes.length - 1 && <Icon name="chevronRight" size={18} />}
               </button>
             ) : (
               <button
                 type="button"
-                className="btn-primary flex-[2]"
+                className={`bouton-principal flex-[2] ${etape === 0 ? 'bouton-principal--cta-majeur' : ''}`}
                 onClick={enregistrerProfilSimple}
                 disabled={enCours}
               >

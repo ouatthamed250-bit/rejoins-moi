@@ -468,7 +468,7 @@ function CarteBesoin({
           {verifEnAttente ? (
             <button
               type="button"
-              className="btn-primary mt-2 w-full text-sm"
+              className="bouton-principal mt-2 w-full text-sm"
               onClick={onVerifier}
               disabled={enCours}
             >
@@ -478,7 +478,7 @@ function CarteBesoin({
           ) : (
             <button
               type="button"
-              className="btn-primary mt-2 w-full text-sm"
+              className="bouton-principal mt-2 w-full text-sm"
               onClick={onDebloquer}
               disabled={enCours || indisponible}
             >
@@ -808,7 +808,7 @@ function FormulaireBesoin({
         C’est urgent (le besoin remonte en haut de la liste)
       </label>
 
-      <button type="submit" className="btn-primary w-full text-sm" disabled={envoi}>
+      <button type="submit" className="bouton-principal w-full text-sm" disabled={envoi}>
         <Icon name="briefcase" size={18} />
         {envoi ? 'Publication…' : connecte ? 'Publier mon besoin' : 'Se connecter pour publier'}
       </button>

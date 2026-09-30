@@ -104,7 +104,7 @@ export default function Search() {
   }, [categorie]);
 
   return (
-    <div className="ecran py-3">
+    <div className="ecran py-3 fond-traits-fins">
       {/* Barre de recherche */}
       <div className="relative mb-3">
         <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted">

@@ -215,7 +215,7 @@ export default function Login() {
           </>
         )}
 
-        <button type="submit" className="btn-primary mt-1 w-full" disabled={enCours || chargement}>
+        <button type="submit" className="bouton-principal mt-1 w-full" disabled={enCours || chargement}>
           {enCours ? 'Patientez…' : onglet === 'connexion' ? 'Se connecter' : 'Créer mon compte'}
         </button>
       </form>

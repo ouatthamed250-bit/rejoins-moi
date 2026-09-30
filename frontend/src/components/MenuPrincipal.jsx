@@ -85,8 +85,10 @@ export default function MenuPrincipal({ ouvert, onFermer }) {
         className="absolute left-0 top-0 h-full w-[86%] max-w-[340px] overflow-y-auto bg-white pb-[env(safe-area-inset-bottom)] shadow-lg"
         onClick={(evt) => evt.stopPropagation()}
       >
-        <header className="flex items-center gap-3 bg-primary px-4 py-4 text-white">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white/70 bg-white/20 text-sm font-bold">
+        {/* En-tête du tiroir : même dégradé descendant que la barre du haut (v2)
+            au lieu de l'aplat orange — plus aucune grande surface orange. */}
+        <header className="entete-degrade flex items-center gap-3 border-b border-line/70 px-4 py-4 text-ink">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-primary/25 bg-white/70 text-sm font-bold">
             {profil?.photoProfil ? (
               <img
                 src={profil.photoProfil}
@@ -111,7 +113,7 @@ export default function MenuPrincipal({ ouvert, onFermer }) {
             type="button"
             aria-label="Fermer le menu"
             onClick={onFermer}
-            className="rounded-full p-1.5 transition hover:bg-white/15"
+            className="rounded-full p-1.5 transition hover:bg-primary/10"
           >
             <Icon name="close" size={20} />
           </button>
@@ -157,7 +159,7 @@ export default function MenuPrincipal({ ouvert, onFermer }) {
           </p>
           <button
             type="button"
-            className="btn-primary mt-2 w-full py-2 text-xs"
+            className="bouton-principal mt-2 w-full py-2 text-xs"
             onClick={() => aller(connecte ? '/profil?section=abonnement' : '/connexion')}
           >
             <Icon name={connecte ? 'unlock' : 'lock'} size={16} />
@@ -182,7 +184,7 @@ export default function MenuPrincipal({ ouvert, onFermer }) {
           ) : (
             <button
               type="button"
-              className="btn-primary w-full py-2 text-xs"
+              className="bouton-principal w-full py-2 text-xs"
               onClick={() => aller('/connexion')}
             >
               <Icon name="user" size={16} />

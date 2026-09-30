@@ -81,8 +81,11 @@ function Structure() {
   const { modeDemo } = useAuth();
   const pleinEcran = ROUTES_PLEIN_ECRAN.some((rx) => rx.test(pathname));
 
+  // Conteneur général : VOLONTAIREMENT sans fond opaque (v2 du 30/09). L'ivoire
+  // vient du `body` et le motif « traits fins » des pages se place DERRIÈRE le
+  // contenu (z-index négatif) : un fond blanc ici le masquerait.
   return (
-    <div className="min-h-full bg-white">
+    <div className="min-h-full">
       {modeDemo && (
         <div className="ecran pt-2">
           <InfoBanner variante="demo" titre="Mode démonstration">

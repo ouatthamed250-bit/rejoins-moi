@@ -231,7 +231,7 @@ export default function Jobs() {
           </p>
           <button
             type="button"
-            className="btn-primary mt-2 w-full py-2 text-xs"
+            className="bouton-principal mt-2 w-full py-2 text-xs"
             onClick={() =>
               navigate(connecte ? '/profil?section=abonnement' : '/connexion', {
                 state: { depuis: '/jobs' },
@@ -499,14 +499,14 @@ function CarteAnnonce({
           </p>
 
           {verifEnAttente ? (
-            <button type="button" className="btn-primary mt-2 w-full text-sm" onClick={onVerifier} disabled={enCours}>
+            <button type="button" className="bouton-principal mt-2 w-full text-sm" onClick={onVerifier} disabled={enCours}>
               <Icon name="unlock" size={17} />
               {enCours ? 'Vérification du paiement…' : 'J’ai payé — vérifier mon paiement'}
             </button>
           ) : (
             <button
               type="button"
-              className="btn-primary mt-2 w-full text-sm"
+              className="bouton-principal mt-2 w-full text-sm"
               onClick={onDebloquer}
               disabled={enCours || indisponible}
             >

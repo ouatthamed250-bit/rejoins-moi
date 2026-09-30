@@ -11,9 +11,11 @@ export default {
     extend: {
       colors: {
         primary: {
-          DEFAULT: '#FF7A2E',
-          light: '#FFA366',
-          dark: '#E85D0A',
+          DEFAULT: '#FF7A18',
+          light: '#FF9A4D',
+          dark: '#F9680B',
+          // Fond orangé très pâle (badges, survols) — équivalent de --color-primary-pale
+          pale: '#FFF0DF',
         },
         health: {
           DEFAULT: '#2EAE5C',
@@ -21,11 +23,11 @@ export default {
           dark: '#1E8A45',
         },
         ink: {
-          DEFAULT: '#1A1A1A',
-          muted: '#6B6B6B',
+          DEFAULT: '#17212B',
+          muted: '#66717C',
         },
-        soft: '#FFF6EE',
-        line: '#F0E4D8',
+        soft: '#FFF0DF',
+        line: '#ECE8E2',
         star: '#FFB020',
         danger: '#E5484D',
       },
@@ -34,15 +36,17 @@ export default {
         display: ['Poppins', 'Nunito', 'system-ui', 'sans-serif'],
       },
       borderRadius: {
-        sm: '8px',
-        md: '14px',
+        sm: '10px',
+        md: '16px',
         lg: '22px',
       },
       boxShadow: {
-        card: '0 4px 14px rgba(255, 122, 46, 0.12)',
+        // v2 : ombre neutre et diffuse (l'ombre orange de la v1 rendait la page
+        // « trop orange »). La carte se détache par sa blancheur et son liseré.
+        card: '0 10px 35px rgba(20, 30, 40, 0.055), 0 2px 8px rgba(20, 30, 40, 0.035)',
         'card-health': '0 4px 14px rgba(46, 174, 92, 0.12)',
         // Ombre du bouton central surélevé de la bottom nav (§8)
-        fab: '0 8px 20px rgba(232, 93, 10, 0.35)',
+        fab: '0 8px 20px rgba(249, 104, 11, 0.35)',
       },
       keyframes: {
         // Transitions "captives" mais discrètes (§8) : les cartes montent en fondu,

@@ -22,7 +22,7 @@ export default function EmptyState({ icone = 'search', titre, description = '', 
       <h3 className="text-base font-bold text-ink">{titre}</h3>
       {description && <p className="max-w-xs text-sm text-ink-muted">{description}</p>}
       {action && (
-        <button type="button" className="btn-primary mt-2" onClick={action.onClick}>
+        <button type="button" className="bouton-principal mt-2" onClick={action.onClick}>
           {action.libelle}
         </button>
       )}

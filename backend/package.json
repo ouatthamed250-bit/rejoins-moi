@@ -7,6 +7,7 @@
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
     "seed": "node src/seed.js",
+    "importer:etablissements": "node scripts/importer-etablissements.js",
     "verifier": "npm run verifier:abonnement && npm run verifier:base",
     "verifier:abonnement": "node scripts/verifier-abonnement.js",
     "verifier:base": "node scripts/verifier-base.js"

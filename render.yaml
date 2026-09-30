@@ -1,0 +1,92 @@
+# render.yaml — Déploiement du BACKEND Rejoins'Moi sur Render (offre gratuite, HTTPS).
+#
+# Ce fichier est un « Blueprint » Render : il doit se trouver à la RACINE du dépôt Git.
+# Étapes : Render > New > Blueprint > choisir le dépôt. Render lit ce fichier et crée
+# le service. Les variables marquées `sync: false` sont à saisir dans le tableau de
+# bord (elles ne sont JAMAIS écrites dans le dépôt : mot de passe, clés, secrets).
+#
+# Si le dépôt ne contient QUE le dossier backend (pas de monorepo), supprimez la ligne
+# `rootDir: backend`.
+#
+# Après le premier déploiement :
+#   1. copiez l'URL du service (ex. https://rejoins-moi-api.onrender.com) ;
+#   2. mettez-la dans CLIENT_URL du backend ET dans VITE_API_URL du frontend ;
+#   3. vérifiez https://<service>/api/health : « baseDonnees » doit valoir « connectée ».
+
+services:
+  - type: web
+    name: rejoins-moi-api
+    runtime: node
+    plan: free
+    region: frankfurt # le plus proche d'Abidjan parmi les régions gratuites
+    rootDir: backend
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: '20'
+      - key: NODE_ENV
+        value: production
+
+      # ── Base de données (obligatoire) ───────────────────────────────────────
+      # À saisir dans Render : l'URI du cluster MongoDB Atlas (docs/DEPLOIEMENT.md §1).
+      - key: MONGODB_URI
+        sync: false
+      - key: MONGODB_DB_NAME
+        value: rejoins-moi
+
+      # ── Sécurité ───────────────────────────────────────────────────────────
+      # Render génère un secret aléatoire : ne le partagez pas, ne le changez pas
+      # après la mise en service (tous les jetons existants deviendraient invalides).
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 30d
+
+      # ── Frontend autorisé (CORS) ───────────────────────────────────────────
+      # À saisir après le déploiement du frontend : l'URL HTTPS publique du frontend
+      # (plusieurs origines possibles, séparées par des virgules).
+      - key: CLIENT_URL
+        sync: false
+
+      # ── Paiement à l'unité ─────────────────────────────────────────────────
+      - key: CONTACT_UNLOCK_FEE
+        value: '500'
+      - key: CURRENCY
+        value: XOF
+
+      # ── Abonnement : DEUX formules en parallèle, tarifs provisoires ────────
+      # Liste CSV des périodicités vendues. Passez à « mensuel » (ou « hebdomadaire »)
+      # le jour où le tarif sera figé, sans toucher au code.
+      - key: SUBSCRIPTION_PERIODICITY
+        value: hebdomadaire,mensuel
+      - key: SUBSCRIPTION_FORMULA_DEFAULT
+        value: artisan_hebdo
+      - key: SUBSCRIPTION_PRICE_WEEKLY_FCFA
+        value: '700'
+      - key: SUBSCRIPTION_DURATION_WEEKLY_DAYS
+        value: '7'
+      - key: SUBSCRIPTION_PRICE_MONTHLY_FCFA
+        value: '2500'
+      - key: SUBSCRIPTION_DURATION_MONTHLY_DAYS
+        value: '30'
+
+      # ── CinetPay (mobile money) : à saisir quand le compte marchand sera prêt ──
+      # Tant que ces valeurs sont vides, le déblocage de contact et l'abonnement
+      # répondent 501 : AUCUN paiement n'est simulé, rien n'est activé.
+      - key: CINETPAY_API_KEY
+        sync: false
+      - key: CINETPAY_SITE_ID
+        sync: false
+      - key: CINETPAY_SECRET_KEY
+        sync: false
+      - key: CINETPAY_NOTIFY_URL
+        sync: false
+      - key: CINETPAY_RETURN_URL
+        sync: false
+      - key: CINETPAY_CHANNELS
+        value: WAVE,ORANGE_MONEY,MTN_MOMO,MOOV_MONEY
+      - key: CINETPAY_SANDBOX
+        value: 'true'

@@ -1,0 +1,159 @@
+/*
+  Rejoins'Moi — Design tokens + styles globaux
+  Palette générale : orange chaleureux (pas trop foncé) + blanc, varié selon les pages.
+  Palette Pharmacies & Cliniques : vert + blanc, ambiance rassurante façon VTC/taxi-moto.
+
+  Ce fichier est la SOURCE DE VÉRITÉ du design : les mêmes valeurs sont dupliquées
+  dans tailwind.config.js pour permettre les classes utilitaires (bg-primary,
+  text-health, shadow-card...). Modifier les deux en même temps.
+
+  Les animations restent volontairement légères ("captives" mais pas lourdes) :
+  un fondu + translation de 14 px à l'apparition, aucune animation en boucle sur
+  les listes (coût batterie sur smartphone d'entrée de gamme).
+*/
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+:root {
+  /* Palette principale — orange chaleureux */
+  --color-primary: #FF7A2E;          /* orange dominant, pas trop foncé */
+  --color-primary-light: #FFA366;
+  --color-primary-dark: #E85D0A;
+  --color-secondary: #FFFFFF;
+
+  /* Palette secondaire — Pharmacies & Cliniques */
+  --color-health-primary: #2EAE5C;   /* vert rassurant */
+  --color-health-light: #E9F9EF;
+  --color-health-dark: #1E8A45;
+
+  /* Neutres */
+  --color-bg: #FFFFFF;
+  --color-bg-soft: #FFF6EE;          /* fond doux teinté orange pour cartes */
+  --color-text: #1A1A1A;
+  --color-text-muted: #6B6B6B;
+  --color-border: #F0E4D8;
+
+  /* Feedback */
+  --color-success: #2EAE5C;
+  --color-warning: #F5A623;
+  --color-danger: #E5484D;
+  --color-star: #FFB020;             /* couleur des étoiles de notation */
+
+  /* Typographie */
+  --font-family-base: 'Poppins', 'Nunito', system-ui, sans-serif;
+  --font-family-display: 'Poppins', 'Nunito', system-ui, sans-serif;
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.5rem;
+
+  /* Rayons / ombres — pour garder un style "chic" et doux, pas anguleux */
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 22px;
+  --shadow-card: 0 4px 14px rgba(255, 122, 46, 0.12);
+  --shadow-card-health: 0 4px 14px rgba(46, 174, 92, 0.12);
+
+  /* Durées d'animation — transitions "captives" mais pas lourdes */
+  --transition-fast: 150ms ease;
+  --transition-base: 250ms ease;
+  --transition-slow: 400ms ease;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-family-base);
+    -webkit-font-smoothing: antialiased;
+    /* Le contenu ne doit jamais passer sous la bottom nav (64px) ni sous la barre iOS */
+    padding-bottom: calc(64px + env(safe-area-inset-bottom));
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-family-display, Poppins), 'Poppins', system-ui, sans-serif;
+  }
+
+  button {
+    font: inherit;
+  }
+
+  /* Les photos de produits/établissements ne doivent jamais "sauter" au chargement */
+  img {
+    background-color: var(--color-bg-soft);
+  }
+
+  /* Barre de défilement discrète (Chrome/Android) */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-primary-light);
+    border-radius: 999px;
+  }
+}
+
+@layer components {
+  /* Écran : largeur maxi type mobile même sur ordinateur (l'app est mobile-first) */
+  .ecran {
+    @apply mx-auto w-full max-w-[480px] px-4;
+  }
+
+  .carte {
+    @apply rounded-lg bg-white shadow-card overflow-hidden;
+  }
+
+  .carte-health {
+    @apply rounded-lg bg-white shadow-card-health overflow-hidden;
+  }
+
+  /* Bouton principal (orange) — utilisé hors section santé */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-3 font-semibold transition active:scale-[0.98];
+  }
+  .btn-primary {
+    @apply btn bg-primary text-white hover:bg-primary-dark;
+  }
+  .btn-ghost {
+    @apply btn bg-white text-ink border border-line hover:bg-soft;
+  }
+  /* Bouton de la section Pharmacies & Cliniques : vert, jamais orange (§6) */
+  .btn-health {
+    @apply btn bg-health text-white hover:bg-health-dark;
+  }
+  .btn-health-ghost {
+    @apply btn bg-white text-health border border-health/30 hover:bg-health-light;
+  }
+
+  .puces {
+    @apply flex gap-2 overflow-x-auto pb-1 -mx-4 px-4;
+    scrollbar-width: none;
+  }
+  .puces::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@layer utilities {
+  /* Fait apparaître les éléments en cascade : la liste "se remplit" à l'écran */
+  .anim-differe-1 { animation-delay: 40ms; }
+  .anim-differe-2 { animation-delay: 80ms; }
+  .anim-differe-3 { animation-delay: 120ms; }
+  .anim-differe-4 { animation-delay: 160ms; }
+  .anim-differe-5 { animation-delay: 200ms; }
+}
+

@@ -1,0 +1,11 @@
+# Procfile — utilisé par Railway (et Heroku-like) pour démarrer l'API Rejoins'Moi.
+#
+# Railway : New Project > Deploy from GitHub > choisir le dépôt, puis
+#   Settings > Root Directory = backend
+#   Variables > coller celles listées dans backend/.env.example
+#   (MONGODB_URI, JWT_SECRET, CLIENT_URL, SUBSCRIPTION_*, éventuellement CINETPAY_*).
+# Railway fournit le HTTPS automatiquement et expose le PORT : l'API écoute déjà
+# process.env.PORT (voir src/index.js), rien d'autre à configurer.
+#
+# Vérification après déploiement : https://<service>.up.railway.app/api/health
+web: node src/index.js

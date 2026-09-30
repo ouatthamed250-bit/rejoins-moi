@@ -1,0 +1,27 @@
+# ── Dépendances ──────────────────────────────────────────────────────────────
+node_modules/
+
+# ── Secrets : NE JAMAIS pousser ces fichiers ─────────────────────────────────
+# backend/.env contient le mot de passe MongoDB Atlas et le secret JWT.
+.env
+.env.local
+.env.*.local
+backend/.env
+frontend/.env
+
+# ── Builds et caches ─────────────────────────────────────────────────────────
+dist/
+build/
+.vite/
+.cache/
+
+# ── Déploiement ──────────────────────────────────────────────────────────────
+.vercel/
+.netlify/
+
+# ── Divers ───────────────────────────────────────────────────────────────────
+npm-debug.log*
+yarn-error.log*
+.DS_Store
+Thumbs.db
+*.log

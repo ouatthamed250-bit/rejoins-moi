@@ -1,0 +1,43 @@
+# netlify.toml — Déploiement du frontend Rejoins'Moi sur Netlify (HTTPS automatique).
+#
+# Équivalent de vercel.json : utiliser l'UN ou l'AUTRE, selon l'hébergeur choisi.
+# Réglages à faire dans Netlify (Site settings > Environment variables) :
+#   VITE_API_URL = https://<votre-backend>/        (sans slash final de préférence)
+#
+# Le service worker (PWA) ne peut pas être servi avec un cache long : sans les en-têtes
+# « cache-control: no-cache » ci-dessous, un ancien sw.js resterait actif des semaines
+# et bloquerait les mises à jour chez les artisans.
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# Application monopage : toute URL inconnue revient sur index.html (les fichiers
+# réels — sw.js, manifest.json, icons/… — sont servis en priorité).
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    Service-Worker-Allowed = "/"
+
+[[headers]]
+  for = "/manifest.json"
+  [headers.values]
+    Content-Type = "application/manifest+json"
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/icons/*"
+  [headers.values]
+    Cache-Control = "public, max-age=604800, immutable"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"

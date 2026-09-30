@@ -15,7 +15,11 @@
  *     quelle. Le serveur reste seul juge du paiement (règle de sécurité du projet).
  */
 
-const VERSION = 'v2';
+// v3 : passage aux icônes DÉFINITIVES (logo du fondateur, jeu PNG).
+// Changer la version est indispensable : les icônes sont servies « cache d'abord »,
+// donc sans nouveau nom de cache un téléphone déjà installé garderait indéfiniment
+// l'ancien logo provisoire. `activate` supprime les caches des versions passées.
+const VERSION = 'v3';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];
@@ -32,7 +36,6 @@ const APP_SHELL = [
   BASE_APPLICATION,
   `${BASE_APPLICATION}index.html`,
   `${BASE_APPLICATION}manifest.json`,
-  `${BASE_APPLICATION}icon.svg`,
   `${BASE_APPLICATION}icons/icon-192.png`,
   `${BASE_APPLICATION}icons/icon-512.png`,
   `${BASE_APPLICATION}icons/apple-touch-icon-180.png`,
@@ -58,7 +61,7 @@ self.addEventListener('install', (event) => {
     (async () => {
       const cache = await caches.open(CACHE_APP);
       // `addAll` échoue en bloc si UN fichier manque : on tolère les absents pour
-      // ne jamais bloquer l'installation (les icônes provisoires peuvent changer).
+      // ne jamais bloquer l'installation (les icônes de l'app peuvent changer).
       await Promise.all(
         APP_SHELL.map((url) =>
           cache.add(new Request(url, { cache: 'reload' })).catch(() => null)

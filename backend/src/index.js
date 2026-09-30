@@ -17,7 +17,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 
-import { connectDB, isDbReady } from './config/db.js';
+import { connectDB, isDbReady, etatBase } from './config/db.js';
 import { notFound, errorHandler } from './middleware/errorHandler.js';
 
 import usersRouter from './routes/users.js';
@@ -98,6 +98,10 @@ app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
     baseDonnees: isDbReady() ? 'connectée' : 'indisponible',
+    // Pourquoi la base est-elle indisponible ? Cause courte, nombre de tentatives et
+    // délai avant le prochain réessai automatique (voir config/db.js). Cette route est
+    // PUBLIQUE : on n'expose que ces champs — jamais l'URI, jamais un identifiant.
+    baseDetails: etatBase(),
     paiement: {
       configure: isPaymentConfigured(),
       fraisDeblocageFcfa: getUnlockFee(),

@@ -21,6 +21,7 @@ import 'dotenv/config';
 import { randomInt } from 'node:crypto';
 
 import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
 import User from '../src/models/User.js';
 import Subscription from '../src/models/Subscription.js';
 
@@ -219,12 +220,27 @@ async function principal() {
   // ── 4. Persistance réelle en base ─────────────────────────────────────────
   titre('4. Persistance (relecture par une requête Mongo, pas par l’API)');
   const telephoneStocke = String(inscription.donnees?.user?.telephone || telephone);
-  const enBase = await User.findOne({ telephone: telephoneStocke });
+  // `+motDePasseHash` est INDISPENSABLE : le schéma déclare ce champ `select: false`
+  // (il n'est jamais renvoyé par une requête normale, c'est voulu pour la sécurité).
+  // Sans ce `+`, le contrôle ci-dessous croirait à tort que rien n'est haché.
+  const enBase = await User.findOne({ telephone: telephoneStocke }).select('+motDePasseHash');
   verifier('le compte est présent dans MongoDB', Boolean(enBase), 'aucune ligne trouvée avec ce téléphone');
   if (enBase) {
     verifier(
       'le mot de passe est stocké HACHÉ (jamais en clair)',
-      Boolean(enBase.motDePasseHash) && enBase.motDePasseHash !== motDePasse
+      // Empreinte bcrypt : préfixe $2a$/$2b$, 60 caractères, jamais le mot de passe.
+      Boolean(enBase.motDePasseHash) &&
+        enBase.motDePasseHash !== motDePasse &&
+        /^\$2[aby]\$/.test(enBase.motDePasseHash) &&
+        (await bcrypt.compare(motDePasse, enBase.motDePasseHash)),
+      enBase.motDePasseHash
+        ? `empreinte « ${String(enBase.motDePasseHash).slice(0, 7)}… » (${String(enBase.motDePasseHash).length} caractères)`
+        : "champ non lu : il faut .select('+motDePasseHash')"
+    );
+    verifier(
+      'bcrypt.compare valide bien le mot de passe depuis le hash stocké',
+      Boolean(enBase.motDePasseHash) && (await bcrypt.compare(motDePasse, enBase.motDePasseHash)),
+      'bcrypt.compare a renvoyé faux'
     );
     verifier(
       'la mise à jour du profil a bien été écrite',

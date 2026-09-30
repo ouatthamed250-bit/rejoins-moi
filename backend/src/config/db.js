@@ -84,13 +84,99 @@ export function diagnostiquer(err, uri = getMongoUri()) {
   return pistes;
 }
 
+// ── Réessais automatiques de connexion ───────────────────────────────────────
+// Pourquoi c'est indispensable en ligne : sur un hébergeur gratuit (Render,
+// Railway…) le conteneur démarre « à froid » et un cluster Atlas M0 se met en
+// veille. La PREMIÈRE connexion peut alors dépasser serverSelectionTimeoutMS ou
+// être refusée par le réseau. Sans réessai, le serveur reste bloqué en 503
+// (base « indisponible ») jusqu'au redéploiement suivant — c'est exactement le
+// piège rencontré sur https://rejoins-moi-api.onrender.com.
+// On retente donc en tâche de fond, avec un délai qui double jusqu'à 60 s.
+// (`retryWrites` ci-dessous ne concerne QUE les écritures : ce n'est pas un
+//  réessai de connexion.)
+const DELAI_REESSAI_MIN_MS = Number(process.env.MONGODB_RETRY_MIN_MS) || 5000;
+const DELAI_REESSAI_MAX_MS = Number(process.env.MONGODB_RETRY_MAX_MS) || 60000;
+
+let minuteurReessai = null;
+let tentativesConnexion = 0;
+let derniereErreurBase = null; // { cause, nom, horodatage }
+
+/**
+ * Résume une erreur de connexion en une cause COURTE et lisible.
+ * Aucun identifiant, aucune URI : le résultat peut être exposé sans risque.
+ * @returns {string}
+ */
+export function causeErreur(err) {
+  const message = String(err?.message || '');
+  if (/ENOTFOUND|EAI_AGAIN|querySrv|ESERVFAIL/i.test(message)) {
+    return 'hôte introuvable (DNS/SRV : URI incomplète ou réseau qui filtre le SRV)';
+  }
+  if (/authentication failed|bad auth/i.test(message)) {
+    return 'authentification refusée (utilisateur, mot de passe ou URI)';
+  }
+  if (/not allowed|whitelist|not whitelisted|IP address/i.test(message)) {
+    return 'IP non autorisée (Atlas > Network Access)';
+  }
+  if (/ECONNREFUSED/i.test(message)) {
+    return "connexion refusée (rien n'écoute sur cette adresse)";
+  }
+  if (/timed out|timeout|server selection|topology/i.test(message)) {
+    return 'délai dépassé (cluster en veille ou réseau lent)';
+  }
+  return err?.name || 'erreur inconnue';
+}
+
+/**
+ * État détaillé de la connexion, pour /api/health.
+ * Volontairement limité à des informations non sensibles (route publique).
+ */
+export function etatBase() {
+  return {
+    connectee: isDbReady(),
+    tentatives: tentativesConnexion,
+    cause: derniereErreurBase?.cause || null,
+    nomErreur: derniereErreurBase?.nom || null,
+    dernierEchec: derniereErreurBase?.horodatage || null,
+    prochainReessaiDansSec: minuteurReessai ? minuteurReessai.delaiSec : null,
+  };
+}
+
+/** Programme une nouvelle tentative en tâche de fond (délai doublant, 60 s max). */
+function planifierReessai() {
+  if (minuteurReessai) return;
+  const delaiMs = Math.min(
+    DELAI_REESSAI_MIN_MS * 2 ** Math.max(0, tentativesConnexion - 1),
+    DELAI_REESSAI_MAX_MS
+  );
+  console.warn(`[db] Nouvelle tentative de connexion dans ${Math.round(delaiMs / 1000)} s…`);
+  const minuteur = setTimeout(() => {
+    minuteurReessai = null;
+    connectDB().catch(() => {});
+  }, delaiMs);
+  // `unref` : un script ou un test qui se termine n'est pas retenu par ce minuteur.
+  minuteur.unref?.();
+  minuteur.delaiSec = Math.round(delaiMs / 1000);
+  minuteurReessai = minuteur;
+}
+
+/** Annule le réessai en attente et remet le compteur à zéro (connexion réussie / arrêt). */
+function annulerReessai() {
+  if (minuteurReessai) {
+    clearTimeout(minuteurReessai);
+    minuteurReessai = null;
+  }
+  tentativesConnexion = 0;
+}
+
 /**
  * Tente la connexion à MongoDB.
  * Ne lance jamais d'exception : retourne `true` / `false` et journalise.
- * @param {{silencieux?: boolean}} [options]
+ * En cas d'échec, une nouvelle tentative est programmée automatiquement
+ * (sauf `reessais: false`).
+ * @param {{silencieux?: boolean, reessais?: boolean}} [options]
  * @returns {Promise<boolean>}
  */
-export async function connectDB({ silencieux = false } = {}) {
+export async function connectDB({ silencieux = false, reessais = true } = {}) {
   const uri = getMongoUri();
   // `strictQuery` évite les filtres silencieusement ignorés (Mongoose 8).
   mongoose.set('strictQuery', true);
@@ -108,17 +194,26 @@ export async function connectDB({ silencieux = false } = {}) {
       // retenter quelques fois plutôt que de déclarer la base indisponible.
       retryWrites: true,
     });
+    annulerReessai();
     if (!silencieux) {
       console.log(`[db] MongoDB connecté -> ${conn.connection.host}/${conn.connection.name}`);
     }
     return true;
   } catch (err) {
+    derniereErreurBase = {
+      cause: causeErreur(err),
+      nom: err?.name || 'Error',
+      horodatage: new Date().toISOString(),
+    };
+    tentativesConnexion += 1;
     if (!silencieux) {
       console.warn('[db] Connexion MongoDB impossible :', err.message);
       console.warn(`[db] URI utilisée : ${masquerUri(uri)} (base « ${getMongoDbName()} »)`);
+      console.warn(`[db] Cause probable : ${derniereErreurBase.cause}`);
       for (const piste of diagnostiquer(err, uri)) console.warn(`[db]   → ${piste}`);
       console.warn('[db] Le serveur démarre quand même. Le frontend utilisera ses données de démo.');
     }
+    if (reessais) planifierReessai();
     return false;
   }
 }
@@ -144,6 +239,8 @@ export function requireDb(req, res, next) {
 }
 
 export async function disconnectDB() {
+  // Un arrêt volontaire (script, test) ne doit pas être suivi d'un réessai.
+  annulerReessai();
   await mongoose.disconnect();
 }
 

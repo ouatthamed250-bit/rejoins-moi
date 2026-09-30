@@ -1,12 +1,14 @@
 // geo.js — Utilitaires géographiques (calcul de distance, tri par proximité).
 //
-// Décision technique : on stocke les coordonnées en `{ lat, lng }` simples
-// (pas en GeoJSON) et on calcule la distance en Haversine côté Node, plutôt que
-// d'utiliser un index 2dsphere. Raison : le scoring du feed (proximité + note +
-// affinité de tags) est de toute façon recalculé en JS pour rester explicable
-// (voir hooks/useFeedAlgorithm.js), et le volume d'établissements d'Abidjan
-// reste très faible devant la limite de pagination. Bascule possible vers
-// $geoNear plus tard sans changer le format de données.
+// Décision technique : les coordonnées sont stockées en `{ lat, lng }` simples
+// (pas en GeoJSON) et la distance affichée est calculée en Haversine côté Node.
+// L'annuaire des établissements fait exception : il possède en plus un miroir
+// GeoJSON `position` (index 2dsphere, voir models/Establishment.js) pour que le
+// tri par proximité des 6 719 fiches soit fait par MongoDB via `$geoNear`
+// (routes/establishments.js). Les autres routes (offres, santé, artisans)
+// restent sur Haversine : leur volume ne justifie pas d'index géographique.
+// Les deux calculs diffèrent de moins de 0,2 % (rayon sphérique 6 371 km ici,
+// 6 378,137 km pour MongoDB) : cela ne change jamais l'ordre des résultats.
 
 const EARTH_RADIUS_KM = 6371;
 

@@ -76,6 +76,9 @@ export default function Feed() {
     charger();
   }, [charger]);
 
+  // Filet de sécurité côté client : la catégorie est déjà filtrée par l'API (et par
+  // `filtrerEtablissementsDemo` en repli), mais pendant un changement d'onglet la
+  // réponse précédente peut encore être affichée un instant.
   const filtres = useMemo(
     () => (categorie === 'tous' ? bruts : bruts.filter((e) => e.categorie === categorie)),
     [bruts, categorie]

@@ -35,7 +35,7 @@ const ACTIONS = [
     to: '/inscription',
     icone: 'store',
     titre: 'Inscrire mon établissement',
-    detail: '2 photos + vos produits/services',
+    detail: 'Photos facultatives + vos produits/services',
   },
   {
     to: '/main-doeuvre?mode=chercher',

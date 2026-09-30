@@ -14,7 +14,7 @@
 //  - L'utilisateur ferme la bannière : elle disparaît pour la session, et pour de
 //    bon après IGNORANCES_MAX fermetures (compteur en localStorage).
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Icon } from './Icons.jsx';
 import {
   IGNORANCES_MAX,
@@ -64,8 +64,25 @@ export default function InstallAppButton({ className = '' }) {
   const [fermeeSession, setFermeeSession] = useState(false);
   const [enCours, setEnCours] = useState(false);
   const [note, setNote] = useState(null);
+  const banniere = useRef(null);
 
   useEffect(() => ecouterInvitation(setEtat), []);
+
+  // ── Réserve d'espace sous la page (correctif du 29/09) ──
+  // La bannière est en `position: fixed` : elle ne pousse pas le contenu, elle
+  // le recouvre. Sur une page chargée, elle cachait donc ses derniers boutons.
+  // On annonce sa hauteur réelle au CSS (--reserve-banniere, utilisée par le
+  // padding-bottom du corps) et on la remet à zéro dès qu'elle disparaît.
+  useEffect(() => {
+    const racine = document.documentElement;
+    if (masquee || fermeeSession) {
+      racine.style.removeProperty('--reserve-banniere');
+      return undefined;
+    }
+    // + 12px : une respiration entre le dernier élément et la bannière.
+    racine.style.setProperty('--reserve-banniere', `${(banniere.current?.offsetHeight || 0) + 12}px`);
+    return () => racine.style.removeProperty('--reserve-banniere');
+  }, [masquee, fermeeSession, etat, note]);
 
   const installer = useCallback(async () => {
     setEnCours(true);
@@ -96,6 +113,7 @@ export default function InstallAppButton({ className = '' }) {
 
   return (
     <div
+      ref={banniere}
       role="region"
       aria-label="Installer l’application"
       className={`fixed left-0 right-0 z-30 ${className}`}

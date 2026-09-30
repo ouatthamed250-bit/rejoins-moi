@@ -58,6 +58,12 @@
   --shadow-card: 0 4px 14px rgba(255, 122, 46, 0.12);
   --shadow-card-health: 0 4px 14px rgba(46, 174, 92, 0.12);
 
+  /* Espace réservé sous le contenu pour les éléments FIXES du bas d'écran.
+     Mis à jour dynamiquement par InstallAppButton : quand la bannière
+     d'installation est visible, elle flotte au-dessus de la bottom nav et
+     masquerait sinon les derniers boutons de la page. */
+  --reserve-banniere: 0px;
+
   /* Durées d'animation — transitions "captives" mais pas lourdes */
   --transition-fast: 150ms ease;
   --transition-base: 250ms ease;
@@ -65,10 +71,27 @@
 }
 
 @layer base {
-  html,
-  body,
-  #root {
+  html {
+    /* Hauteur de référence pour toute la chaîne en pourcentage ci-dessous. */
     height: 100%;
+  }
+
+  /* CORRECTIF (29/09) — « contenu coupé en bas d'écran ».
+     AVANT : html, body, #root { height: 100% }.
+     Avec une hauteur FIXE sur le corps, le `padding-bottom` de dégagement (barre
+     de navigation + barre système) reste coincé DANS la boîte de 100 % de
+     l'écran : dès que la page est plus longue qu'un écran, le contenu déborde
+     PAR-DESSUS ce padding. Résultat, la fin du défilement était la fin du
+     contenu : les 64 derniers pixels (dernier bouton d'un formulaire, dernière
+     carte d'une liste) restaient sous la barre de navigation, définitivement
+     invisibles et intouchables.
+     MAINTENANT : min-height. Le corps grandit avec son contenu, donc le
+     dégagement reste bien DERRIÈRE le dernier élément, à la fin du défilement.
+     `100dvh` (supporté par les navigateurs récents) tient compte de la barre
+     d'adresse mobile qui apparaît/disparaît ; `100vh` sert de repli. */
+  body {
+    min-height: 100vh;
+    min-height: 100dvh;
   }
 
   body {
@@ -77,8 +100,9 @@
     color: var(--color-text);
     font-family: var(--font-family-base);
     -webkit-font-smoothing: antialiased;
-    /* Le contenu ne doit jamais passer sous la bottom nav (64px) ni sous la barre iOS */
-    padding-bottom: calc(64px + env(safe-area-inset-bottom));
+    /* Le contenu ne doit jamais passer sous la bottom nav (64px), sous la barre
+       iOS, ni sous la bannière d'installation PWA quand elle est affichée. */
+    padding-bottom: calc(64px + env(safe-area-inset-bottom) + var(--reserve-banniere, 0px));
   }
 
   h1,
@@ -145,6 +169,21 @@
   }
   .puces::-webkit-scrollbar {
     display: none;
+  }
+
+  /* ── Réserves d'espace en bas des écrans à barres FIXES ───────────────────
+     Une barre `position: fixed` ne pousse pas le contenu : sans réserve
+     explicite, les derniers champs d'un formulaire passent dessous et
+     deviennent intouchables (2ᵉ cause du « contenu coupé en bas d'écran »).
+       .espace-barre-action : barre d'action posée AU-DESSUS de la bottom nav
+                             (64px de nav + ~72px de barre + marge)
+       .espace-barre-fixe   : écran plein (fiche partagée, pas de bottom nav)
+                             avec une seule barre collée en bas. */
+  .espace-barre-action {
+    padding-bottom: calc(64px + 72px + env(safe-area-inset-bottom));
+  }
+  .espace-barre-fixe {
+    padding-bottom: calc(92px + env(safe-area-inset-bottom));
   }
 }
 

@@ -51,9 +51,12 @@ const establishmentSchema = new mongoose.Schema(
 
     description: { type: String, trim: true, maxlength: 500, default: '' },
 
-    // §5 — DEUX photos distinctes et obligatoires, validées dans la route POST
-    photoDevanture: { type: String, required: true },
-    photoVendeur: { type: String, required: true },
+    // §5 — DEUX photos distinctes (devanture + vendeur/gérant), RECOMMANDÉES mais
+    // facultatives depuis le 30/09 : une fiche publiée sans photo reste valide et
+    // se complète plus tard. La route POST/PATCH ne refuse qu'une image invalide
+    // ou deux photos identiques (validateEstablishmentPhotos).
+    photoDevanture: { type: String, trim: true, default: '' },
+    photoVendeur: { type: String, trim: true, default: '' },
 
     // Tags produits/services choisis en bulles cliquables, minimum 3 (§5)
     tags: {

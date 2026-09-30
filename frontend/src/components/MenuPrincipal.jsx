@@ -82,7 +82,7 @@ export default function MenuPrincipal({ ouvert, onFermer }) {
         role="dialog"
         aria-modal="true"
         aria-label="Menu principal"
-        className="absolute left-0 top-0 h-full w-[86%] max-w-[340px] overflow-y-auto bg-white shadow-lg"
+        className="absolute left-0 top-0 h-full w-[86%] max-w-[340px] overflow-y-auto bg-white pb-[env(safe-area-inset-bottom)] shadow-lg"
         onClick={(evt) => evt.stopPropagation()}
       >
         <header className="flex items-center gap-3 bg-primary px-4 py-4 text-white">

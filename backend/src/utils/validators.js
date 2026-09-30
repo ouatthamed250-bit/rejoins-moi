@@ -1,9 +1,12 @@
 // validators.js — Validation centrale des entrées API (téléphone ivoirien, photos, tags).
 //
-// Décision produit (§5 du cahier des charges) : l'inscription établissement exige
-// DEUX photos distinctes et obligatoires (devanture + vendeur/gérant). Elles ne
-// doivent jamais être fusionnées en un seul champ : la validation ci-dessous
-// refuse toute requête où l'une des deux manque ou pointe vers la même valeur.
+// Décision produit (§5 du cahier des charges, assouplie le 30/09) : l'inscription
+// établissement demande DEUX photos distinctes (devanture + vendeur/gérant), mais
+// elles sont RECOMMANDÉES et non plus bloquantes. Sur la tournée terrain, il arrive
+// qu'on n'ait pas la photo sous la main ou que le réseau lâche : une fiche sans
+// photo — complétée plus tard depuis /profil — vaut mieux qu'un compte perdu.
+// La validation ci-dessous refuse uniquement une valeur fournie qui n'est pas une
+// image valide, ou deux photos identiques (devanture = vendeur).
 //
 // Stockage des images : le squelette ne prévoit pas de service de stockage objet.
 // On accepte donc soit une URL https (Cloudinary/S3 en production), soit une
@@ -37,23 +40,33 @@ export function isValidPhoto(value) {
 }
 
 /**
- * Valide les deux photos obligatoires d'une inscription établissement.
+ * Valide les deux photos d'une inscription / mise à jour d'établissement.
+ *
+ * Photos FACULTATIVES (depuis le 30/09) : une chaîne vide est acceptée, c'est le
+ * « Ajouter plus tard » du formulaire (pas de photo sous la main pendant la
+ * tournée). Ce qui reste refusé :
+ *   - une valeur fournie qui n'est ni une URL http(s) ni une data-URI d'image ;
+ *   - deux photos identiques (devanture = vendeur), qui n'apportent rien.
+ *
  * @returns {{ok: boolean, error?: string}}
  */
 export function validateEstablishmentPhotos(photoDevanture, photoVendeur) {
-  if (!isValidPhoto(photoDevanture)) {
+  const devanture = String(photoDevanture ?? '').trim();
+  const vendeur = String(photoVendeur ?? '').trim();
+
+  if (devanture && !isValidPhoto(devanture)) {
     return {
       ok: false,
-      error: 'La photo de la devanture du local est obligatoire (image ou URL d’image).',
+      error: 'La photo de la devanture n’est pas une image valide (JPEG/PNG ou URL d’image).',
     };
   }
-  if (!isValidPhoto(photoVendeur)) {
+  if (vendeur && !isValidPhoto(vendeur)) {
     return {
       ok: false,
-      error: 'La photo du vendeur / gérant est obligatoire (image ou URL d’image distincte).',
+      error: 'La photo du vendeur / gérant n’est pas une image valide (JPEG/PNG ou URL d’image).',
     };
   }
-  if (photoDevanture.trim() === photoVendeur.trim()) {
+  if (devanture && vendeur && devanture === vendeur) {
     return {
       ok: false,
       error: 'Les deux photos doivent être distinctes (devanture et vendeur/gérant).',

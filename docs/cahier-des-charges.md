@@ -23,6 +23,9 @@ Application ivoirienne à deux volets fusionnés en une seule plateforme sociale
 
 ## 5. Profil établissement
 - **Deux photos à l'inscription** : photo de la devanture du local + photo de la personne qui vend/tient le commerce.
+  Elles restent **distinctes et recommandées, mais plus bloquantes** (assoupli le 30/09) : le formulaire propose
+  « Ajouter plus tard » et la fiche se publie sans photo, complétée ensuite depuis le profil. L'API ne refuse qu'une
+  image invalide ou deux photos identiques.
 - Tags produits/services sélectionnés à l'inscription façon TikTok (ex. spaghetti, café au lait, café serré, rognon, petit pois, attiéké, jus naturels...).
 - Étoiles/notes + commentaires des clients.
 - Compteurs visites / utilisateurs affichés séparément.
@@ -53,7 +56,8 @@ Application ivoirienne à deux volets fusionnés en une seule plateforme sociale
 2. Recherche par catégorie
 3. Fiche profil complet d'un établissement
 4. Pharmacies & Cliniques (vert/blanc)
-5. Inscription établissement (2 photos + tags produits/services)
+5. Inscription / création de profil — ouvre sur la question « Avez-vous un établissement ? » :
+   Oui → 2 photos (facultatives) + tags produits/services ; Non → profil simple chercheur d'emploi / employeur, sans photo.
 
 ## 10. Contexte marché (pour calibrer les priorités produit)
 - Secteur informel ≈ 93,6% de l'emploi en Côte d'Ivoire, ≈ 60% du PIB — marché énorme et non structuré.

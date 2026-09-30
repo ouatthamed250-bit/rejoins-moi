@@ -254,7 +254,11 @@ export default function EstablishmentProfile() {
   const whatsapp = etablissement.whatsapp || etablissement.telephone;
 
   return (
-    <div className="min-h-full bg-white pb-28">
+    /* `espace-barre-fixe` (theme.css) : cet écran est en plein écran (pas de bottom
+       nav) mais sa barre « Aller chez … » est FIXE au bas de la fenêtre. Sans cette
+       réserve, les derniers avis / le dernier bloc restaient coincés derrière la
+       barre, impossible à atteindre (correctif « contenu coupé » du 30/09). */
+    <div className="espace-barre-fixe min-h-full bg-white">
       {/* ── Grande photo de devanture + médaillon du vendeur/gérant ── */}
       <header className="relative">
         {etablissement.photoDevanture ? (

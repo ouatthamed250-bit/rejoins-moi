@@ -136,7 +136,8 @@ router.get(
 
 /**
  * POST /api/establishments — inscription d'un établissement (§5).
- * Validation stricte : 2 photos distinctes obligatoires + minimum 3 tags.
+ * Validation : minimum 3 tags ; photos recommandées mais facultatives (30/09),
+ * une fiche sans photo doit pouvoir être publiée pendant la tournée terrain.
  */
 router.post(
   '/',
@@ -161,7 +162,8 @@ router.post(
 
     if (!nom || !String(nom).trim()) throw new ApiError(400, 'Le nom de l’établissement est obligatoire.');
 
-    // ── §5 : les DEUX photos sont obligatoires et distinctes ──
+    // ── §5 assoupli (30/09) : photos recommandées, jamais bloquantes. On refuse
+    //    seulement une image invalide ou deux photos identiques. ──
     const photos = validateEstablishmentPhotos(photoDevanture, photoVendeur);
     if (!photos.ok) throw new ApiError(400, photos.error, { champPhotos: true });
 
@@ -186,8 +188,10 @@ router.post(
       nom: String(nom).trim(),
       categorie,
       description: String(description).trim(),
-      photoDevanture,
-      photoVendeur,
+      // Chaîne vide autorisée (photo ajoutée plus tard) ; trim pour éviter un
+      // espace qui ferait croire à une photo fournie.
+      photoDevanture: String(photoDevanture || '').trim(),
+      photoVendeur: String(photoVendeur || '').trim(),
       tags: tagsPropres,
       localisation: { lat, lng },
       commune,
@@ -380,8 +384,8 @@ router.patch(
       const nouveauVendeur = req.body.photoVendeur ?? doc.photoVendeur;
       const controle = validateEstablishmentPhotos(nouvelleDevanture, nouveauVendeur);
       if (!controle.ok) throw new ApiError(400, controle.error);
-      doc.photoDevanture = nouvelleDevanture;
-      doc.photoVendeur = nouveauVendeur;
+      doc.photoDevanture = String(nouvelleDevanture || '').trim();
+      doc.photoVendeur = String(nouveauVendeur || '').trim();
     }
     if (req.body?.tags !== undefined) {
       const tags = sanitizeTags(req.body.tags);

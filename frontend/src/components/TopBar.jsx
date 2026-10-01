@@ -42,14 +42,21 @@ export default function TopBar({
 
   // v2 du 30/09 : la variante par défaut n'est PLUS un aplat orange (jugé trop
   // agressif) mais un dégradé orange doux qui s'estompe vers le bas
-  // (`entete-degrade`, theme.css), avec le texte en encre foncée. La variante
-  // santé, elle, garde son vert plein : cette refonte ne la touche pas (§6).
+  // (`degrade-page` = premier segment de la rampe `--gradient-header`, theme.css),
+  // avec le texte en encre foncée. La variante santé, elle, garde son vert plein :
+  // cette refonte ne la touche pas (§6).
+  //
+  // CORRECTIF du 30/09 (dashboard) — la bordure `border-b border-line/70` a été
+  // RETIRÉE de la variante dégradé : c'est elle qui traçait le « petit espace /
+  // ligne » visible entre l'en-tête orange et le contenu. Un dégradé qui s'éteint
+  // progressivement n'a pas besoin de trait de séparation ; les variantes opaque
+  // (`transparent`, santé) le gardent, elles.
   const fond =
     variante === 'health'
       ? 'bg-health text-white shadow-card-health'
       : variante === 'transparent'
         ? 'bg-white/90 text-ink backdrop-blur border-b border-line'
-        : 'entete-degrade text-ink border-b border-line/70';
+        : 'degrade-page text-ink';
 
   // Sur un fond clair, un survol blanc (v1) ne se verrait plus : on l'adapte.
   const survolPuce = variante === 'health' ? 'hover:bg-white/15' : 'hover:bg-primary/10';
@@ -60,7 +67,7 @@ export default function TopBar({
 
   return (
     <>
-    <header className={`sticky top-0 z-30 ${fond} ${className}`}>
+    <header data-barre-haut="" className={`sticky top-0 z-30 ${fond} ${className}`}>
       <div className="ecran flex items-center gap-3 py-3">
         {/* Gauche : retour ou menu */}
         {retour ? (
@@ -76,6 +83,7 @@ export default function TopBar({
           <button
             type="button"
             aria-label="Ouvrir le menu"
+            data-bouton-menu=""
             onClick={() => (onMenuClick ? onMenuClick() : setMenuOuvert(true))}
             className={`-ml-1 rounded-full p-1.5 transition active:scale-95 ${survolPuce}`}
           >
@@ -112,6 +120,16 @@ export default function TopBar({
         </Link>
       </div>
     </header>
+
+    {/* Fondu de raccord (correctif du 30/09) — la barre ci-dessus n'affiche que
+        le PREMIER SEGMENT de la rampe orange (`.degrade-page`), cette bande peint
+        la SUITE EXACTE juste en dessous. Sans elle, la rampe atteignait l'ivoire
+        au pied de la barre et le bloc suivant (bannière d'accueil du dashboard)
+        redémarrait à 16 % d'orange : deux rampes opposées séparées par un trait.
+        Elle ne prend aucune hauteur (marge négative) et n'intercepte aucun clic
+        (`pointer-events: none`) : c'est une teinte, pas un bloc.
+        Variante santé exclue : son en-tête vert plein ne se fond dans rien. */}
+    {variante === 'default' && <div data-fondu-entete="" aria-hidden="true" className="fondu-entete" />}
 
     {/* Tiroir du menu hamburger : page Jobs, abonnement, sections secondaires. */}
     <MenuPrincipal ouvert={menuOuvert} onFermer={() => setMenuOuvert(false)} />

@@ -18,6 +18,7 @@ import { Link, useNavigate } from 'react-router-dom';
 
 import { Icon } from './Icons.jsx';
 import { useAuth } from '../hooks/useAuth.js';
+import { useInstallation } from '../hooks/useInstallation.js';
 import { CATALOGUE, libellePrixListe } from '../config/abonnement.js';
 import { formatTelephone, initiales } from '../utils/format.js';
 
@@ -54,6 +55,8 @@ const SECTIONS = [
 export default function MenuPrincipal({ ouvert, onFermer }) {
   const navigate = useNavigate();
   const { profil, connecte, estDemo, deconnexion } = useAuth();
+  // État d'installation PARTAGÉ avec la bannière flottante (InstallAppButton).
+  const { contenu, installee, installer, enCours, note, diagnostic } = useInstallation();
 
   // Échap ferme le tiroir : réflexe attendu par les utilisateurs au clavier.
   useEffect(() => {
@@ -145,6 +148,54 @@ export default function MenuPrincipal({ ouvert, onFermer }) {
             </div>
           ))}
         </nav>
+
+        {/* ── Application : installer l'app, ou constater qu'elle l'est déjà ──
+            Correctif du 30/09 — avant, l'installation n'existait que sous forme
+            d'un bandeau FLOTTANT au-dessus du contenu, qui restait affiché même
+            quand l'app était installée (bouton « Installer l'app » fantôme).
+            Désormais : la bannière disparaît dès que l'app est installée, et
+            c'est ICI, dans le menu hamburger, que l'information reste — bouton
+            d'installation tant que l'app n'est pas installée, simple repère
+            « App installée » ensuite. */}
+        <div
+          data-option-installation=""
+          className="mx-3 mb-3 rounded-md border border-line bg-white p-3"
+        >
+          <p className="flex items-center gap-2 text-xs font-bold text-ink">
+            <Icon
+              name={contenu.icone}
+              size={16}
+              className={installee ? 'text-health' : 'text-primary'}
+            />
+            {contenu.titre}
+          </p>
+          <p className="mt-1 text-[11px] leading-snug text-ink-muted">{note || contenu.texte}</p>
+
+          {installee && (
+            <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-health-light px-2 py-1 text-[10px] font-bold text-health-dark">
+              <Icon name="check" size={12} />
+              App installée
+            </p>
+          )}
+
+          {!installee && contenu.action && (
+            <button
+              type="button"
+              className="bouton-principal mt-2 w-full py-2 text-xs"
+              onClick={installer}
+              disabled={enCours}
+            >
+              <Icon name="download" size={16} />
+              {enCours ? 'Ouverture…' : contenu.action}
+            </button>
+          )}
+
+          {/* `?pwa=1` : le diagnostic que la bannière affichait, désormais
+              consultable même app installée (support téléphone). */}
+          {diagnostic && (
+            <p className="mt-2 text-[10px] leading-snug text-ink-muted">Diagnostic PWA — {diagnostic}</p>
+          )}
+        </div>
 
         {/* Abonnement : l'option qui débloque Jobs + la mise en avant du profil artisan. */}
         <div className="mx-3 mb-3 rounded-md border border-primary/30 bg-primary/5 p-3">

@@ -89,12 +89,24 @@
   --shadow-fab: 0 8px 20px rgba(249, 104, 11, 0.35);
 
   /* ── En-tête (TopBar, bannière d'accueil, en-tête de section) ──
-     Dégradé orange DOUX en très haut, déjà atténué à 32 %, totalement fondu
-     vers l'ivoire à 100 % : jamais d'aplat, l'orange "s'éteint" vers le bas. */
+     Dégradé orange DOUX en très haut, atténué aux deux tiers, totalement fondu
+     vers l'ivoire à 100 % : jamais d'aplat, l'orange "s'éteint" vers le bas.
+
+     Longueur du fondu : c'est ICI qu'a été corrigé le 30/09 le « bloc orange
+     qui s'arrête net » du dashboard. Le dégradé n'était étalé que sur la
+     hauteur RÉELLE de chaque bloc (~60 px de barre), donc il atteignait l'ivoire
+     AVANT la fin du bloc : le bloc suivant (bannière d'accueil) redémarrait
+     alors à 18 % d'orange, et l'œil voyait deux rampes opposées séparées par un
+     trait. Désormais une SEULE rampe est définie, étalée sur --haut-degrade :
+       · la barre du haut n'en montre que le premier segment (--hauteur-barre) ;
+       · la bande .fondu-entete montre la suite exacte, décalée d'autant.
+     Le raccord entre les deux est donc mathématiquement invisible. */
+  --haut-degrade: 132px;             /* longueur totale du fondu orange → ivoire */
+  --hauteur-barre: 60px;             /* hauteur de la barre du haut (py-3 + avatar) */
   --gradient-header: linear-gradient(
     180deg,
-    rgba(255, 122, 24, 0.18) 0%,
-    rgba(255, 154, 77, 0.09) 32%,
+    rgba(255, 122, 24, 0.16) 0%,
+    rgba(255, 154, 77, 0.09) 45%,
     rgba(255, 252, 248, 0) 100%
   );
 
@@ -286,13 +298,46 @@
    ========================================================================== */
 
 /* ── En-tête : dégradé orange doux qui s'estompe vers le bas ──
-   À poser sur la barre du haut, la bannière d'accueil et l'en-tête du menu, à
-   la place de l'ancien aplat orange plein.
-   Le dégradé est SOMMÉ au fond ivoire : sous le fondu, l'en-tête est donc
-   opaque — indispensable pour la barre `sticky`, sinon le contenu défilerait
+   À poser sur un bloc AUTONOME (en-tête du tiroir du menu, en-tête de section) :
+   la rampe entière y tient, de 16 % d'orange jusqu'à l'ivoire pur.
+   Le dégradé est SOMMÉ au fond ivoire : sous le fondu, le bloc est donc opaque
+   — indispensable pour la barre `sticky`, sinon le contenu défilerait
    visiblement derrière elle. */
 .entete-degrade {
   background: var(--gradient-header), var(--color-bg);
+}
+
+/* ── Barre du haut : PREMIER SEGMENT de la rampe d'en-tête ──
+   Même dégradé que .entete-degrade, mais étalé sur --haut-degrade : la barre
+   n'en montre que la partie 0 → --hauteur-barre, et n'atteint donc PAS l'ivoire
+   à son pied. C'est volontaire : le fondu se poursuit dans .fondu-entete, juste
+   en dessous, ce qui supprime la rampe redémarrée et la ligne de coupure.
+   Le fond ivoire reste OPAQUE (`background-color`), sans quoi le contenu
+   défilerait visiblement derrière la barre collante. */
+.degrade-page {
+  background-color: var(--color-bg);
+  background-image: var(--gradient-header);
+  background-repeat: no-repeat;
+  background-size: 100% var(--haut-degrade);
+  background-position: top;
+}
+
+/* ── Bande de raccord : SUITE EXACTE de la rampe, sous la barre du haut ──
+   Aucune hauteur prise dans la page : sa hauteur est annulée par la marge
+   négative, elle se contente de peindre les (–haut-degrade – –hauteur-barre)
+   pixels suivants de la même rampe, par-dessus le haut du contenu.
+   `pointer-events: none` : jamais cliquable, elle n'est qu'une teinte.
+   `z-index: 25` : au-dessus du contenu, sous la barre collante (z-30). */
+.fondu-entete {
+  position: relative;
+  z-index: 25;
+  height: calc(var(--haut-degrade) - var(--hauteur-barre));
+  margin-bottom: calc(var(--hauteur-barre) - var(--haut-degrade));
+  background-image: var(--gradient-header);
+  background-repeat: no-repeat;
+  background-size: 100% var(--haut-degrade);
+  background-position: 0 calc(-1 * var(--hauteur-barre));
+  pointer-events: none;
 }
 
 /* ── Motif de fond : TRAITS FINS façon carte/itinéraire ──

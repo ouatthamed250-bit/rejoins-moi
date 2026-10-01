@@ -14,9 +14,20 @@
 // pilote le Chrome déjà installé sur la machine via le protocole DevTools (CDP).
 //
 // Usage :
-//   node scripts/capture-ecrans.mjs <dossier-sortie> [nom=url[|clic=sélecteur] ...]
+//   node scripts/capture-ecrans.mjs <dossier-sortie> [nom=url[|clic=sélecteur][|simule=installee] ...]
 //   npm run captures -- captures-refonte
 //   npm run captures -- captures-refonte "accueil=http://localhost:5173/" "fiche=<url>|clic=.bouton-principal"
+//   npm run captures -- captures-refonte "menu=<url>|clic=[data-bouton-menu]|simule=installee"
+//
+// Options d'une cible :
+//   |clic=<sélecteur>     clique cet élément avant la capture ;
+//   |defile=<sélecteur>   fait défiler jusqu'à cet élément (une entrée de menu en
+//                         bas du tiroir, par exemple) avant la capture ;
+//   |simule=installee     fait croire à la page qu'elle tourne depuis l'écran
+//                         d'accueil (`display-mode: standalone`). Sert à vérifier
+//                         qu'une app DÉJÀ INSTALLÉE n'affiche plus aucun bandeau
+//                         d'installation flottant, ce qui est impossible à voir
+//                         depuis un navigateur de bureau autrement.
 //
 // Sans cible indiquée, la production publiée sur GitHub Pages est capturée.
 // Chrome est cherché dans les emplacements habituels, ou imposé par CHROME_PATH.
@@ -24,6 +35,8 @@
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
+
+import { lirePng } from './png.mjs';
 
 /** Adresse publiée, utilisée quand aucune cible n'est passée en argument. */
 const URL_PRODUCTION = 'https://ouatthamed250-bit.github.io/rejoins-moi/';
@@ -58,11 +71,16 @@ const cibles = (process.argv.slice(3).length
 ).map((argument) => {
   const [cible, ...options] = argument.split('|');
   const separateur = cible.indexOf('=');
-  const clic = options.find((o) => o.startsWith('clic='));
+  const option = (nom) => {
+    const trouve = options.find((o) => o.startsWith(`${nom}=`));
+    return trouve ? trouve.slice(nom.length + 1) : null;
+  };
   return {
     nom: cible.slice(0, separateur),
     url: cible.slice(separateur + 1),
-    clic: clic ? clic.slice('clic='.length) : null,
+    clic: option('clic'),
+    defile: option('defile'),
+    simule: option('simule'),
   };
 });
 
@@ -179,6 +197,76 @@ async function attendreStable(cdp, maxMs = 30000) {
   return false;
 }
 
+/* ── Simulation « app installée » (option |simule=installee) ──
+   pwa.js lit `display-mode` au premier import : il faut donc mentir AVANT tout
+   chargement de page, d'où une injection `Page.addScriptToEvaluateOnNewDocument`
+   (et non une évaluation après coup). C'est le seul moyen de vérifier depuis un
+   ordinateur ce que voit un téléphone sur lequel l'app est DÉJÀ installée. */
+const SIMULATION_INSTALLEE = `(() => {
+  const vrai = window.matchMedia.bind(window);
+  window.matchMedia = (requete) => {
+    if (String(requete).includes('display-mode: standalone')) {
+      return {
+        matches: true,
+        media: requete,
+        onchange: null,
+        addEventListener() {},
+        removeEventListener() {},
+        addListener() {},
+        removeListener() {},
+        dispatchEvent: () => false,
+      };
+    }
+    return vrai(requete);
+  };
+})();`;
+
+/* ── Contrôle du fondu d'en-tête, sur les PIXELS de la capture ──
+   Le défaut signalé (« le bloc orange du haut s'arrête net ») ne se lit pas dans
+   le CSS : il faut regarder l'image. Pour chaque ligne du haut de l'écran, on
+   mesure la teinte orange (R − B : ~7 pour l'ivoire pur, ~43 pour le haut de
+   l'en-tête) au 75e centile des colonnes — quasi-maximum, donc insensible au
+   texte et aux icônes, qui n'occupent qu'une minorité de la largeur.
+   Une MARCHE d'une ligne à l'autre trahit soit une rampe qui redémarre (saut vers
+   le haut), soit un liseré ou une bordure (saut vers le bas).
+   La mesure est bornée à la fenêtre que le thème CONTRÔLE (--haut-degrade, lu
+   dans la page) : au-delà, le contenu (cartes, titres, tiroir du menu) prend la
+   majorité de la largeur et fausserait la lecture. */
+const SEUIL_MARCHE = 6;
+function analyserRaccord(chemin, fenetre) {
+  const image = lirePng(chemin);
+  const hauteur = Math.min(fenetre, image.height);
+  const lignes = [];
+  for (let y = 0; y < hauteur; y += 1) {
+    const teintes = [];
+    for (let x = 0; x < image.width; x += 1) {
+      const i = (y * image.width + x) * 4;
+      teintes.push(image.pixels[i] - image.pixels[i + 2]);
+    }
+    teintes.sort((a, b) => a - b);
+    lignes.push(teintes[Math.floor(teintes.length * 0.75)]);
+  }
+  let marcheMax = 0;
+  let ligneMarche = 0;
+  for (let y = 1; y < lignes.length; y += 1) {
+    const delta = Math.abs(lignes[y] - lignes[y - 1]);
+    if (delta > marcheMax) {
+      marcheMax = delta;
+      ligneMarche = y;
+    }
+  }
+  // Profil lisible dans le rapport JSON : une valeur toutes les 8 lignes.
+  const profil = lignes.filter((_, index) => index % 8 === 0);
+  return {
+    fenetre: hauteur,
+    profil,
+    marcheMax,
+    ligneMarche,
+    seuil: SEUIL_MARCHE,
+    conforme: marcheMax <= SEUIL_MARCHE,
+  };
+}
+
 /* Relevé de styles calculés : la preuve que le thème est bien celui attendu.
    ATTENTION : tout ce bloc est un littéral de gabarit — ne jamais y écrire de
    backtick (il fermerait le littéral et le script ne démarrerait plus). */
@@ -187,19 +275,28 @@ const RAPPORT = `(() => {
     const el = document.querySelector(selecteur);
     if (!el) return null;
     const s = getComputedStyle(el, pseudo || null);
+    const boite = el.getBoundingClientRect();
     return {
       backgroundImage: s.backgroundImage.slice(0, 120),
       backgroundColor: s.backgroundColor,
+      backgroundSize: s.backgroundSize,
+      backgroundPosition: s.backgroundPosition,
       color: s.color,
       borderColor: s.borderColor,
+      // « Ligne de coupure » cherchée le 30/09 : une bordure basse, une ombre ou
+      // une marge laisseraient un trait visible entre l'en-tête et le contenu.
+      borderBottomWidth: s.borderBottomWidth,
+      borderBottomColor: s.borderBottomColor,
       boxShadow: s.boxShadow.slice(0, 70),
       animation: s.animationName,
+      hauteur: Math.round(boite.height),
     };
   };
   return {
     bodyFond: getComputedStyle(document.body).backgroundColor,
-    barreDuHaut: cs('header'),
-    banniereAccueil: cs('.entete-degrade'),
+    barreDuHaut: cs('[data-barre-haut]'),
+    fonduEntete: cs('[data-fondu-entete]'),
+    banniereAccueil: cs('[data-banniere-accueil]'),
     motifFond: cs('.fond-traits-fins', '::before'),
     boutonPrincipal: cs('.bouton-principal'),
     carte: cs('.carte'),
@@ -230,6 +327,16 @@ const RAPPORT = `(() => {
       const s = getComputedStyle(el);
       return { affichee: true, backgroundColor: s.backgroundColor, couleurTexte: s.color };
     })(),
+    // Entrée « Application » du menu hamburger : c'est elle qui porte l'installation
+    // (bouton, ou repère « App installée ») une fois la bannière flottante retirée.
+    optionMenuInstallation: (() => {
+      const el = document.querySelector('[data-option-installation]');
+      if (!el) return { presente: false };
+      return { presente: true, texte: el.innerText.replace(/\s+/g, ' ').slice(0, 160) };
+    })(),
+    // « L'app se croit-elle installée ? » — utile quand on capture avec
+    // |simule=installee pour prouver qu'aucun bandeau ne flotte plus.
+    modeStandalone: window.matchMedia('(display-mode: standalone)').matches,
     // La barre de filtres du feed doit rester COLLANTE : le motif de fond est
     // posé en z-index -1 (et non en surélevant tous les enfants, ce qui aurait
     // écrasé position: sticky).
@@ -278,8 +385,17 @@ try {
   });
 
   const rapport = {};
-  for (const { nom, url, clic } of cibles) {
+  for (const { nom, url, clic, defile, simule } of cibles) {
     log(`-> ${nom} : ${url}`);
+    // « App installée » simulée : le mensonge doit être en place AVANT le premier
+    // chargement (pwa.js lit `display-mode` au moment où le module s'exécute).
+    let injection = null;
+    if (simule === 'installee') {
+      injection = await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+        source: SIMULATION_INSTALLEE,
+      });
+      log('  app installée simulée (display-mode: standalone)');
+    }
     await cdp.send('Page.navigate', { url });
     const stable = await attendreStable(cdp);
     // Étape optionnelle : un clic (sélecteur CSS) pour atteindre un écran qui
@@ -292,6 +408,15 @@ try {
       log(`  clic sur « ${clic} » : ${fait ? 'ok' : 'SELECTEUR INTROUVABLE'}`);
       await pause(2500);
     }
+    // Étape optionnelle : amener un élément sous les yeux (entrée en bas d'un
+    // tiroir défilant), sans quoi la capture ne montrerait que le haut du tiroir.
+    if (defile) {
+      const fait = await cdp.evaluer(
+        `(() => { const el = document.querySelector(${JSON.stringify(defile)}); if (!el) return 0; el.scrollIntoView({ block: 'center' }); return 1; })()`
+      );
+      log(`  defile jusqu'à « ${defile} » : ${fait ? 'ok' : 'SELECTEUR INTROUVABLE'}`);
+      await pause(1200);
+    }
     const hauteur = await cdp.evaluer('document.documentElement.scrollHeight');
     const image = await cdp.send('Page.captureScreenshot', {
       format: 'png',
@@ -299,9 +424,43 @@ try {
       // Bornée à 2400 px : au-delà, l'image devient énorme pour rien.
       clip: { x: 0, y: 0, width: 390, height: Math.min(hauteur, 2400), scale: 1 },
     });
-    writeFileSync(join(outDir, `${nom}.png`), Buffer.from(image.data, 'base64'));
+    const cheminImage = join(outDir, `${nom}.png`);
+    writeFileSync(cheminImage, Buffer.from(image.data, 'base64'));
     rapport[nom] = await cdp.evaluer(RAPPORT);
+    // ── Contrôle du fondu d'en-tête, sur les PIXELS de la capture ──
+    // Il ne s'applique qu'à une capture de PAGE, sans interaction : un tiroir
+    // ouvert recouvre l'en-tête et la mesure ne dirait plus rien du raccord.
+    if (clic || defile) {
+      rapport[nom].raccordEntete = {
+        mesure: false,
+        raison: 'capture avec interaction (tiroir ou écran ouvert) : hors sujet pour le fondu',
+      };
+      log("  raccord d'en-tête : non mesuré (tiroir ouvert)");
+    } else {
+      // La fenêtre mesurée est celle du thème (--haut-degrade, lue dans la page),
+      // convertie en PIXELS D'IMAGE : la capture est prise en 2×
+      // (devicePixelRatio), sinon on n'analyserait que la moitié du fondu.
+      const fenetre = await cdp.evaluer(
+        `(() => {
+           const valeur = getComputedStyle(document.documentElement).getPropertyValue('--haut-degrade');
+           const nombre = parseInt(valeur, 10);
+           const hauteur = Number.isFinite(nombre) ? nombre : 132;
+           return Math.round(hauteur * (window.devicePixelRatio || 1));
+         })()`
+      );
+      rapport[nom].raccordEntete = { mesure: true, ...analyserRaccord(cheminImage, fenetre) };
+      log(
+        `  raccord d'en-tête (fenêtre ${fenetre} px d'image) : teinte ${rapport[nom].raccordEntete.profil.join(' → ')}, ` +
+          `marche max ${rapport[nom].raccordEntete.marcheMax} px (ligne ${rapport[nom].raccordEntete.ligneMarche}) — ` +
+          `${rapport[nom].raccordEntete.conforme ? 'CONFORME' : 'MARCHE VISIBLE'}`
+      );
+    }
     log(`${nom} : ${stable ? 'stable' : 'DELAI DEPASSE'} — hauteur ${hauteur}px — ${nom}.png ecrit`);
+    if (injection) {
+      await cdp.send('Page.removeScriptToEvaluateOnNewDocument', {
+        identifier: injection.identifier,
+      });
+    }
   }
   writeFileSync(join(outDir, '_rapport.json'), JSON.stringify(rapport, null, 2), 'utf8');
   log('rapport ecrit');

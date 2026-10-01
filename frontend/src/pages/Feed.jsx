@@ -194,10 +194,16 @@ export default function Feed() {
 
   return (
     <div className="ecran py-3 fond-traits-fins">
-      {/* Bannière d'accueil : MÊME dégradé descendant que la barre du haut (v2),
-          à la place de l'ancien aplat orange plein. `-mx-4` + `px-4` : elle
-          occupe toute la largeur de l'écran malgré la gouttière de `.ecran`. */}
-      <section className="entete-degrade -mx-4 mb-3 px-4 py-3">
+      {/* Bannière d'accueil : plus de fond propre (correctif du 30/09). Elle
+          portait `entete-degrade`, c'est-à-dire une DEUXIÈME rampe orange
+          repartant de 16 % juste sous la barre du haut — c'est ce redémarrage,
+          séparé par un liseré et une marge, qui produisait la « coupure » nette
+          au milieu du fondu. La teinte orange lui vient désormais de la bande
+          `.fondu-entete` de la barre du haut, qui s'éteint ici en douceur.
+          `-mx-4` + `px-4` : la bannière occupe toute la largeur malgré la
+          gouttière de `.ecran`. */}
+      <section data-banniere-accueil="" className="-mx-4 mb-3 px-4 py-3">
+
         <h1 className="text-xl font-bold text-ink">{prenom ? `Bonjour ${prenom} 👋` : 'Bonjour 👋'}</h1>
         <p className="text-sm text-ink-muted">
           {bruts.length > 0

@@ -8,121 +8,56 @@
 //    pesait lourd au-dessus de la bottom nav, sur toutes les pages). C'est
 //    désormais une surface blanche/ivoire sur fond clair : l'orange ne revient
 //    que par un liseré vertical, la pastille d'icône et le bouton « Installer ».
-//  - Trois vérités différentes, trois messages (voir pwa.js) :
+//  - Quatre vérités différentes, quatre messages (voir hooks/useInstallation.js) :
 //      'disponible' -> on peut vraiment installer ici, le clic le fait ;
 //      'ios'        -> Safari n'a pas d'invite : « Partager → Sur l'écran d'accueil » ;
 //      'manuel'     -> pas d'invite : on indique où se trouve le bouton du navigateur ;
-//      'installee'  -> l'app tourne déjà depuis l'écran d'accueil : on NE CACHE PAS
-//                      le bouton (c'est demandé), on le rassure et il reste discret.
+//      'installee'  -> l'app tourne déjà depuis l'écran d'accueil : la bannière
+//                      DISPARAÎT (correctif du 30/09). Elle flottait au-dessus du
+//                      contenu sur toutes les pages alors que l'app était déjà
+//                      installée — un bouton « Installer l'app » fantôme. L'état
+//                      reste consultable dans le menu hamburger (MenuPrincipal).
 //  - L'utilisateur ferme la bannière : elle disparaît pour la session, et pour de
 //    bon après IGNORANCES_MAX fermetures (compteur en localStorage).
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Icon } from './Icons.jsx';
+import { useInstallation } from '../hooks/useInstallation.js';
 import {
-  CHEMIN_SERVICE_WORKER,
   IGNORANCES_MAX,
-  demanderInstallation,
-  ecouterInvitation,
-  etatInvitation,
-  etatServiceWorker,
   ignorerInvitation,
-  invitationForcee,
   invitationMasquee,
-  lireIgnorances,
   reinitialiserInvitation,
 } from '../utils/pwa.js';
-
-/** Libellés et icône pour chaque état. Un seul endroit à relire pour le support. */
-const CONTENUS = {
-  disponible: {
-    icone: 'download',
-    titre: 'Installer Rejoins’Moi',
-    texte: 'Un raccourci sur votre écran d’accueil : plus rapide, et ça s’ouvre même sans réseau.',
-    action: 'Installer',
-  },
-  ios: {
-    icone: 'share',
-    titre: 'Ajouter à l’écran d’accueil',
-    texte: 'Appuyez sur Partager puis « Sur l’écran d’accueil ». Rejoins’Moi s’ouvrira en plein écran.',
-    action: null,
-  },
-  manuel: {
-    icone: 'download',
-    titre: 'Installer Rejoins’Moi',
-    texte: 'Menu du navigateur (⋮) → « Installer l’application » ou « Ajouter à l’écran d’accueil ».',
-    action: null,
-  },
-  installee: {
-    icone: 'check',
-    titre: 'Rejoins’Moi est installée',
-    texte: 'Ouvrez-la depuis votre écran d’accueil : elle s’affiche en plein écran, sans barre d’adresse.',
-    action: null,
-  },
-};
 
 /**
  * @param {{ className?: string }} props
  */
 export default function InstallAppButton({ className = '' }) {
-  // État lu directement à la première peinture (pwa.js a déjà capturé l'invite,
-  // s'il y en avait une) : pas de clignotement, pas de mauvaise promesse.
-  const [etat, setEtat] = useState(() => etatInvitation());
+  // État partagé avec le menu hamburger : l'installation se propose désormais des
+  // deux endroits, la règle (invite du navigateur, messages, action) ne doit
+  // exister qu'une fois.
+  const { etat, contenu, installee, installer, enCours, note, forcee, diagnostic } = useInstallation();
   const [masquee, setMasquee] = useState(() => invitationMasquee());
   const [fermeeSession, setFermeeSession] = useState(false);
-  const [enCours, setEnCours] = useState(false);
-  const [note, setNote] = useState(null);
-  // `?pwa=1` dans l'adresse : affichage forcé + diagnostic à l'écran (voir pwa.js).
-  // C'est aussi la sortie de secours si l'invitation a été fermée trois fois.
-  const [forcee] = useState(invitationForcee);
-  const [diagnostic, setDiagnostic] = useState(null);
   const banniere = useRef(null);
-
-  useEffect(() => ecouterInvitation(setEtat), []);
-
-  // Diagnostic demandé explicitement : on affiche ce que le navigateur voit vraiment
-  // (service worker enregistré ? jusqu'où son périmètre s'étend ?), au lieu de deviner.
-  useEffect(() => {
-    if (!forcee) return undefined;
-    let monte = true;
-    etatServiceWorker().then((etatSw) => {
-      if (monte) setDiagnostic(etatSw);
-    });
-    return () => {
-      monte = false;
-    };
-  }, [forcee]);
 
   // ── Réserve d'espace sous la page (correctif du 29/09) ──
   // La bannière est en `position: fixed` : elle ne pousse pas le contenu, elle
   // le recouvre. Sur une page chargée, elle cachait donc ses derniers boutons.
   // On annonce sa hauteur réelle au CSS (--reserve-banniere, utilisée par le
-  // padding-bottom du corps) et on la remet à zéro dès qu'elle disparaît.
+  // padding-bottom du corps) et on la remet à zéro dès qu'elle disparaît —
+  // y compris quand l'app est déjà installée (plus de bannière du tout).
   useEffect(() => {
     const racine = document.documentElement;
-    if (masquee || fermeeSession) {
+    if (installee || masquee || fermeeSession) {
       racine.style.removeProperty('--reserve-banniere');
       return undefined;
     }
     // + 12px : une respiration entre le dernier élément et la bannière.
     racine.style.setProperty('--reserve-banniere', `${(banniere.current?.offsetHeight || 0) + 12}px`);
     return () => racine.style.removeProperty('--reserve-banniere');
-  }, [masquee, fermeeSession, etat, note]);
-
-  const installer = useCallback(async () => {
-    setEnCours(true);
-    setNote(null);
-    const resultat = await demanderInstallation();
-    setEnCours(false);
-    if (resultat === 'acceptee') {
-      setNote('Installation lancée : cherchez « Rejoins’Moi » sur votre écran d’accueil.');
-    } else if (resultat === 'refusee') {
-      setNote('Installation annulée. Vous pourrez réessayer quand vous voulez.');
-    } else {
-      // Aucune invite du navigateur (elle a déjà servi, ou n'est pas disponible ici).
-      setNote('Utilisez le menu du navigateur : « Installer l’application ».');
-    }
-  }, []);
+  }, [installee, masquee, fermeeSession, etat, note]);
 
   const fermer = useCallback(() => {
     const total = ignorerInvitation();
@@ -130,6 +65,14 @@ export default function InstallAppButton({ className = '' }) {
     // Après plusieurs refus, on arrête de proposer : c'est définitif pour cet appareil.
     if (total >= IGNORANCES_MAX) setMasquee(true);
   }, []);
+
+  // ── App DÉJÀ INSTALLÉE : rien de flottant, jamais ──
+  // C'est le correctif du 30/09 : une app installée continuait d'afficher le
+  // bandeau « Installer Rejoins'Moi » (ou la pastille « Installer l'app »)
+  // au-dessus du contenu. Une fois installée, l'option d'installation n'a plus
+  // rien à faire dans le fil des pages : elle vit dans le menu hamburger
+  // (MenuPrincipal), sous forme d'un simple repère « app installée ».
+  if (installee) return null;
 
   // ── Invitation fermée trop de fois (3 refus, compteur localStorage) ──
   // Avant, on renvoyait carrément `null` : le bouton d'installation disparaissait
@@ -157,9 +100,6 @@ export default function InstallAppButton({ className = '' }) {
     );
   }
 
-  const contenu = CONTENUS[etat] || CONTENUS.manuel;
-  const installee = etat === 'installee';
-
   return (
     <div
       ref={banniere}
@@ -170,10 +110,9 @@ export default function InstallAppButton({ className = '' }) {
       style={{ bottom: 'calc(env(safe-area-inset-bottom) + 96px)' }}
     >
       <div className="ecran">
-        {forcee && (
+        {diagnostic && (
           <p className="mb-1 rounded-md bg-white/95 px-2 py-1 text-center text-[10px] leading-snug text-ink-muted shadow-card">
-            Diagnostic PWA — état : {etat} · invitations fermées : {lireIgnorances()} · service worker :{' '}
-            {diagnostic || 'vérification…'} · worker attendu : {CHEMIN_SERVICE_WORKER}
+            Diagnostic PWA — {diagnostic}
           </p>
         )}
 

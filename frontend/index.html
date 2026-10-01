@@ -22,7 +22,21 @@
          Chemins VOLONTAIREMENT relatifs (sans « / » au début) : l'app fonctionne
          aussi bien à la racine d'un domaine (Vercel) que dans un sous-dossier
          (GitHub Pages : /rejoins-moi/). Avec un « / », le manifeste et les icônes
-         seraient cherchés à la racine et l'installation échouerait. -->
+         seraient cherchés à la racine et l'installation échouerait.
+
+         ICÔNES (correctif du 30/09 — « carré orange en trop » sur l'écran
+         d'accueil Android) : le manifeste déclare DEUX jeux, dans cet ordre —
+           1. `purpose: "any"` (icon-192.png, icon-512.png) : le logo seul, coins
+              transparents, aucun fond ajouté. C'est la référence de l'illustration.
+           2. `purpose: "maskable"` (icon-maskable-192/512.png) : la MÊME
+              illustration remplie jusqu'aux bords, pour les lanceurs qui
+              découpent l'icône à leur forme (cercle, goutte, squircle) ; elle sert
+              donc de secours. Elle est désormais FABRIQUÉE à partir de
+              l'illustration (scripts/generer-icones.mjs) au lieu d'être posée sur
+              un aplat orange : quel que soit le jeu retenu par le téléphone, il
+              n'y a plus de cadre orange collé derrière le logo.
+         Un lanceur qui ne sait pas découper les icônes maskable affiche la
+         seconde telle quelle : c'est une tuile pleine, comme les autres apps. -->
     <link rel="manifest" href="manifest.json" />
     <!-- Favicons : uniquement le jeu PNG (logo définitif du fondateur).
          L'ancien `icon.svg` provisoire a été retiré volontairement : un SVG

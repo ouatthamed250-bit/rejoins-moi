@@ -16,6 +16,12 @@
  */
 
 // v3 : passage aux icônes DÉFINITIVES (logo du fondateur, jeu PNG).
+// v6 : correctifs du 30/09 (soir) — fondu d'en-tête continu, plus de bandeau
+//      d'installation une fois l'app installée, icônes d'écran d'accueil refaites
+//      en plein cadre. Les ICÔNES sont en « cache d'abord » : sans nouveau nom de
+//      cache, un téléphone déjà installé garderait l'ANCIENNE icône maskable
+//      (l'aplat orange avec le logo au milieu) et croirait que rien n'a changé.
+//      Le nouveau nom de cache force le retéléchargement des icônes.
 // v5 : correctifs visuels du 30/09 (plus d'aplat orange plein sur les fiches sans
 //      photo ni sur la bannière d'installation). Les fichiers CSS/JS du build
 //      portent une empreinte dans leur nom : l'ANCIEN index.html en cache réclame
@@ -30,7 +36,7 @@
 //      passées, donc le nouveau thème est visible dès le premier chargement.
 // Changer la version est indispensable dès que les fichiers « cache d'abord »
 // (icônes) ou l'app shell changent de façon visible.
-const VERSION = 'v5';
+const VERSION = 'v6';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

@@ -53,6 +53,20 @@ console.log('3. Après réinitialisation (pastille « Installer l’app » ou ?p
 verifier('invitation masquée', pwa.invitationMasquee(), false);
 verifier('?pwa=1 force l’affichage', pwa.invitationForcee(), true);
 
+// Correctif du 30/09 : une app DÉJÀ installée continuait d'afficher la bannière
+// flottante (et la pastille) au-dessus du contenu, sur toutes les pages. On
+// vérifie ici que la détection fonctionne : dès que le navigateur annonce le mode
+// « standalone » (app ouverte depuis l'écran d'accueil), l'état devient
+// 'installee'. InstallAppButton ne rend alors PLUS RIEN, et l'option
+// d'installation ne vit plus que dans le menu hamburger (MenuPrincipal).
+console.log('4. App ouverte depuis l’écran d’accueil (display-mode: standalone)');
+globalThis.window.matchMedia = (requete) => ({
+  matches: String(requete).includes('display-mode: standalone'),
+  addEventListener() {},
+});
+verifier('application considérée comme installée', pwa.estApplicationInstallee(), true);
+verifier('état affiché', pwa.etatInvitation(), 'installee');
+
 console.log(`\nChemin du service worker attendu : ${pwa.CHEMIN_SERVICE_WORKER}`);
 console.log(echecs === 0 ? 'Tout est conforme.' : `${echecs} vérification(s) en échec.`);
 process.exit(echecs === 0 ? 0 : 1);

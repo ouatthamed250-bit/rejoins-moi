@@ -22,7 +22,7 @@
 // Chrome est cherché dans les emplacements habituels, ou imposé par CHROME_PATH.
 
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, writeFileSync, appendFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /** Adresse publiée, utilisée quand aucune cible n'est passée en argument. */
@@ -74,6 +74,21 @@ const log = (message) => {
 
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/* Profil Chrome JETABLE, propre à chaque exécution : sans cela, le service worker
+   de la capture précédente resservirait l'ancien index.html depuis son cache et
+   l'on photographierait l'ANCIEN thème — précisément le piège que la mise à jour
+   du worker (v5) corrige. Un dossier par PID permet aussi deux captures en
+   parallèle, et il est effacé à la fin pour ne pas encombrer TEMP. */
+const PROFIL = join(process.env.TEMP || '.', `chrome-cdp-rejoins-${process.pid}`);
+
+const effacerProfil = () => {
+  try {
+    rmSync(PROFIL, { recursive: true, force: true });
+  } catch {
+    /* Chrome tient encore un fichier : sans importance, le dossier est jetable */
+  }
+};
+
 const chrome = spawn(
   CHROME,
   [
@@ -82,7 +97,7 @@ const chrome = spawn(
     '--no-first-run',
     '--no-default-browser-check',
     '--hide-scrollbars',
-    `--user-data-dir=${join(process.env.TEMP || '.', 'chrome-cdp-rejoins')}`,
+    `--user-data-dir=${PROFIL}`,
     `--remote-debugging-port=${PORT}`,
     'about:blank',
   ],
@@ -295,6 +310,7 @@ try {
   } catch {
     /* sans importance */
   }
+  effacerProfil();
   process.exit(0);
 } catch (erreur) {
   log(`ERREUR : ${erreur.message}`);
@@ -303,5 +319,6 @@ try {
   } catch {
     /* sans importance */
   }
+  effacerProfil();
   process.exit(1);
 }

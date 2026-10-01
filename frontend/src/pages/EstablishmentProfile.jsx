@@ -22,6 +22,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import EmptyState from '../components/EmptyState.jsx';
 import InfoBanner from '../components/InfoBanner.jsx';
+import PhotoSecours from '../components/PhotoSecours.jsx';
 import StarRating from '../components/StarRating.jsx';
 import TagBadge from '../components/TagBadge.jsx';
 import { CompteursSepares } from '../components/EstablishmentCard.jsx';
@@ -268,9 +269,9 @@ export default function EstablishmentProfile() {
             className="h-56 w-full object-cover"
           />
         ) : (
-          <div className="flex h-56 w-full items-center justify-center bg-gradient-to-br from-primary-light to-primary-dark px-6 text-center text-sm font-bold uppercase tracking-wide text-white">
-            {etablissement.nom}
-          </div>
+          /* v2 : même correctif que la carte du feed — plus de pavé orange plein
+             sur l'en-tête d'une fiche sans photo, le fond reste ivoire. */
+          <PhotoSecours nom={etablissement.nom} className="h-56 w-full" />
         )}
 
         {/* Barre d'actions flottante : retour, partage, favori */}

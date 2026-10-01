@@ -12,6 +12,7 @@
 
 import { Link, useNavigate } from 'react-router-dom';
 import { Icon } from './Icons.jsx';
+import PhotoSecours from './PhotoSecours.jsx';
 import StarRating from './StarRating.jsx';
 import TagBadge from './TagBadge.jsx';
 import { formatCompteur, formatTelephone } from '../utils/format.js';
@@ -50,16 +51,6 @@ export function CompteursSepares({ visites = 0, utilisateurs = 0, taille = 'md' 
         {formatCompteur(utilisateurs)}
         <span className="sr-only">utilisateurs venus grâce à la fiche</span>
       </span>
-    </div>
-  );
-}
-
-function ImageSecours({ nom, className = '' }) {
-  return (
-    <div
-      className={`flex items-center justify-center bg-gradient-to-br from-primary-light to-primary-dark text-white ${className}`}
-    >
-      <span className="px-2 text-center text-xs font-bold uppercase tracking-wide">{nom}</span>
     </div>
   );
 }
@@ -126,7 +117,7 @@ export default function EstablishmentCard({
           {e.photoDevanture ? (
             <img src={e.photoDevanture} alt={e.nom} className="h-[86px] w-[86px] rounded-md object-cover" />
           ) : (
-            <ImageSecours nom={e.nom} className="h-[86px] w-[86px] rounded-md" />
+            <PhotoSecours nom={e.nom} compact className="h-[86px] w-[86px] rounded-md" />
           )}
         </Link>
 
@@ -165,7 +156,7 @@ export default function EstablishmentCard({
         {e.photoDevanture ? (
           <img src={e.photoDevanture} alt={`Devanture de ${e.nom}`} className="h-44 w-full object-cover" />
         ) : (
-          <ImageSecours nom={e.nom} className="h-44 w-full" />
+          <PhotoSecours nom={e.nom} className="h-44 w-full" />
         )}
 
         <span className="absolute left-2 top-2 rounded-full bg-white/95 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-primary">

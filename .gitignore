@@ -19,6 +19,13 @@ build/
 .vercel/
 .netlify/
 
+# ── Données locales de développement ─────────────────────────────────────────
+# backend/data/ ne contient pas du code : c'est le jeu de données brut que l'on
+# importe (etablissements_seed.json, ~4,5 Mo) et que l'on régénère à la demande.
+# Le script d'import accepte un autre chemin avec `--fichier=...` :
+#   node backend/scripts/importer-etablissements.js --fichier=mon-fichier.json
+backend/data/
+
 # ── Divers ───────────────────────────────────────────────────────────────────
 npm-debug.log*
 yarn-error.log*

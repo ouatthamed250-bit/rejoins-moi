@@ -16,6 +16,12 @@
  */
 
 // v3 : passage aux icônes DÉFINITIVES (logo du fondateur, jeu PNG).
+// v5 : correctifs visuels du 30/09 (plus d'aplat orange plein sur les fiches sans
+//      photo ni sur la bannière d'installation). Les fichiers CSS/JS du build
+//      portent une empreinte dans leur nom : l'ANCIEN index.html en cache réclame
+//      des fichiers qui n'existent plus dans la nouvelle publication. Sans nouveau
+//      nom de cache, l'app installerait cet index.html périmé et la page
+//      s'afficherait SANS style jusqu'à la visite suivante.
 // v4 : refonte visuelle du 30/09 (fond ivoire dominant, orange en accent).
 //      L'app shell est servi « stale-while-revalidate » : sans nouveau nom de
 //      cache, un téléphone déjà installé afficherait l'ANCIEN thème à la
@@ -24,7 +30,7 @@
 //      passées, donc le nouveau thème est visible dès le premier chargement.
 // Changer la version est indispensable dès que les fichiers « cache d'abord »
 // (icônes) ou l'app shell changent de façon visible.
-const VERSION = 'v4';
+const VERSION = 'v5';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

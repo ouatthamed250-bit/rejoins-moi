@@ -40,6 +40,8 @@ import {
   normalizeChannel,
   PaymentError,
 } from '../services/cinetpay.js';
+import Depot from '../models/Depot.js';
+import { getDepots, getSupportWhatsapp } from '../config/paiement.js';
 
 const router = express.Router();
 router.use(requireDb);
@@ -67,7 +69,16 @@ export const METIERS = [
 
 /** GET /api/jobs/metiers — liste des métiers proposés dans le formulaire. */
 router.get('/metiers', (req, res) => {
-  res.json({ metiers: METIERS, fraisDeblocage: getUnlockFee(), devise: getCurrency(), paiementConfigure: isPaymentConfigured() });
+  res.json({
+    metiers: METIERS,
+    fraisDeblocage: getUnlockFee(),
+    devise: getCurrency(),
+    paiementConfigure: isPaymentConfigured(),
+    // Paiement MANUEL par dépôt mobile money (passerelle CinetPay non branchée) :
+    // numéros à créditer + support. Voir config/paiement.js et routes/admin.js.
+    depots: getDepots(),
+    support: getSupportWhatsapp(),
+  });
 });
 
 /**
@@ -391,6 +402,102 @@ router.post(
       }
       throw err;
     }
+  })
+);
+
+/**
+ * POST /api/jobs/:id/demande-deblocage — PAIEMENT MANUEL par dépôt mobile money.
+ * body: { operateur: 'WAVE'|'ORANGE_MONEY'|'MTN_MOMO', telephonePayeur?, reference? }
+ *
+ * La passerelle CinetPay n'étant pas branchée, l'utilisateur envoie les 500 FCFA sur
+ * le numéro de dépôt de son opérateur, puis déclare son paiement ici. Un ADMIN valide
+ * ensuite depuis le back-office (routes/admin.js) — c'est cette validation qui révèle
+ * le contact. Aucun faux succès : la demande seule ne débloque rien.
+ */
+router.post(
+  '/:id/demande-deblocage',
+  protect,
+  asyncHandler(async (req, res) => {
+    const job = await Job.findById(req.params.id);
+    if (!job) throw new ApiError(404, 'Besoin introuvable.');
+    if (job.statut === 'annule') throw new ApiError(400, 'Ce besoin a été annulé.');
+
+    const userId = req.user._id;
+
+    // Déjà débloqué (abonnement, mission journalière, paiement vérifié, dépôt validé) ?
+    if (job.dejaDebloquePar(userId)) {
+      return res.json({
+        debloque: true,
+        telephoneContact: job.telephoneContact,
+        message: 'Contact déjà débloqué.',
+      });
+    }
+
+    const operateur = String(req.body?.operateur || '').toUpperCase();
+    const canaux = getDepots().map((d) => d.canal);
+    if (!canaux.includes(operateur)) {
+      throw new ApiError(400, 'Choisissez un opérateur de dépôt (Wave, Orange Money ou MTN MoMo).');
+    }
+
+    const telephonePayeur = String(req.body?.telephonePayeur || '').trim();
+    const reference = String(req.body?.reference || '').trim();
+
+    // Pas deux demandes en attente pour le même besoin : on met à jour l'existante.
+    let depot = await Depot.findOne({ userId, jobId: job._id, statut: 'en_attente' });
+    if (depot) {
+      depot.operateur = operateur;
+      if (telephonePayeur) depot.telephonePayeur = telephonePayeur;
+      if (reference) depot.reference = reference;
+      await depot.save();
+    } else {
+      depot = await Depot.create({
+        userId,
+        jobId: job._id,
+        montant: getUnlockFee(),
+        devise: getCurrency(),
+        operateur,
+        telephonePayeur,
+        reference,
+      });
+    }
+
+    res.status(202).json({
+      depot: depot.toJSON(),
+      statut: 'en_attente',
+      montant: depot.montant,
+      devise: depot.devise,
+      operateur,
+      depots: getDepots(),
+      support: getSupportWhatsapp(),
+      message:
+        "Dépôt enregistré. Envoyez le montant sur le numéro indiqué, puis attendez la validation par l'équipe Rejoins'Moi (généralement pendant les heures ouvrables).",
+    });
+  })
+);
+
+/**
+ * GET /api/jobs/:id/demande-deblocage — état de MA demande de dépôt pour ce besoin
+ * (permet à l'écran d'afficher « en attente de validation » puis le contact une fois validé).
+ */
+router.get(
+  '/:id/demande-deblocage',
+  protect,
+  asyncHandler(async (req, res) => {
+    const job = await Job.findById(req.params.id).select('+telephoneContact');
+    if (!job) throw new ApiError(404, 'Besoin introuvable.');
+
+    const depot = await Depot.findOne({ userId: req.user._id, jobId: job._id }).sort({ createdAt: -1 });
+    const debloque = job.dejaDebloquePar(req.user._id);
+
+    res.json({
+      debloque,
+      telephoneContact: debloque ? job.telephoneContact : null,
+      depot: depot ? depot.toJSON() : null,
+      montant: getUnlockFee(),
+      devise: getCurrency(),
+      depots: getDepots(),
+      support: getSupportWhatsapp(),
+    });
   })
 );
 

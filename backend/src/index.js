@@ -25,6 +25,7 @@ import establishmentsRouter from './routes/establishments.js';
 import jobsRouter from './routes/jobs.js';
 import subscriptionsRouter from './routes/subscriptions.js';
 import healthFacilitiesRouter from './routes/healthFacilities.js';
+import adminRouter from './routes/admin.js';
 import { isPaymentConfigured, getUnlockFee } from './services/cinetpay.js';
 import { ABONNEMENT, getFormules, PERIODICITES_ACTIVES, CATALOGUE } from './config/abonnement.js';
 
@@ -133,6 +134,8 @@ app.use('/api/establishments', establishmentsRouter);
 app.use('/api/jobs', jobsRouter);
 app.use('/api/subscriptions', subscriptionsRouter);
 app.use('/api/health-facilities', healthFacilitiesRouter);
+// Back-office administrateur (dépôts + validation des déblocages + comptes).
+app.use('/api/admin', adminRouter);
 
 // ── 404 + erreurs ──
 app.use(notFound);

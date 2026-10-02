@@ -41,8 +41,47 @@ function extractToken(req) {
 }
 
 /**
+ * Authentification ADMINISTRATEUR (back-office).
+ * Vérifie le JWT PUIS que le compte porte `estAdmin: true` (relu en base à chaque
+ * requête : retirer le rôle d'un compte coupe l'accès immédiatement). Répond 403 — et
+ * non 401 — quand le jeton est valide mais que le compte n'est pas administrateur.
+ * Un compte suspendu par le back-office perd aussi l'accès (garde-fou : le compte
+ * admin ne devrait jamais l'être — la route de suspension le refuse — mais une
+ * donnée héritée ne doit pas ouvrir la porte).
+ */
+export async function protectAdmin(req, res, next) {
+  try {
+    const token = extractToken(req);
+    if (!token) return res.status(401).json({ error: 'Authentification administrateur requise.' });
+
+    const payload = jwt.verify(token, getJwtSecret());
+    const user = await User.findById(payload.sub);
+    if (!user) return res.status(401).json({ error: 'Compte introuvable ou supprimé.' });
+    if ((user.statutCompte || 'actif') === 'suspendu') {
+      return res
+        .status(403)
+        .json({ error: 'Compte administrateur suspendu.', details: { code: 'COMPTE_SUSPENDU' } });
+    }
+    if (!user.estAdmin) return res.status(403).json({ error: 'Accès administrateur requis.' });
+
+    req.user = user;
+    return next();
+  } catch (err) {
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Session admin expirée, reconnectez-vous.', code: 'TOKEN_EXPIRED' });
+    }
+    return res.status(401).json({ error: 'Jeton invalide.' });
+  }
+}
+
+/**
  * Authentification obligatoire.
  * Injecte `req.user` (document Mongoose) ou répond 401.
+ *
+ * Depuis le 01/10, un compte SUSPENDU par le back-office est refusé ici — et non
+ * seulement à la connexion : le JWT vit 30 jours, un simple blocage du login
+ * laisserait l'utilisateur travailler avec son ancien jeton. Le champ est relu en
+ * base à chaque requête, donc la suspension prend effet immédiatement.
  */
 export async function protect(req, res, next) {
   try {
@@ -52,6 +91,16 @@ export async function protect(req, res, next) {
     const payload = jwt.verify(token, getJwtSecret());
     const user = await User.findById(payload.sub);
     if (!user) return res.status(401).json({ error: 'Compte introuvable ou supprimé.' });
+    if ((user.statutCompte || 'actif') === 'suspendu') {
+      return res.status(403).json({
+        error: user.motifSuspension
+          ? `Compte suspendu : ${user.motifSuspension}`
+          : 'Compte suspendu. Contactez l’équipe Rejoins’Moi pour le réactiver.',
+        // Même forme que POST /api/users/login (voir routes/users.js) : le client lit
+        // toujours le code métier dans `details.code`, jamais à la racine.
+        details: { code: 'COMPTE_SUSPENDU' },
+      });
+    }
 
     req.user = user;
     return next();
@@ -89,4 +138,4 @@ export async function optionalAuth(req, res, next) {
  * ou sur la présence d'un abonnement (voir routes/subscriptions.js).
  */
 
-export default { protect, optionalAuth, signToken, getJwtSecret };
+export default { protect, optionalAuth, protectAdmin, signToken, getJwtSecret };

@@ -7,10 +7,18 @@
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
     "seed": "node src/seed.js",
+    "admin:creer": "node scripts/creer-admin.js",
+    "admin:supprimer": "node scripts/supprimer-admin.js",
     "importer:etablissements": "node scripts/importer-etablissements.js",
     "verifier": "npm run verifier:abonnement && npm run verifier:base",
     "verifier:abonnement": "node scripts/verifier-abonnement.js",
-    "verifier:base": "node scripts/verifier-base.js"
+    "verifier:admin": "node scripts/verifier-admin.js",
+    "verifier:admin-complement": "node scripts/verifier-admin-complement.js",
+    "verifier:base": "node scripts/verifier-base.js",
+    "verifier:rate-limit": "node scripts/verifier-rate-limit.js",
+    "verifier:compteurs": "node scripts/verifier-compteurs.js",
+    "verifier:depot": "node scripts/verifier-depot.js",
+    "verifier:pagination": "node scripts/verifier-pagination-proximite.js"
   },
   "engines": {
     "node": ">=20"

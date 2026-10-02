@@ -74,6 +74,11 @@ const userSchema = new mongoose.Schema(
     // Vrai par défaut : tout le monde peut chercher du travail, c'est le cœur de l'app.
     chercheTravail: { type: Boolean, default: true, index: true },
 
+    // Compte ADMINISTRATEUR (back-office) : accès aux routes /api/admin (voir
+    // middleware/auth.js protectAdmin). Créé par scripts/creer-admin.js. Jamais
+    // attribuable via les routes publiques d'inscription.
+    estAdmin: { type: Boolean, default: false, index: true },
+
     // Volet main-d'œuvre : métier déclaré par l'ouvrier/artisan
     metier: { type: String, trim: true, default: '' },
     bio: { type: String, trim: true, maxlength: 400, default: '' },
@@ -107,7 +112,27 @@ const userSchema = new mongoose.Schema(
     // Établissement rattaché (fiche créée ou gérée par cet utilisateur)
     etablissementId: { type: mongoose.Schema.Types.ObjectId, ref: 'Establishment' },
 
+    // Dernière connexion réussie (rempli par /api/users/login et /api/admin/login).
+    // Sert au back-office : « qui s'est connecté récemment ? » (voir GET /api/admin/activite).
     dernierLoginAt: { type: Date, default: null },
+
+    // ── État du compte, piloté par le BACK-OFFICE (ajout du 01/10) ──
+    // « actif » (défaut) : le compte vit normalement.
+    // « suspendu » : l'équipe a coupé l'accès (fraude, doublon, demande de l'utilisateur).
+    // Une suspension bloque la CONNEXION **et** les jetons déjà émis
+    // (voir middleware/auth.js protect / protectAdmin) : c'est réversible d'un clic
+    // dans le back-office — PATCH /api/admin/utilisateurs/:id/statut.
+    // Pourquoi un champ à part plutôt qu'une suppression : on veut garder l'historique
+    // des dépôts et des annonces, et pouvoir revenir en arrière.
+    statutCompte: {
+      type: String,
+      enum: ['actif', 'suspendu'],
+      default: 'actif',
+      index: true,
+    },
+    // Motif affiché à l'utilisateur bloqué (« Montant non reçu », « Doublon de compte »…).
+    motifSuspension: { type: String, trim: true, maxlength: 300, default: '' },
+    suspenduAt: { type: Date, default: null },
   },
   {
     timestamps: true,
@@ -164,6 +189,14 @@ userSchema.methods.toPublicJSON = function toPublicJSON({ abonnement = null, abo
     photoProfil: this.photoProfil,
     estArtisan: Boolean(this.estArtisan),
     chercheTravail: Boolean(this.chercheTravail),
+    estAdmin: Boolean(this.estAdmin),
+    // État du compte : le back-office affiche/aiguille dessus, donc il doit être public
+    // (le propriétaire du compte le voit aussi : on ne suspend jamais en secret).
+    statutCompte: this.statutCompte || 'actif',
+    suspendu: (this.statutCompte || 'actif') === 'suspendu',
+    motifSuspension: this.motifSuspension || '',
+    suspenduAt: this.suspenduAt || null,
+    dernierLoginAt: this.dernierLoginAt || null,
     roles: this.roles,
     metier: this.metier,
     bio: this.bio,

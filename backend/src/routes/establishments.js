@@ -24,9 +24,52 @@ import {
   escapeRegex,
 } from '../utils/validators.js';
 import { getDistanceKm, parseCoords } from '../utils/geo.js';
+import CompteurJournalier from '../models/CompteurJournalier.js';
 
 const router = express.Router();
 router.use(requireDb);
+
+/** Clé d'identité du compteur : l'utilisateur connecté, sinon son adresse IP (anonyme). */
+function cleIncrement(req) {
+  return req.user ? `u:${req.user._id}` : `ip:${req.ip || req.socket?.remoteAddress || 'inconnue'}`;
+}
+
+/**
+ * Incrémente UN compteur d'établissement au plus UNE FOIS par identité et par jour (§3).
+ *
+ * La déduplication est portée par l'index UNIQUE de CompteurJournalier
+ * ({ etablissement, type, cle, jour }) : on pose d'abord le marqueur, et seule une pose
+ * réussie autorise l'incrément. Un second appel le même jour renvoie donc
+ * `{ dejaCompte: true }` sans jamais gonfler le chiffre affiché (anti-manipulation).
+ *
+ * @param {{ req: object, type: 'visit'|'action', champ: string, select: string }} p
+ * @returns {Promise<{doc?: object, dejaCompte?: boolean, introuvable?: boolean}>}
+ */
+async function incrementerUneFoisParJour({ req, type, champ, select }) {
+  const etablissement = req.params.id;
+  const cle = cleIncrement(req);
+  const jour = new Date().toISOString().slice(0, 10); // Abidjan = UTC (pas d'heure d'été)
+
+  try {
+    await CompteurJournalier.create({ etablissement, type, cle, jour });
+  } catch (err) {
+    // 11000 = violation d'unicité : déjà compté aujourd'hui pour cette identité.
+    if (err?.code === 11000) return { dejaCompte: true };
+    throw err; // CastError (id invalide) et autres -> errorHandler (400/500)
+  }
+
+  const doc = await Establishment.findByIdAndUpdate(
+    etablissement,
+    { $inc: { [champ]: 1 } },
+    { new: true, select }
+  );
+  if (!doc) {
+    // Fiche absente : on retire le marqueur pour ne pas bloquer une future fiche.
+    await CompteurJournalier.deleteOne({ etablissement, type, cle, jour }).catch(() => {});
+    return { introuvable: true };
+  }
+  return { doc };
+}
 
 /**
  * Rayon sphérique utilisé par MongoDB pour les calculs 2dsphere (en km) :
@@ -187,8 +230,9 @@ function interclasser(listes, profondeur, mode) {
     if (!duTour.length) break; // toutes les catégories sont épuisées
     duTour.sort((a, b) =>
       mode === 'recent'
-        ? new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        : a.distanceMetres - b.distanceMetres
+        ? new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() ||
+          String(a._id).localeCompare(String(b._id))
+        : a.distanceMetres - b.distanceMetres || String(a._id).localeCompare(String(b._id))
     );
     melange.push(...duTour);
   }
@@ -225,8 +269,8 @@ async function melangeParCategorie(mode, filtre, coords, profondeur) {
     { $project: { _id: 0, docs: { $slice: ['$docs', FENETRE_MELANGE] } } },
     { $unwind: { path: '$docs', includeArrayIndex: 'rang' } },
     { $replaceRoot: { newRoot: { $mergeObjects: ['$docs', { rang: '$rang' }] } } },
-    // Un tour à la fois, et dans un tour la plus proche d'abord.
-    { $sort: { rang: 1, distanceMetres: 1 } },
+    // Un tour à la fois, et dans un tour la plus proche d'abord (départage `_id`).
+    { $sort: { rang: 1, distanceMetres: 1, _id: 1 } },
     { $limit: profondeur },
     { $project: { rang: 0 } },
   ]);
@@ -244,8 +288,10 @@ router.get('/categories', (req, res) => {
  * sort : proximity (défaut si lat/lng fournis) | note | popular | recent
  *         (défaut SANS coordonnées : recent — « popular » favorisait de fait une
  *         seule catégorie, voir la note dans le corps de la route)
- * diversite : 1 (défaut) = mélange équilibré des catégories quand aucune catégorie
- *         n'est demandée (onglet « Tous ») ; 0 = tri pur. Voir melangeParCategorie.
+ * diversite : 0 (défaut) = PROXIMITÉ PURE (onglet « Tous » : du plus proche au plus
+ *         loin, sur TOUTE la base, départage stable par `_id`) ; 1 = mélange
+ *         équilibré par catégorie. Le mélange est une OPTION, plus le défaut.
+ *         Voir melangeParCategorie.
  *
  * Note d'architecture : le backend renvoie une liste DÉJÀ triée selon des critères
  * simples et explicables (proximité, note, popularité). La personnalisation fine
@@ -318,11 +364,12 @@ router.get(
     const limitNum = Math.min(LIMITE_MAX, Math.max(1, Number(limit) || 20));
     const skip = (pageNum - 1) * limitNum;
 
-    // 3 bis) Mélange équilibré des catégories (« Tous ») — correction du 30/09.
-    //    Il s'applique quand AUCUNE catégorie n'est demandée, en tri par proximité
-    //    réelle, et tant que la fenêtre demandée tient dans DIVERSITE_PROFONDEUR_MAX
-    //    (au-delà, on retombe franchement sur la proximité pure, annoncée au client).
-    const diversiteDemandee = req.query.diversite !== '0';
+    // 3 bis) Mélange équilibré des catégories (« Tous ») — désormais une OPTION.
+    //    DÉCISION DE LANCEMENT : l'onglet « Tous » est par défaut une PROXIMITÉ PURE
+    //    sur toute la base (du plus proche au plus loin), SANS échantillonnage par
+    //    catégorie. On ne mélange donc que si le client le demande explicitement
+    //    (`diversite=1`). Le mélange reste borné par DIVERSITE_PROFONDEUR_MAX.
+    const diversiteDemandee = req.query.diversite === '1';
     const diversifie =
       (parProximite || mode === 'recent') &&
       !filtre.categorie &&
@@ -351,6 +398,12 @@ router.get(
             query: filtreCompte,
           },
         },
+        // DÉPARTAGE STABLE (exigence de lancement) : à distance égale (fiches au même
+        // point, ou distances arrondies identiques), l'ordre est fixé par `_id` —
+        // unique et immuable. Sans ce critère secondaire, l'ordre ne serait pas
+        // totalement déterminé et deux pages successives pourraient répéter ou sauter
+        // une fiche (un `$skip`/`$limit` sur un ordre ambigu n'est pas reproductible).
+        { $sort: { distanceMetres: 1, _id: 1 } },
         { $skip: skip },
         { $limit: limitNum },
       ]);
@@ -496,13 +549,27 @@ router.post(
   '/:id/visit',
   optionalAuth,
   asyncHandler(async (req, res) => {
-    const doc = await Establishment.findByIdAndUpdate(
-      req.params.id,
-      { $inc: { compteurVisites: 1 } },
-      { new: true, select: 'compteurVisites compteurUtilisateurs' }
-    );
-    if (!doc) throw new ApiError(404, 'Établissement introuvable.');
+    const resultat = await incrementerUneFoisParJour({
+      req,
+      type: 'visit',
+      champ: 'compteurVisites',
+      select: 'compteurVisites compteurUtilisateurs',
+    });
 
+    if (resultat.introuvable) throw new ApiError(404, 'Établissement introuvable.');
+    // Déjà compté aujourd'hui pour cette identité : on renvoie l'état SANS incrémenter.
+    if (resultat.dejaCompte) {
+      const doc = await Establishment.findById(req.params.id).select(
+        'compteurVisites compteurUtilisateurs'
+      );
+      return res.json({
+        compteurVisites: doc?.compteurVisites ?? 0,
+        compteurUtilisateurs: doc?.compteurUtilisateurs ?? 0,
+        dejaCompte: true,
+      });
+    }
+
+    const doc = resultat.doc;
     if (req.user) {
       req.user.ajouterInteraction({ type: 'vue', establishmentId: doc._id });
       await req.user.save().catch(() => {});
@@ -512,6 +579,7 @@ router.post(
     res.json({
       compteurVisites: doc.compteurVisites,
       compteurUtilisateurs: doc.compteurUtilisateurs,
+      dejaCompte: false,
     });
   })
 );
@@ -526,13 +594,28 @@ router.post(
   '/:id/action',
   optionalAuth,
   asyncHandler(async (req, res) => {
-    const doc = await Establishment.findByIdAndUpdate(
-      req.params.id,
-      { $inc: { compteurUtilisateurs: 1 } },
-      { new: true, select: 'compteurVisites compteurUtilisateurs nom texteBoutonAction telephone localisation' }
-    );
-    if (!doc) throw new ApiError(404, 'Établissement introuvable.');
+    const resultat = await incrementerUneFoisParJour({
+      req,
+      type: 'action',
+      champ: 'compteurUtilisateurs',
+      select: 'compteurVisites compteurUtilisateurs nom texteBoutonAction telephone localisation',
+    });
 
+    if (resultat.introuvable) throw new ApiError(404, 'Établissement introuvable.');
+    if (resultat.dejaCompte) {
+      const doc = await Establishment.findById(req.params.id).select(
+        'compteurVisites compteurUtilisateurs texteBoutonAction telephone'
+      );
+      return res.json({
+        compteurVisites: doc?.compteurVisites ?? 0,
+        compteurUtilisateurs: doc?.compteurUtilisateurs ?? 0,
+        texteBoutonAction: doc?.texteBoutonAction || '',
+        telephone: doc?.telephone || '',
+        dejaCompte: true,
+      });
+    }
+
+    const doc = resultat.doc;
     if (req.user) {
       req.user.ajouterInteraction({
         type: 'clic',
@@ -547,6 +630,7 @@ router.post(
       compteurUtilisateurs: doc.compteurUtilisateurs,
       texteBoutonAction: doc.texteBoutonAction,
       telephone: doc.telephone,
+      dejaCompte: false,
     });
   })
 );

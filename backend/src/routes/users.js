@@ -26,6 +26,7 @@ import { requireDb } from '../config/db.js';
 import { asyncHandler, ApiError } from '../middleware/errorHandler.js';
 import { normalizePhone, escapeRegex } from '../utils/validators.js';
 import { getDistanceKm, parseCoords } from '../utils/geo.js';
+import { limiteurAuth } from '../middleware/rateLimit.js';
 
 const router = express.Router();
 
@@ -42,6 +43,8 @@ router.use(requireDb);
  */
 router.post(
   '/register',
+  // Anti-spam d'inscriptions : 8 requêtes/minute par IP + numéro (voir middleware/rateLimit.js).
+  limiteurAuth(),
   asyncHandler(async (req, res) => {
     const {
       motDePasse,
@@ -103,6 +106,8 @@ router.post(
  */
 router.post(
   '/login',
+  // Anti brute-force : 8 tentatives/minute par IP + numéro (voir middleware/rateLimit.js).
+  limiteurAuth(),
   asyncHandler(async (req, res) => {
     const telephone = normalizePhone(req.body?.telephone);
     const motDePasse = req.body?.motDePasse;
@@ -113,6 +118,20 @@ router.post(
     const user = await User.findOne({ telephone }).select('+motDePasseHash');
     if (!user || !(await user.verifierMotDePasse(motDePasse))) {
       throw new ApiError(401, 'Numéro ou mot de passe incorrect.');
+    }
+
+    // Compte SUSPENDU par le back-office (01/10) : le mot de passe est bon, mais
+    // l'accès reste fermé. On vérifie APRÈS le mot de passe — pas question d'en faire
+    // un oracle « ce numéro existe » — et on transmet le motif saisi par l'équipe pour
+    // que l'utilisateur sache quoi faire plutôt que de croire à une panne.
+    if ((user.statutCompte || 'actif') === 'suspendu') {
+      throw new ApiError(
+        403,
+        user.motifSuspension
+          ? `Compte suspendu : ${user.motifSuspension}`
+          : 'Compte suspendu. Contactez l’équipe Rejoins’Moi pour le réactiver.',
+        { code: 'COMPTE_SUSPENDU' }
+      );
     }
 
     user.dernierLoginAt = new Date();

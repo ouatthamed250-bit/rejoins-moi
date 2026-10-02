@@ -23,6 +23,9 @@ const deblocageSchema = new mongoose.Schema(
     // Déblocage couvert par l'abonnement en cours (aucun frais à l'unité) — permet
     // de mesurer plus tard ce que l'abonnement « coûte » en déblocages offerts.
     viaAbonnement: { type: Boolean, default: false },
+    // Déblocage validé PAR UN ADMIN après un dépôt mobile money manuel (voir
+    // models/Depot.js + routes/admin.js). Distinct de l'abonnement et du gratuit.
+    viaDepot: { type: Boolean, default: false },
     at: { type: Date, default: Date.now },
   },
   { _id: false }

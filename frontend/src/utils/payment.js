@@ -14,10 +14,15 @@
 // affiche alors un message clair, on n'invente jamais un succès.
 
 import { api, ApiError } from './api/client.js';
+import { getDepots, getSupportWhatsapp } from '../config/paiement.js';
 
 export const FRAIS_DEBLOCAGE = Number(import.meta.env.VITE_CONTACT_UNLOCK_FEE || 500);
 export const DEVISE = import.meta.env.VITE_CURRENCY || 'XOF';
 export const OPERATEURS = ['Wave', 'Orange Money', 'MTN MoMo', 'Moov Money'];
+
+/** Numéros de dépôt de secours (miroir config/paiement.js) si le serveur est muet. */
+const DEPOTS_MANUELS = getDepots();
+const SUPPORT_MANUEL = getSupportWhatsapp();
 
 /** Erreur de paiement lisible ; `nonConfigure` = la passerelle n'est pas branchée. */
 export class PaymentError extends Error {
@@ -124,16 +129,100 @@ export function ouvrirPaiement(paymentUrl) {
   return true;
 }
 
-/** Vérifie si le backend a une passerelle de paiement configurée. */
+/**
+ * Vérifie la configuration de paiement du serveur.
+ *
+ * `mode` :
+ *   • 'cinetpay'  — la passerelle automatique est branchée (flux ci-dessus) ;
+ *   • 'depot'     — PAIEMENT MANUEL (situation actuelle) : l'utilisateur envoie les
+ *                   500 FCFA sur un numéro Wave / Orange Money / MTN MoMo, déclare son
+ *                   paiement (`declarerDepot`), et un ADMIN valide dans le back-office.
+ *   • 'indisponible' — ni l'un ni l'autre : on n'affiche aucun bouton de paiement.
+ *
+ * @returns {Promise<{configure: boolean, mode: 'cinetpay'|'depot'|'indisponible',
+ *   frais: number, devise: string, depots: Array<{canal,libelle,numero,whatsapp}>,
+ *   support: {numero:string, whatsapp:string}|null}>}
+ */
 export async function paiementDisponible() {
   try {
     const info = await api.get('/jobs/metiers', { auth: false });
+    const configure = Boolean(info?.paiementConfigure);
+    const depots = Array.isArray(info?.depots) && info.depots.length ? info.depots : DEPOTS_MANUELS;
     return {
-      configure: Boolean(info?.paiementConfigure),
+      configure,
+      mode: configure ? 'cinetpay' : depots.length ? 'depot' : 'indisponible',
       frais: Number(info?.fraisDeblocage || FRAIS_DEBLOCAGE),
+      devise: info?.devise || DEVISE,
+      depots,
+      support: info?.support || SUPPORT_MANUEL,
     };
   } catch {
-    return { configure: false, frais: FRAIS_DEBLOCAGE };
+    // Serveur injoignable : on garde les numéros du miroir (tournée terrain, panne réseau).
+    return {
+      configure: false,
+      mode: 'depot',
+      frais: FRAIS_DEBLOCAGE,
+      devise: DEVISE,
+      depots: DEPOTS_MANUELS,
+      support: SUPPORT_MANUEL,
+    };
+  }
+}
+
+/**
+ * DÉCLARE un dépôt mobile money (« j'ai payé ») pour débloquer le contact d'un besoin.
+ * La demande est ENREGISTRÉE mais ne débloque RIEN : un administrateur doit la valider
+ * depuis le back-office. Aucun faux succès n'est créé côté navigateur.
+ *
+ * @returns {Promise<{statut: string, montant: number, devise: string, operateur: string,
+ *   depots: object[], support: object, message: string}>}
+ */
+export async function declarerDepot(jobId, { operateur, telephonePayeur = '', reference = '' } = {}) {
+  try {
+    const reponse = await api.post(`/jobs/${jobId}/demande-deblocage`, {
+      operateur,
+      telephonePayeur,
+      reference,
+    });
+    return {
+      statut: reponse?.statut || 'en_attente',
+      debloque: Boolean(reponse?.debloque),
+      telephoneContact: reponse?.telephoneContact || null,
+      depot: reponse?.depot || null,
+      montant: Number(reponse?.montant ?? FRAIS_DEBLOCAGE),
+      devise: reponse?.devise || DEVISE,
+      operateur: reponse?.operateur || operateur,
+      depots: reponse?.depots || DEPOTS_MANUELS,
+      support: reponse?.support || SUPPORT_MANUEL,
+      message: reponse?.message || 'Dépôt enregistré : il sera validé par notre équipe.',
+    };
+  } catch (err) {
+    throw traduire(err);
+  }
+}
+
+/**
+ * Vérifie l'état de MA demande de dépôt pour un besoin.
+ * Renvoie `debloque: true` + le contact UNIQUEMENT si un administrateur a validé la
+ * demande (ou si le contact l'était déjà par abonnement / paiement / 1re mission offerte).
+ *
+ * @returns {Promise<{debloque: boolean, telephoneContact: string|null, depot: object|null,
+ *   montant: number, devise: string, depots: object[], support: object}>}
+ */
+export async function verifierDepot(jobId) {
+  try {
+    const reponse = await api.get(`/jobs/${jobId}/demande-deblocage`);
+    return {
+      debloque: Boolean(reponse?.debloque),
+      telephoneContact: reponse?.telephoneContact || null,
+      depot: reponse?.depot || null,
+      montant: Number(reponse?.montant ?? FRAIS_DEBLOCAGE),
+      devise: reponse?.devise || DEVISE,
+      depots: reponse?.depots || DEPOTS_MANUELS,
+      support: reponse?.support || SUPPORT_MANUEL,
+    };
+  } catch (err) {
+    throw traduire(err);
   }
 }
 
@@ -142,6 +231,8 @@ export default {
   confirmPayment,
   ouvrirPaiement,
   paiementDisponible,
+  declarerDepot,
+  verifierDepot,
   FRAIS_DEBLOCAGE,
   OPERATEURS,
 };

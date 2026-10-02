@@ -34,9 +34,13 @@
 //      première visite après la mise à jour (l'utilisateur croirait que la
 //      refonte n'est pas passée). `activate` supprime les caches des versions
 //      passées, donc le nouveau thème est visible dès le premier chargement.
+// v7 : publication du back-office ADMINISTRATEUR (écran /admin) et du dépôt de
+//      contact. Nouveau nom de cache : l'app shell change (nouvelles empreintes
+//      JS/CSS), un téléphone déjà installé garderait sinon l'ancien index.html
+//      en secours, donc l'ANCIENNE app — sans l'écran /admin.
 // Changer la version est indispensable dès que les fichiers « cache d'abord »
 // (icônes) ou l'app shell changent de façon visible.
-const VERSION = 'v6';
+const VERSION = 'v7';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];
@@ -65,6 +69,7 @@ const CHEMINS_SENSIBLES = [
   /^\/api\/jobs\/[^/]+\/(unlock|pay)/,
   /^\/api\/users\/(login|register|me|mot-de-passe|token)/, // identité
   /^\/api\/auth/,
+  /^\/api\/admin/, // back-office : jeton admin + données privées des comptes
 ];
 
 /** Hôtes de la passerelle de paiement : le service worker ne s'en mêle jamais. */

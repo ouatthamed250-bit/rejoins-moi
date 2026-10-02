@@ -174,7 +174,7 @@ class Cdp {
 }
 
 /** Attend que la page soit rendue ET stable. On ne se fie pas au premier rendu :
- *  le feed attend d'abord la position (repli Plateau au bout de 8 s) puis l'API,
+ *  le feed attend d'abord la position (réussite ou échec au bout de 8 s) puis l'API,
  *  sinon on photographie un écran vide. D'où : au moins 12 s, puis deux mesures
  *  consécutives identiques. */
 async function attendreStable(cdp, maxMs = 30000) {

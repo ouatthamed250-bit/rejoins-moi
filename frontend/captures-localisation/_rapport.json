@@ -1,0 +1,67 @@
+{
+  "accesAccorde": {
+    "chrome": "Chrome/154.0.8037.59",
+    "coords": {
+      "lat": 5.2239,
+      "lng": -3.7431
+    },
+    "promptPresent": false,
+    "badges": [
+      "27 km",
+      "28 km",
+      "33 km",
+      "35 km",
+      "39 km",
+      "40 km",
+      "29 km",
+      "35 km"
+    ],
+    "metresPremiers": [
+      27000,
+      28000,
+      33000,
+      35000,
+      39000,
+      40000,
+      29000,
+      35000
+    ],
+    "inversions": 1,
+    "cartes": 11,
+    "aResultats": false,
+    "texte": "Rejoins'Moi Découvre · Soutiens · Connecte-toi Bonjour 👋 8 établissements autour de vous — 8 affichés. Pharmacies & Cliniques Main-d’œuvre Données d’exemple Le serveur Rejoins’Moi est injoignable pour le moment. Les profils ci-dessous servent à tester l’application. Tous Alimentation Beauté Service"
+  },
+  "accesRefuse": {
+    "promptPresent": true,
+    "badges": [],
+    "metresPremiers": [],
+    "inversions": 0,
+    "cartes": 11,
+    "aResultats": false,
+    "texte": "Rejoins'Moi Découvre · Soutiens · Connecte-toi Bonjour 👋 8 établissements autour de vous — 8 affichés. Pharmacies & Cliniques Main-d’œuvre Données d’exemple Le serveur Rejoins’Moi est injoignable pour le moment. Les profils ci-dessous servent à tester l’application. Localisation désactivée Activez "
+  },
+  "triRecherche": {
+    "promptPresent": false,
+    "badges": [
+      "28 km",
+      "33 km"
+    ],
+    "metresPremiers": [
+      28000,
+      33000
+    ],
+    "inversions": 0,
+    "cartes": 5,
+    "aResultats": true,
+    "texte": "Rejoins'Moi Découvre · Soutiens · Connecte-toi Tous Alimentation Beauté Services Artisanat Commerce Santé Spiritualité Autre Artisans mis en avant Voir la page Jobs Serveur injoignable : artisans d’exemple (numéros non communiqués). Mis en avant Jean Kouassi Électricien 4,7 (34 avis) Angré, Cocody ·"
+  },
+  "conclusion": {
+    "accordeAfficheDistances": true,
+    "accordeDistancesReelles": true,
+    "refuseAffichePrompt": true,
+    "refuseAucuneDistance": true,
+    "rechercheAfficheDistances": true,
+    "rechercheTriCroissant": true
+  },
+  "note": "Le navigateur de test (origine http://localhost) n'est pas dans la liste CORS de l'API de production : les écrans basculent donc sur les données de démonstration. Cela n'affecte pas la logique de géolocalisation testée ici (les distances sont calculées côté client depuis la position réellement accordée). Le tri sur TOUTE la liste réelle est prouvé par scripts/verifier-tri-proximite.mjs."
+}

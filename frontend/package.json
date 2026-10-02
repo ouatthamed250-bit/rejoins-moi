@@ -11,6 +11,7 @@
     "verifier:pwa": "node scripts/verifier-pwa.mjs",
     "icones": "node scripts/generer-icones.mjs",
     "captures": "node scripts/capture-ecrans.mjs",
+    "captures:admin": "node scripts/capture-admin.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

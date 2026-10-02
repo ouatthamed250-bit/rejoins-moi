@@ -6,13 +6,13 @@
 //  - `enableHighAccuracy: false` : le GPS haute précision met 20-30 s à accrocher et
 //    vide la batterie. Pour trier des commerces de quartier, la précision réseau
 //    (quelques centaines de mètres) suffit largement.
-//  - `timeout: 8000` : au-delà, on affiche un repli (centre d'Abidjan, Plateau) au
-//    lieu de laisser l'utilisateur devant un écran qui tourne indéfiniment.
+//  - `timeout: 8000` : au-delà, `position` reste `null`. On n'invente AUCUN repli :
+//    l'ancien repli (centre d'Abidjan, Plateau) affichait des distances précises mais
+//    FAUSSES (ex. « 236 m » pour un lieu en réalité à 22 km) — trompeur, pas imprécis.
 //  - La position est mise en cache dans localStorage : au 2e lancement, les
 //    distances s'affichent immédiatement même sans réseau.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CENTRE_ABIDJAN } from '../utils/distance.js';
 
 const CLE_CACHE = 'rejoinsmoi.position';
 const DUREE_CACHE_MS = 30 * 60 * 1000; // 30 min : la position d'hier soir n'est plus fiable
@@ -24,7 +24,7 @@ function lireCache() {
     const { lat, lng, at } = JSON.parse(brut);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
     if (Date.now() - Number(at) > DUREE_CACHE_MS) return null;
-    return { lat, lng, approximatif: true };
+    return { lat, lng };
   } catch {
     return null;
   }
@@ -39,24 +39,22 @@ function ecrireCache(lat, lng) {
 }
 
 /**
- * @param {{ auto?: boolean, fallback?: {lat:number, lng:number} }} [options]
+ * @param {{ auto?: boolean }} [options]
  * @returns {{ lat: number|null, lng: number|null, position: object|null, loading: boolean,
- *   error: string|null, approximatif: boolean, refuser: boolean, relancer: () => void }}
+ *   error: string|null, depuisCache: boolean, refuser: boolean, relancer: () => void }}
  */
-export function useGeolocation({ auto = true, fallback = CENTRE_ABIDJAN } = {}) {
+export function useGeolocation({ auto = true } = {}) {
   const cache = typeof window === 'undefined' ? null : lireCache();
   const [position, setPosition] = useState(cache ? { lat: cache.lat, lng: cache.lng } : null);
   const [loading, setLoading] = useState(auto && !cache);
   const [error, setError] = useState(null);
-  const [approximatif, setApproximatif] = useState(Boolean(cache?.approximatif));
+  const [depuisCache, setDepuisCache] = useState(Boolean(cache));
   const [refuser, setRefuser] = useState(false);
   const monte = useRef(true);
 
   const demander = useCallback(() => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       setError("La géolocalisation n'est pas disponible sur cet appareil.");
-      setPosition(fallback);
-      setApproximatif(true);
       setRefuser(true);
       setLoading(false);
       return;
@@ -70,28 +68,27 @@ export function useGeolocation({ auto = true, fallback = CENTRE_ABIDJAN } = {}) 
         if (!monte.current) return;
         const { latitude, longitude } = pos.coords;
         setPosition({ lat: latitude, lng: longitude });
-        setApproximatif(false);
+        setDepuisCache(false);
         setRefuser(false);
         setLoading(false);
         ecrireCache(latitude, longitude);
       },
       (err) => {
         if (!monte.current) return;
-        // 1 = PERMISSION_DENIED : l'utilisateur a refusé (ou le navigateur in-app bloque)
+        // 1 = PERMISSION_DENIED : l'utilisateur a refusé (ou le navigateur in-app bloque).
         setRefuser(err.code === 1);
         setError(
           err.code === 1
-            ? "Position refusée — les distances sont calculées depuis le Plateau."
-            : 'Position indisponible — distances calculées depuis le Plateau.'
+            ? "Localisation refusée. Aucune distance n'est affichée tant qu'elle n'est pas activée."
+            : 'Localisation indisponible. Activez-la pour voir les distances.'
         );
-        // Repli : centre d'Abidjan, pour que l'app reste utilisable sans GPS.
-        setPosition(fallback);
-        setApproximatif(true);
+        // Pas de repli : on conserve la position existante (dernière position RÉELLE en
+        // cache, ou null). Aucun point inventé, donc aucune distance trompeuse.
         setLoading(false);
       },
       { enableHighAccuracy: false, timeout: 8000, maximumAge: 5 * 60 * 1000 }
     );
-  }, [fallback.lat, fallback.lng]);
+  }, []);
 
   useEffect(() => {
     monte.current = true;
@@ -108,7 +105,7 @@ export function useGeolocation({ auto = true, fallback = CENTRE_ABIDJAN } = {}) 
     position,
     loading,
     error,
-    approximatif,
+    depuisCache,
     refuser,
     relancer: demander,
   };

@@ -1,0 +1,249 @@
+{
+  "admin-01-connexion": {
+    "titreEcran": "Le suivi de la plateforme, séparé de l’application.",
+    "sousTitreEcran": null,
+    "identiteAdmin": " / ",
+    "sectionsNav": [],
+    "sectionActive": null,
+    "tuiles": [],
+    "onglets": [],
+    "ongletActif": null,
+    "badges": [],
+    "panneaux": [],
+    "lignesTableau": 0,
+    "colonnesTableau": 0,
+    "messagesVides": [],
+    "chargementEncoreAffiche": 0,
+    "texteVisible": "Rejoins’Moi BACK-OFFICE Le suivi de la plateforme, séparé de l’application. Cet espace sert à suivre les utilisateurs et l’argent, pas à chercher un emploi. Il est volontairement différent de l’application mobile : tableaux, filtres, compteurs. Vérifier les dépôts Wave / Orange Money / MTN MoMo et débloquer les contacts payés. Voir qui s’inscrit, qui se connecte vraiment, et suspendre un compte abusif. Relire le journal des inscriptions, des connexions et des paiements. Connexion administrateur Accès réservé. Identifiez-vous avec le numéro et le mot de passe du compte administrateur (l’authentification se fait par téléphone, sans e-mail). NUMÉRO DE TÉLÉPHONE MOT DE PASSE Afficher le mot de p"
+  },
+  "admin-02-tableau-de-bord": {
+    "titreEcran": "Tableau de bord",
+    "sousTitreEcran": "Suivi des comptes, de la présence réelle et des paiements",
+    "identiteAdmin": "Rejoins Admin / 70 00 00 00 1",
+    "sectionsNav": [
+      "Tableau de bord",
+      "Dépôts",
+      "Utilisateurs",
+      "Activité",
+      "Mon profil",
+      "Se déconnecter"
+    ],
+    "sectionActive": "Tableau de bord",
+    "tuiles": [
+      {
+        "libelle": "COMPTES INSCRITS",
+        "valeur": "14",
+        "note": "+14 ces 7 derniers jours"
+      },
+      {
+        "libelle": "CONNECTÉS (24 H)",
+        "valeur": "7",
+        "note": "7 sur 7 jours"
+      },
+      {
+        "libelle": "DÉPÔTS À VÉRIFIER",
+        "valeur": "1",
+        "note": "0 reçus aujourd’hui"
+      },
+      {
+        "libelle": "ENCAISSÉ (VALIDÉ)",
+        "valeur": "0 FCFA",
+        "note": "0 dépôt(s) validé(s) · contact à 500 FCFA"
+      },
+      {
+        "libelle": "COMPTES SUSPENDUS",
+        "valeur": "1",
+        "note": "Connexion coupée immédiatement, même avec un jeton déjà émis"
+      }
+    ],
+    "onglets": [],
+    "ongletActif": null,
+    "badges": [
+      "1 dépôt à vérifier",
+      "Administrateur",
+      "À vérifier",
+      "Compte suspendu",
+      "Administrateur"
+    ],
+    "panneaux": [
+      "Dépôts des 7 derniers jours",
+      "Derniers mouvements",
+      "Le reste du parc"
+    ],
+    "lignesTableau": 0,
+    "colonnesTableau": 0,
+    "messagesVides": [],
+    "chargementEncoreAffiche": 0,
+    "texteVisible": "Rejoins’Moi BACK-OFFICE SUIVI Tableau de bord Dépôts 1 Utilisateurs 14 Activité 7 COMPTE Mon profil RA Rejoins Admin70 00 00 00 1 Se déconnecter Tableau de bord Suivi des comptes, de la présence réelle et des paiements 1 dépôt à vérifier Actualiser Ouvrir l’application COMPTES INSCRITS 14 +14 ces 7 derniers jours CONNECTÉS (24 H) 7 7 sur 7 jours DÉPÔTS À VÉRIFIER 1 0 reçus aujourd’hui ENCAISSÉ (VALIDÉ) 0 FCFA 0 dépôt(s) validé(s) · contact à 500 FCFA COMPTES SUSPENDUS 1 Connexion coupée immédiatement, même avec un jeton déjà émis Dépôts des 7 derniers jours Nombre de dépôts reçus par jour ; l’infobulle donne les montants validés Actualiser 0 SAM 0 DIM 0 LUN 0 MAR 0 MER 1 JEU 0 VEN Derniers m"
+  },
+  "admin-03-depots": {
+    "titreEcran": "Dépôts",
+    "sousTitreEcran": "Vérification manuelle des dépôts mobile money",
+    "identiteAdmin": "Rejoins Admin / 70 00 00 00 1",
+    "sectionsNav": [
+      "Tableau de bord",
+      "Dépôts",
+      "Utilisateurs",
+      "Activité",
+      "Mon profil",
+      "Se déconnecter"
+    ],
+    "sectionActive": "Dépôts 1",
+    "tuiles": [],
+    "onglets": [
+      "À vérifier 1",
+      "Validés 0",
+      "Rejetés 0",
+      "Tous"
+    ],
+    "ongletActif": "À vérifier 1",
+    "badges": [
+      "1 dépôt à vérifier",
+      "Wave",
+      "À vérifier"
+    ],
+    "panneaux": [
+      "Dépôts — À vérifier"
+    ],
+    "lignesTableau": 1,
+    "colonnesTableau": 7,
+    "messagesVides": [],
+    "chargementEncoreAffiche": 0,
+    "texteVisible": "Rejoins’Moi BACK-OFFICE SUIVI Tableau de bord Dépôts 1 Utilisateurs 14 Activité 7 COMPTE Mon profil RA Rejoins Admin70 00 00 00 1 Se déconnecter Dépôts Vérification manuelle des dépôts mobile money 1 dépôt à vérifier Actualiser Ouvrir l’application Dépôts — À vérifier 1 dépôt(s) affiché(s). Chaque validation révèle le contact de l’annonce à l’utilisateur qui a payé. Actualiser À vérifier 1 Validés 0 Rejetés 0 Tous RECHERCHER (COMPTE, RÉFÉRENCE, ANNONCE) REÇU LE COMPTE PAYEUR ANNONCE CONCERNÉE PAIEMENT DÉCLARÉ MONTANT ÉTAT VÉRIFICATION 01/10/26 23:31 il y a 10 h AS Admin286 Suivi 70 31 55 28 6 Mise aux normes d’un tableau électrique Demande d’emploi · Électricien Wave réf. REF-ADMIN-1 payé pa"
+  },
+  "admin-04-utilisateurs": {
+    "titreEcran": "Utilisateurs",
+    "sousTitreEcran": "Comptes inscrits : recherche, fiche, validation et suspension",
+    "identiteAdmin": "Rejoins Admin / 70 00 00 00 1",
+    "sectionsNav": [
+      "Tableau de bord",
+      "Dépôts",
+      "Utilisateurs",
+      "Activité",
+      "Mon profil",
+      "Se déconnecter"
+    ],
+    "sectionActive": "Utilisateurs 14",
+    "tuiles": [],
+    "onglets": [
+      "Tous les comptes 14",
+      "Actifs 13",
+      "Suspendus 1",
+      "Artisans 7",
+      "Chercheurs 12",
+      "Administrateurs 2"
+    ],
+    "ongletActif": "Tous les comptes 14",
+    "badges": [
+      "1 dépôt à vérifier",
+      "Administrateur",
+      "Actif",
+      "Artisan",
+      "Cherche un emploi",
+      "1 à vérifier",
+      "Suspendu",
+      "Artisan",
+      "Cherche un emploi",
+      "Actif",
+      "Administrateur",
+      "Actif"
+    ],
+    "panneaux": [
+      "Comptes inscrits"
+    ],
+    "lignesTableau": 14,
+    "colonnesTableau": 7,
+    "messagesVides": [],
+    "chargementEncoreAffiche": 0,
+    "texteVisible": "Rejoins’Moi BACK-OFFICE SUIVI Tableau de bord Dépôts 1 Utilisateurs 14 Activité 7 COMPTE Mon profil RA Rejoins Admin70 00 00 00 1 Se déconnecter Utilisateurs Comptes inscrits : recherche, fiche, validation et suspension 1 dépôt à vérifier Actualiser Ouvrir l’application Comptes inscrits 14 compte(s) dans ce filtre · 7 connecté(s) ces 24 h · 1 suspendu(s) Actualiser RECHERCHER UN COMPTE TRIER PAR Inscription récente Dernière connexion Comptes dormants Nom (A → Z) Tous les comptes 14 Actifs 13 Suspendus 1 Artisans 7 Chercheurs 12 Administrateurs 2 Cliquez une ligne pour ouvrir la fiche complète. COMPTE RÔLE ACTIVITÉ PAIEMENTS INSCRIPTION DERNIÈRE CONNEXION ÉTAT RA Rejoins Admin 70 00 00 00 1 A"
+  },
+  "admin-05-activite": {
+    "titreEcran": "Activité",
+    "sousTitreEcran": "Inscriptions, connexions et paiements, dans un seul journal",
+    "identiteAdmin": "Rejoins Admin / 70 00 00 00 1",
+    "sectionsNav": [
+      "Tableau de bord",
+      "Dépôts",
+      "Utilisateurs",
+      "Activité",
+      "Mon profil",
+      "Se déconnecter"
+    ],
+    "sectionActive": "Activité 7",
+    "tuiles": [
+      {
+        "libelle": "CONNECTÉS (24 H)",
+        "valeur": "7",
+        "note": "7 sur les 7 derniers jours"
+      },
+      {
+        "libelle": "CONNECTÉS (7 J)",
+        "valeur": "7",
+        "note": "comptes réellement revenus"
+      },
+      {
+        "libelle": "COMPTES SUSPENDUS",
+        "valeur": "1",
+        "note": "connexion coupée pour eux"
+      },
+      {
+        "libelle": "MOUVEMENTS AFFICHÉS",
+        "valeur": "22",
+        "note": "30 derniers chargés"
+      }
+    ],
+    "onglets": [
+      "Tout",
+      "Inscriptions",
+      "Connexions",
+      "Paiements"
+    ],
+    "ongletActif": "Tout",
+    "badges": [
+      "1 dépôt à vérifier",
+      "Administrateur",
+      "À vérifier",
+      "Compte suspendu",
+      "Administrateur"
+    ],
+    "panneaux": [
+      "Journal — Tout"
+    ],
+    "lignesTableau": 0,
+    "colonnesTableau": 0,
+    "messagesVides": [],
+    "chargementEncoreAffiche": 0,
+    "texteVisible": "Rejoins’Moi BACK-OFFICE SUIVI Tableau de bord Dépôts 1 Utilisateurs 14 Activité 7 COMPTE Mon profil RA Rejoins Admin70 00 00 00 1 Se déconnecter Activité Inscriptions, connexions et paiements, dans un seul journal 1 dépôt à vérifier Actualiser Ouvrir l’application CONNECTÉS (24 H) 7 7 sur les 7 derniers jours CONNECTÉS (7 J) 7 comptes réellement revenus COMPTES SUSPENDUS 1 connexion coupée pour eux MOUVEMENTS AFFICHÉS 22 30 derniers chargés Journal — Tout Inscriptions, connexions et paiements fusionnés, du plus récent au plus ancien Actualiser Tout Inscriptions Connexions Paiements AFFICHER 20 derniers 30 derniers 60 derniers (maximum) FILTRER DANS LA LISTE (NOM, NUMÉRO, RÉFÉRENCE) Connexion"
+  },
+  "admin-06-mon-profil": {
+    "titreEcran": "Mon profil",
+    "sousTitreEcran": "Votre compte administrateur : sécurité, session et déconnexion",
+    "identiteAdmin": "Rejoins Admin / 70 00 00 00 1",
+    "sectionsNav": [
+      "Tableau de bord",
+      "Dépôts",
+      "Utilisateurs",
+      "Activité",
+      "Mon profil",
+      "Se déconnecter"
+    ],
+    "sectionActive": "Mon profil",
+    "tuiles": [],
+    "onglets": [],
+    "ongletActif": null,
+    "badges": [
+      "1 dépôt à vérifier",
+      "Administrateur",
+      "Session active"
+    ],
+    "panneaux": [
+      "Votre compte administrateur",
+      "Mot de passe"
+    ],
+    "lignesTableau": 0,
+    "colonnesTableau": 0,
+    "messagesVides": [],
+    "chargementEncoreAffiche": 0,
+    "texteVisible": "Rejoins’Moi BACK-OFFICE SUIVI Tableau de bord Dépôts 1 Utilisateurs 14 Activité 7 COMPTE Mon profil RA Rejoins Admin70 00 00 00 1 Se déconnecter Mon profil Votre compte administrateur : sécurité, session et déconnexion 1 dépôt à vérifier Actualiser Ouvrir l’application Votre compte administrateur Identité et état du compte connecté RA Rejoins Admin70 00 00 00 1 · accès back-office Administrateur Session active Téléphone (identifiant de connexion) 70 00 00 00 1 Identifiant technique 6abf7affdd4558e2748fa467 Compte créé le 02/10/26 09:35 Dernière connexion 02/10/26 09:48 (à l'instant) Jeton conservé Jeton admin actif, rangé à part de la session de l’application. Relire depuis le serveur Se déc"
+  }
+}

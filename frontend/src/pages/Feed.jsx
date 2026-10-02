@@ -26,6 +26,7 @@ import ArtisansMisEnAvant from '../components/ArtisansMisEnAvant.jsx';
 import EstablishmentCard from '../components/EstablishmentCard.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import InfoBanner from '../components/InfoBanner.jsx';
+import PromptLocalisation from '../components/PromptLocalisation.jsx';
 import { Icon } from '../components/Icons.jsx';
 import { api } from '../utils/api/client.js';
 import { urlItineraire } from '../utils/distance.js';
@@ -50,7 +51,6 @@ export default function Feed() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [encore, setEncore] = useState(false);
-  const [melange, setMelange] = useState(false);
   const [chargementPlus, setChargementPlus] = useState(false);
   const [chargement, setChargement] = useState(true);
   const [horsLigne, setHorsLigne] = useState(false);
@@ -79,10 +79,11 @@ export default function Feed() {
         if (categorie !== 'tous') {
           requete.set('categorie', categorie);
         } else {
-          // Onglet « Tous » : on demande explicitement le mélange équilibré des
-          // catégories (aucune catégorie ne doit occuper tout l'écran). Correction
-          // du 30/09 : le feed « Tous » était 100 % « Transfert d'argent »/« Beauté ».
-          requete.set('diversite', '1');
+          // Onglet « Tous » : PROXIMITÉ PURE sur toute la base (décision de lancement).
+          // `diversite=0` = pas de mélange par catégorie : le serveur renvoie les fiches
+          // strictement du plus proche au plus loin (départage stable par `_id`), et la
+          // pagination couvre alors l'intégralité de l'annuaire sans doublon ni trou.
+          requete.set('diversite', '0');
         }
         if (coords) {
           requete.set('lat', coords.lat);
@@ -90,11 +91,18 @@ export default function Feed() {
         }
         const reponse = await api.get(`/establishments?${requete.toString()}`, { auth: false });
         const items = reponse.items || [];
-        setBruts((precedents) => (numeroPage > 1 ? [...precedents, ...items] : items));
+        // Anti-doublon de sécurité : on n'ajoute jamais une fiche déjà chargée. Le
+        // serveur garantit déjà l'unicité (départage `_id`), mais un scroll long ne doit
+        // jamais afficher deux fois le même établissement, même en cas de réponse rejouée.
+        setBruts((precedents) => {
+          const base = numeroPage > 1 ? precedents : [];
+          const vus = new Set(base.map((e) => String(e.id)));
+          const ajouts = items.filter((e) => !vus.has(String(e.id)));
+          return [...base, ...ajouts];
+        });
         setTotal(Number(reponse.total) || 0);
         setPage(numeroPage);
         setEncore(reponse.hasMore !== false);
-        setMelange(categorie === 'tous' && reponse.diversite !== false);
         setHorsLigne(false);
       } catch {
         if (numeroPage === 1) {
@@ -115,11 +123,11 @@ export default function Feed() {
   );
 
   /**
-   * On ne demande RIEN tant que la position n'est pas fixée : sans coordonnées,
-   * l'API ne peut pas trier par proximité et retombe sur les fiches les plus
-   * récentes — un annuaire de quartier sans le quartier. La position est toujours
-   * disponible à l'appel suivant (repli Plateau au bout de 8 s au pire, voir
-   * useGeolocation) : l'écran ne reste donc jamais bloqué. Correction du 30/09.
+   * On attend que la position soit réglée (position réelle obtenue, ou échec
+   * constaté au bout de 8 s). Sans coordonnées, l'API trie par récence et renvoie
+   * les fiches SANS distance : on affiche alors le bandeau « Activez la
+   * localisation » (PromptLocalisation) au lieu d'une distance trompeuse. L'écran ne
+   * reste donc jamais bloqué. Correction du 01/10.
    */
   const positionPrete = Boolean(position.position) || !position.loading;
 
@@ -136,20 +144,23 @@ export default function Feed() {
     [bruts, categorie]
   );
 
-  const { orderedEstablishments, personnalise } = useFeedAlgorithm(filtres, {
+  const { orderedEstablishments: ordonnesAlgo, personnalise } = useFeedAlgorithm(filtres, {
     userId: profil?.id,
-    // Quand l'API a renvoyé un ordre MÉLANGÉ (onglet « Tous »), on ne le retrie pas
-    // par proximité côté client : cela recollerait en tête la catégorie la plus dense
-    // et annulerait le mélange. Note et affinités apprises continuent de s'appliquer.
-    position: melange ? null : position.position,
+    position: position.position,
     interactions: historique,
     favoris,
   });
 
-  // « Afficher plus » n'est proposé, sur l'onglet « Tous », que tant que l'API garde
-  // le mélange équilibré (`diversite`) : au-delà, elle repasse en proximité pure et
-  // les pages suivantes répéteraient des fiches déjà affichées.
-  const peutChargerPlus = encore && (categorie !== 'tous' || melange);
+  // Onglet « Tous » : on conserve STRICTEMENT l'ordre renvoyé par le serveur (proximité
+  // pure, départage `_id`). Toute re-personnalisation côté client recollerait des fiches
+  // et casserait la garantie de lancement « du plus proche au plus loin ». La
+  // personnalisation (§3) reste active sur les onglets de catégorie.
+  const orderedEstablishments = categorie === 'tous' ? filtres : ordonnesAlgo;
+
+  // Pagination COMPLÈTE (décision de lancement) : l'onglet « Tous » étant désormais en
+  // proximité pure (ordre total stable, départage `_id`), on peut demander les pages
+  // suivantes jusqu'à avoir parcouru TOUTE la base — sans doublon ni fiche sautée.
+  const peutChargerPlus = encore;
 
   // ── Bouton d'action : « Aller chez <nom> » ──
   const ouvrirItineraire = useCallback(
@@ -208,8 +219,14 @@ export default function Feed() {
         <p className="text-sm text-ink-muted">
           {bruts.length > 0
             ? `${total || bruts.length} établissements autour de vous${
-                melange ? ', toutes catégories mélangées' : ''
-              }${personnalise ? ', triés pour vous' : ''} — ${bruts.length} affichés.`
+                categorie === 'tous'
+                  ? position.position
+                    ? ', du plus proche au plus loin'
+                    : ''
+                  : personnalise
+                    ? ', triés pour vous'
+                    : ''
+              } — ${bruts.length} affichés.`
             : 'Découvrez les commerces et artisans de votre quartier.'}
         </p>
       </section>
@@ -231,6 +248,8 @@ export default function Feed() {
           Le serveur Rejoins’Moi est injoignable pour le moment. Les profils ci-dessous servent à tester l’application.
         </InfoBanner>
       )}
+
+      <PromptLocalisation position={position} className="mb-3" />
 
       {message && (
         <InfoBanner variante="info" className="mb-3" action={{ libelle: 'OK', onClick: () => setMessage('') }}>
@@ -295,17 +314,20 @@ export default function Feed() {
 
       {!chargement && orderedEstablishments.length > 0 && categorie === 'tous' && !peutChargerPlus && (
         <p className="mt-4 text-center text-[11px] leading-snug text-ink-muted">
-          Vous avez parcouru le mélange du quartier. Choisissez une catégorie juste au-dessus pour aller plus
-          loin dans un type de commerce.
+          Vous avez parcouru tous les établissements. Choisissez une catégorie juste au-dessus pour affiner.
         </p>
       )}
 
-      {/* Explicabilité de l'algorithme (§3) : on dit franchement comment ça trie. */}
+      {/* Explicabilité : on dit franchement comment ça trie (§3). */}
       {orderedEstablishments.length > 0 && (
         <p className="mt-4 text-center text-[11px] leading-snug text-ink-muted">
-          {personnalise
-            ? 'Ordre personnalisé selon vos recherches et visites récentes.'
-            : 'Ordre basé sur la proximité et les notes. Il s’affinera au fil de vos recherches.'}
+          {categorie === 'tous'
+            ? position.position
+              ? 'Triés du plus proche au plus loin.'
+              : 'Les établissements les plus récents. Activez la localisation pour trier par distance.'
+            : personnalise
+              ? 'Ordre personnalisé selon vos recherches et visites récentes.'
+              : 'Ordre basé sur la proximité et les notes. Il s’affinera au fil de vos recherches.'}
         </p>
       )}
     </div>

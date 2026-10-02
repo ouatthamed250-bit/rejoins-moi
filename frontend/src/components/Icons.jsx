@@ -284,6 +284,66 @@ const TRACES = {
       <path d="M3.5 3.5l17 17" />
     </>
   ),
+
+  // ── Back-office (outils d'administration, 01/10) ──
+  // Ces icônes ne servent QU'À l'espace admin : elles n'apparaissent nulle part dans le
+  // parcours mobile, pour que l'administrateur reconnaisse son outil au premier coup d'œil.
+  shield: <path d="M12 3.2 19 6v5.4c0 4.5-2.9 8-7 9.4-4.1-1.4-7-4.9-7-9.4V6l7-2.8Z" />,
+  shieldCheck: (
+    <>
+      <path d="M12 3.2 19 6v5.4c0 4.5-2.9 8-7 9.4-4.1-1.4-7-4.9-7-9.4V6l7-2.8Z" />
+      <path d="m9.2 12 2.1 2.1 4-4" />
+    </>
+  ),
+  chart: (
+    <>
+      <path d="M4 20h16" />
+      <path d="M7.5 20v-6" />
+      <path d="M12 20V6.5" />
+      <path d="M16.5 20v-9" />
+    </>
+  ),
+  activity: <path d="M3 12.5h3.8L9 6l3.6 12 2.6-5.5H21" />,
+  userCheck: (
+    <>
+      <circle cx="10" cy="8" r="3.5" />
+      <path d="M4 20a6.2 6.2 0 0 1 11.3-3.2" />
+      <path d="m15 17 2 2 3.8-3.8" />
+    </>
+  ),
+  logOut: (
+    <>
+      <path d="M14.5 4a1 1 0 0 0-1-1H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h7.5a1 1 0 0 0 1-1" />
+      <path d="M11 12h10" />
+      <path d="m17.5 8 4 4-4 4" />
+    </>
+  ),
+  key: (
+    <>
+      <circle cx="8" cy="15.5" r="3.5" />
+      <path d="m10.6 13 7.9-7.9" />
+      <path d="m15.5 8.1 2 2" />
+      <path d="m13.4 10.2 2 2" />
+    </>
+  ),
+  ban: (
+    <>
+      <circle cx="12" cy="12" r="8" />
+      <path d="m6.6 6.6 10.8 10.8" />
+    </>
+  ),
+  refresh: (
+    <>
+      <path d="M20 11.5a8 8 0 1 0-1.2 5.3" />
+      <path d="M20 4.8v5.4h-5.4" />
+    </>
+  ),
+  edit: (
+    <>
+      <path d="M4 20h4.2L20 8.2 15.8 4 4 15.8V20Z" />
+      <path d="m14 5.8 4.2 4.2" />
+    </>
+  ),
 };
 
 /**

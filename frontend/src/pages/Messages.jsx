@@ -20,8 +20,9 @@ import { Icon } from '../components/Icons.jsx';
 import { useAuth } from '../hooks/useAuth.js';
 import { formatDateRelative, formatTelephone } from '../utils/format.js';
 import { listerMisesEnRelation } from '../utils/contactsLocaux.js';
+import { getSupportWhatsapp } from '../config/paiement.js';
 
-const NUMERO_SUPPORT = '+2250700000000';
+const SUPPORT = getSupportWhatsapp();
 
 export default function Messages() {
   const navigate = useNavigate();
@@ -98,7 +99,7 @@ export default function Messages() {
         </p>
         <a
           className="btn-ghost w-full text-sm"
-          href={`https://wa.me/${NUMERO_SUPPORT.replace('+', '')}?text=${encodeURIComponent(
+          href={`https://wa.me/${SUPPORT.whatsapp}?text=${encodeURIComponent(
             `Bonjour Rejoins'Moi, je suis ${profil?.nomComplet || 'un utilisateur'}.`
           )}`}
           target="_blank"

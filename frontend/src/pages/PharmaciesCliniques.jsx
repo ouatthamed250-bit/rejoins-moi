@@ -25,6 +25,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import HealthListItem from '../components/HealthListItem.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import InfoBanner from '../components/InfoBanner.jsx';
+import PromptLocalisation from '../components/PromptLocalisation.jsx';
 import { Icon } from '../components/Icons.jsx';
 import { api } from '../utils/api/client.js';
 import { urlItineraire, distanceDepuis } from '../utils/distance.js';
@@ -232,9 +233,11 @@ export default function PharmaciesCliniques() {
         </InfoBanner>
       )}
 
-      {position.approximatif && position.position && !chargement && (
+      <PromptLocalisation position={position} className="mb-3" />
+
+      {position.depuisCache && position.position && !chargement && (
         <InfoBanner variante="info" className="mb-3">
-          Distances calculées depuis le Plateau (position exacte indisponible).
+          Distances basées sur votre dernière position enregistrée.
         </InfoBanner>
       )}
 

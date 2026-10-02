@@ -16,10 +16,34 @@
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { confirmPayment, initiatePayment, ouvrirPaiement } from '../utils/payment.js';
+import { confirmPayment, declarerDepot, initiatePayment, ouvrirPaiement, verifierDepot } from '../utils/payment.js';
 import { ecrireContactsLocaux, lireContactsLocaux } from '../utils/contactsLocaux.js';
 import { formatFcfa } from '../utils/format.js';
 import { useAuth } from './useAuth.js';
+
+// Demandes de dépôt mobile money déclarées par l'utilisateur, mémorisées sur
+// l'appareil : elles permettent d'afficher « en attente de validation » (et le
+// numéro de référence à donner au support) même après fermeture de l'app.
+// ⚠️ Ce cache n'autorise RIEN : seul le serveur dit si le contact est débloqué.
+const CLE_DEMANDES = 'rejoinsmoi.demandesDepot';
+
+function lireDemandesLocales() {
+  try {
+    const brut = localStorage.getItem(CLE_DEMANDES);
+    const objet = brut ? JSON.parse(brut) : {};
+    return objet && typeof objet === 'object' ? objet : {};
+  } catch {
+    return {};
+  }
+}
+
+function ecrireDemandesLocales(demandes) {
+  try {
+    localStorage.setItem(CLE_DEMANDES, JSON.stringify(demandes));
+  } catch {
+    /* mode privé : on continue sans persistance */
+  }
+}
 
 /**
  * @param {object} [options]
@@ -37,9 +61,13 @@ export function useDeblocageContact({
   const { connecte, estDemo, ajouterInteraction } = useAuth();
 
   const [contacts, setContacts] = useState(() => lireContactsLocaux());
+  const [demandes, setDemandes] = useState(() => lireDemandesLocales());
   const [enCours, setEnCours] = useState('');
   const [erreur, setErreur] = useState('');
   const [message, setMessage] = useState('');
+
+  /** La demande de dépôt mémorisée pour un besoin (null si aucune). */
+  const maDemande = useCallback((id) => demandes[String(id)] || null, [demandes]);
 
   /** Le contact de cette annonce est-il déjà débloqué sur cet appareil ? */
   const telephoneDebloque = useCallback(
@@ -147,17 +175,118 @@ export function useDeblocageContact({
     [contacts, memoriserContact]
   );
 
+  /**
+   * PAIEMENT MANUEL — « J'ai payé » : enregistre une demande de dépôt mobile money.
+   * Ne débloque rien par elle-même : un administrateur doit la valider (voir
+   * routes/admin.js). On mémorise la référence localement pour l'afficher.
+   */
+  const demanderDepot = useCallback(
+    async (besoin, { operateur, telephonePayeur = '', reference = '' } = {}) => {
+      if (!connecte) {
+        navigate('/connexion', { state: { depuis: cheminConnexion } });
+        return null;
+      }
+      if (estDemo || horsLigne) {
+        setErreur('Aucune déclaration de paiement possible hors ligne ou en démonstration.');
+        return null;
+      }
+
+      setErreur('');
+      setMessage('');
+      setEnCours(String(besoin.id));
+      try {
+        const reponse = await declarerDepot(besoin.id, { operateur, telephonePayeur, reference });
+
+        // Cas particulier : le besoin était déjà débloqué (abonnement, 1re mission
+        // offerte…). Le serveur le dit, on affiche directement le contact.
+        if (reponse.debloque && reponse.telephoneContact) {
+          memoriserContact(besoin, reponse.telephoneContact, reponse.montant);
+          setMessage(reponse.message || 'Contact déjà débloqué.');
+          return reponse;
+        }
+
+        setDemandes((prec) => {
+          const suivant = {
+            ...prec,
+            [String(besoin.id)]: {
+              statut: reponse.statut,
+              operateur: reponse.operateur,
+              montant: reponse.montant,
+              devise: reponse.devise,
+              reference: reponse.depot?.reference || reference,
+              depotId: reponse.depot?.id || null,
+              at: new Date().toISOString(),
+            },
+          };
+          ecrireDemandesLocales(suivant);
+          return suivant;
+        });
+        setMessage(
+          `Dépôt déclaré (${formatFcfa(reponse.montant)} via ${
+            reponse.depots.find((d) => d.canal === reponse.operateur)?.libelle || reponse.operateur
+          }). Nous vérifions votre paiement, puis le numéro s'affichera ici.`
+        );
+        return reponse;
+      } catch (err) {
+        setErreur(err?.message || 'Déclaration impossible pour le moment. Réessayez.');
+        return null;
+      } finally {
+        setEnCours('');
+      }
+    },
+    [connecte, estDemo, horsLigne, navigate, cheminConnexion, memoriserContact]
+  );
+
+  /**
+   * PAIEMENT MANUEL — interroge le serveur : ma demande a-t-elle été validée ?
+   * Si oui, le contact est révélé et mémorisé (même chemin que l'abonnement).
+   */
+  const verifierMaDemande = useCallback(
+    async (besoin) => {
+      setErreur('');
+      setEnCours(String(besoin.id));
+      try {
+        const reponse = await verifierDepot(besoin.id);
+        if (reponse.debloque && reponse.telephoneContact) {
+          memoriserContact(besoin, reponse.telephoneContact, reponse.montant);
+          setDemandes((prec) => {
+            const suivant = { ...prec };
+            delete suivant[String(besoin.id)];
+            ecrireDemandesLocales(suivant);
+            return suivant;
+          });
+          setMessage('Paiement validé : le numéro de contact est affiché.');
+          return true;
+        }
+        setMessage(
+          'Votre dépôt est enregistré mais pas encore validé. Réessayez dans quelques minutes ou écrivez au support WhatsApp.'
+        );
+        return false;
+      } catch (err) {
+        setErreur(err?.message || 'Vérification impossible pour le moment.');
+        return false;
+      } finally {
+        setEnCours('');
+      }
+    },
+    [memoriserContact]
+  );
+
   return {
     contacts,
+    demandes,
     enCours,
     erreur,
     message,
     setErreur,
     setMessage,
     telephoneDebloque,
+    maDemande,
     memoriserContact,
     debloquer,
     verifierPaiement,
+    demanderDepot,
+    verifierMaDemande,
   };
 }
 

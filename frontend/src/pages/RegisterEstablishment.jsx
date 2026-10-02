@@ -375,7 +375,7 @@ export default function RegisterEstablishment() {
           <p className="mb-2 flex items-center gap-1 text-[11px] font-semibold text-health-dark">
             <Icon name="mapPin" size={13} />
             Position enregistrée ({coords.lat.toFixed(4)}, {coords.lng.toFixed(4)})
-            {position.approximatif ? ' — approximative (Plateau)' : ''}
+            {position.depuisCache ? ' — dernière position enregistrée' : ''}
           </p>
         ) : (
           <p className="mb-2 text-[11px] text-danger">Position non détectée : autorisez la géolocalisation.</p>

@@ -197,6 +197,28 @@ export default function MenuPrincipal({ ouvert, onFermer }) {
           )}
         </div>
 
+        {/* Back-office : visible UNIQUEMENT pour les comptes administrateur. L'accès
+            reste de toute façon refusé côté serveur (protectAdmin relit estAdmin). */}
+        {profil?.estAdmin && (
+          <div className="mx-3 mb-3 rounded-md border border-line bg-white p-3">
+            <p className="flex items-center gap-2 text-xs font-bold text-ink">
+              <Icon name="lock" size={16} className="text-primary" />
+              Back-office administrateur
+            </p>
+            <p className="mt-1 text-[11px] leading-snug text-ink-muted">
+              Valider les dépôts mobile money, gérer les comptes inscrits.
+            </p>
+            <button
+              type="button"
+              className="bouton-principal mt-2 w-full py-2 text-xs"
+              onClick={() => aller('/admin')}
+            >
+              <Icon name="grid" size={16} />
+              Ouvrir l’administration
+            </button>
+          </div>
+        )}
+
         {/* Abonnement : l'option qui débloque Jobs + la mise en avant du profil artisan. */}
         <div className="mx-3 mb-3 rounded-md border border-primary/30 bg-primary/5 p-3">
           <p className="flex items-center gap-2 text-xs font-bold text-ink">

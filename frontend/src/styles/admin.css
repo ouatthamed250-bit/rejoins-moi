@@ -1,0 +1,1411 @@
+/* admin.css — Feuille de style du BACK-OFFICE (espace administrateur).
+ *
+ * ⚠️ Fichier VOLONTAIREMENT SÉPARÉ de styles/theme.css.
+ * L'app des utilisateurs est un parcours mobile : cartes arrondies (16–24 px), fond
+ * ivoire, gros boutons pleine largeur, tout centré sur 480 px. Le back-office est un
+ * OUTIL DE TRAVAIL : on y lit des tableaux, on compare, on trie. Si l'admin voit le même
+ * écran que tout le monde, il ne sait plus où il est et il ne peut rien exploiter.
+ *
+ * Parti pris visuel (délibérément différent) :
+ *   - police système (Segoe UI/system-ui) et non Poppins : rendu « outil », pas « vitrine » ;
+ *   - fond gris ardoise (#EEF1F6) et non ivoire ;
+ *   - barre latérale sombre + zone de contenu blanc cassé, sur toute la largeur de l'écran ;
+ *   - coins peu arrondis (8–10 px), ombres discrètes, densité de tableau élevée ;
+ *   - accent orange de la marque, mais en aplats et en traits, jamais en gros boutons ronds.
+ *
+ * Aucune classe de theme.css n'est réutilisée ici : tout est préfixé `bo-` pour montrer
+ * au premier coup d'œil que ce fichier ne sert qu'au back-office.
+ */
+
+.bo {
+  --bo-fond: #eef1f6;
+  --bo-panneau: #ffffff;
+  --bo-nuit: #101828;
+  --bo-nuit-2: #18233a;
+  --bo-trait: #dbe2ec;
+  --bo-texte: #16202b;
+  --bo-doux: #64748b;
+  --bo-accent: #ff7a18;
+  --bo-accent-fonce: #d95f0b;
+  --bo-vert: #1f9d55;
+  --bo-rouge: #d64545;
+  --bo-ambre: #b7791f;
+  --bo-info: #2563eb;
+
+  min-height: 100vh;
+  display: flex;
+  align-items: stretch;
+  background: var(--bo-fond);
+  color: var(--bo-texte);
+  font-family: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.bo *,
+.bo *::before,
+.bo *::after {
+  box-sizing: border-box;
+}
+
+.bo h1,
+.bo h2,
+.bo h3,
+.bo h4,
+.bo p {
+  margin: 0;
+}
+
+.bo button,
+.bo input,
+.bo select,
+.bo textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/* ─────────────────────────── Barre latérale (navigation) ─────────────────────────── */
+
+.bo-nav {
+  width: 244px;
+  flex: 0 0 244px;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  height: 100vh;
+  overflow-y: auto;
+  background: linear-gradient(180deg, var(--bo-nuit) 0%, var(--bo-nuit-2) 100%);
+  color: #cbd5e1;
+  display: flex;
+  flex-direction: column;
+  padding: 18px 14px 14px;
+  gap: 18px;
+}
+
+.bo-nav-marque {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 6px;
+}
+
+.bo-nav-logo {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: var(--bo-accent);
+  color: #1b1b1b;
+  flex: 0 0 auto;
+}
+
+.bo-nav-marque-texte {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
+.bo-nav-marque-nom {
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.bo-nav-marque-role {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--bo-accent);
+}
+
+.bo-nav-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Un groupe = un titre + ses liens. Les liens se touchent presque (2px) : ils forment
+   un bloc, alors que deux GROUPES respirent (20px, donné par .bo-nav-sections). */
+.bo-nav-groupe {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bo-nav-titre {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #7b8794;
+  padding: 0 8px;
+  margin-bottom: 6px;
+}
+
+.bo-nav-lien {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 0;
+  border-left: 3px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #cbd5e1;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.bo-nav-lien:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+}
+
+.bo-nav-lien--actif {
+  background: rgba(255, 122, 24, 0.16);
+  border-left-color: var(--bo-accent);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.bo-nav-lien-texte {
+  flex: 1;
+}
+
+.bo-nav-pastille {
+  min-width: 22px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--bo-accent);
+  color: #1b1b1b;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.bo-nav-pastille--calme {
+  background: rgba(255, 255, 255, 0.14);
+  color: #e2e8f0;
+}
+
+.bo-nav-pastille--alerte {
+  background: var(--bo-rouge);
+  color: #ffffff;
+}
+
+.bo-nav-pied {
+  margin-top: auto;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bo-nav-identite {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 4px;
+}
+
+.bo-nav-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+
+.bo-nav-identite-texte {
+  min-width: 0;
+}
+
+.bo-nav-identite-nom {
+  font-size: 12px;
+  color: #ffffff;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bo-nav-identite-numero {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+/* ─────────────────────────── Zone principale + en-tête ─────────────────────────── */
+
+.bo-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.bo-entete {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 26px;
+  background: var(--bo-panneau);
+  border-bottom: 1px solid var(--bo-trait);
+}
+
+.bo-entete-texte {
+  min-width: 0;
+  flex: 1;
+}
+
+.bo-entete-titre {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.bo-entete-sous {
+  font-size: 12px;
+  color: var(--bo-doux);
+}
+
+.bo-entete-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.bo-contenu {
+  padding: 22px 26px 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 1400px;
+  width: 100%;
+}
+
+.bo-section-titre {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--bo-doux);
+}
+
+/* ─────────────────────────── Tuiles d'indicateurs ─────────────────────────── */
+
+.bo-tuiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px;
+}
+
+.bo-tuile {
+  background: var(--bo-panneau);
+  border: 1px solid var(--bo-trait);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Tuile servant de lien (clic vers une section) : rendue comme un bouton, sans la
+   décoration de bouton — c'est une carte, uniquement cliquable. */
+.bo-tuile--cliquable {
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  transition: border-color 0.14s ease, box-shadow 0.14s ease;
+}
+
+.bo-tuile--cliquable:hover {
+  border-color: #c6d0dd;
+  box-shadow: 0 6px 18px rgba(16, 24, 40, 0.07);
+}
+
+.bo-tuile::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--bo-trait);
+}
+
+.bo-tuile--accent::before {
+  background: var(--bo-accent);
+}
+
+.bo-tuile--vert::before {
+  background: var(--bo-vert);
+}
+
+.bo-tuile--rouge::before {
+  background: var(--bo-rouge);
+}
+
+.bo-tuile--info::before {
+  background: var(--bo-info);
+}
+
+.bo-tuile-libelle {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--bo-doux);
+  font-weight: 600;
+}
+
+.bo-tuile-valeur {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.bo-tuile-note {
+  font-size: 11px;
+  color: var(--bo-doux);
+}
+
+.bo-tuile-note--bien {
+  color: var(--bo-vert);
+}
+
+.bo-tuile-note--mal {
+  color: var(--bo-rouge);
+}
+
+/* ─────────────────────────── Panneaux / cartes ─────────────────────────── */
+
+.bo-panneau {
+  background: var(--bo-panneau);
+  border: 1px solid var(--bo-trait);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.bo-panneau-tete {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--bo-trait);
+  background: #fbfcfe;
+}
+
+.bo-panneau-titre {
+  font-size: 14px;
+  font-weight: 700;
+  flex: 1;
+  min-width: 0;
+}
+
+.bo-panneau-sous {
+  font-size: 12px;
+  color: var(--bo-doux);
+}
+
+.bo-panneau-corps {
+  padding: 16px;
+}
+
+.bo-panneau-corps--serre {
+  padding: 0;
+}
+
+.bo-colonnes {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.bo-empile {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* ─────────────────────────── Tableaux ─────────────────────────── */
+
+.bo-tableau-enveloppe {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.bo-tableau {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  min-width: 640px;
+}
+
+.bo-tableau thead th {
+  text-align: left;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--bo-doux);
+  background: #f8fafc;
+  border-bottom: 1px solid var(--bo-trait);
+  padding: 10px 12px;
+  white-space: nowrap;
+}
+
+.bo-tableau tbody td {
+  padding: 11px 12px;
+  border-bottom: 1px solid #eef2f7;
+  vertical-align: middle;
+}
+
+.bo-tableau tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.bo-tableau tbody tr:hover td {
+  background: #f7f9fc;
+}
+
+.bo-tableau tr.bo-tableau-ligne--suspendu td {
+  background: #fff8f8;
+}
+
+.bo-tableau-ligne--cliquable {
+  cursor: pointer;
+}
+
+.bo-tableau-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.bo-tableau-actions {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.bo-cellule-principale {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.bo-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #e8edf5;
+  color: #3b4a5c;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+
+.bo-nom {
+  font-weight: 600;
+}
+
+.bo-mono {
+  font-family: 'Cascadia Mono', Consolas, 'SFMono-Regular', monospace;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+}
+
+.bo-doux {
+  color: var(--bo-doux);
+}
+
+.bo-petit {
+  font-size: 11px;
+}
+
+/* ─────────────────────────── Badges / puces d'état ─────────────────────────── */
+
+.bo-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.bo-badge--attente {
+  background: #fff7e6;
+  border-color: #f4d69b;
+  color: #92610f;
+}
+
+.bo-badge--ok {
+  background: #eaf7ef;
+  border-color: #b4e0c4;
+  color: #186b3c;
+}
+
+.bo-badge--ko {
+  background: #fdeeee;
+  border-color: #f2c2c2;
+  color: #9e2b2b;
+}
+
+.bo-badge--info {
+  background: #eef3fe;
+  border-color: #c3d4f7;
+  color: #21499b;
+}
+
+.bo-badge--susp {
+  background: #f4f5f7;
+  border-color: #d6dae2;
+  color: #4c5a6b;
+}
+
+.bo-badge--admin {
+  background: #fff1e6;
+  border-color: #f6c69d;
+  color: #a24d09;
+}
+
+.bo-point {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
+  flex: 0 0 auto;
+}
+
+/* ─────────────────────────── Boutons ─────────────────────────── */
+
+.bo-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border-radius: 7px;
+  border: 1px solid var(--bo-trait);
+  background: #ffffff;
+  color: var(--bo-texte);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+
+.bo-btn:hover:not(:disabled) {
+  background: #f4f6fa;
+}
+
+.bo-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.bo-btn--principal {
+  background: var(--bo-accent);
+  border-color: var(--bo-accent);
+  color: #22160a;
+}
+
+.bo-btn--principal:hover:not(:disabled) {
+  background: var(--bo-accent-fonce);
+  border-color: var(--bo-accent-fonce);
+}
+
+.bo-btn--ok {
+  background: #eaf7ef;
+  border-color: #b4e0c4;
+  color: #186b3c;
+}
+
+.bo-btn--ok:hover:not(:disabled) {
+  background: #d9f0e2;
+}
+
+.bo-btn--danger {
+  background: #fdeeee;
+  border-color: #f2c2c2;
+  color: #9e2b2b;
+}
+
+.bo-btn--danger:hover:not(:disabled) {
+  background: #f8dede;
+}
+
+.bo-btn--petit {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.bo-btn--bloc {
+  width: 100%;
+}
+
+.bo-btn--lien {
+  border-color: transparent;
+  background: transparent;
+  color: var(--bo-info);
+  padding: 4px 2px;
+}
+
+.bo-btn--lien:hover:not(:disabled) {
+  background: transparent;
+  text-decoration: underline;
+}
+
+/* ─────────────────────────── Filtres, onglets, champs ─────────────────────────── */
+
+.bo-filtres {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.bo-champ {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 140px;
+}
+
+.bo-champ--large {
+  flex: 1 1 260px;
+}
+
+.bo-etiquette {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--bo-doux);
+}
+
+.bo-entree,
+.bo-selection {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--bo-trait);
+  border-radius: 7px;
+  background: #ffffff;
+  font-size: 13px;
+}
+
+.bo-entree:focus,
+.bo-selection:focus,
+.bo-zone:focus {
+  outline: 2px solid rgba(255, 122, 24, 0.35);
+  border-color: var(--bo-accent);
+}
+
+.bo-zone {
+  width: 100%;
+  min-height: 74px;
+  padding: 8px 10px;
+  border: 1px solid var(--bo-trait);
+  border-radius: 7px;
+  background: #ffffff;
+  font-size: 13px;
+  resize: vertical;
+}
+
+.bo-onglets {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.bo-onglet {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border: 1px solid var(--bo-trait);
+  border-radius: 999px;
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  color: #3d4b5c;
+  cursor: pointer;
+}
+
+.bo-onglet:hover {
+  background: #f4f6fa;
+}
+
+.bo-onglet--actif {
+  background: var(--bo-nuit);
+  border-color: var(--bo-nuit);
+  color: #ffffff;
+}
+
+.bo-onglet-compte {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  font-size: 11px;
+}
+
+.bo-onglet:not(.bo-onglet--actif) .bo-onglet-compte {
+  background: #eef2f7;
+  color: #4b5a6b;
+}
+
+.bo-ligne-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bo-sep {
+  height: 1px;
+  background: var(--bo-trait);
+  border: 0;
+  margin: 0;
+}
+
+/* ─────────────────────────── Journal d'activité ─────────────────────────── */
+
+.bo-journal {
+  display: flex;
+  flex-direction: column;
+}
+
+.bo-journal-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 11px 16px;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.bo-journal-item:last-child {
+  border-bottom: 0;
+}
+
+.bo-journal-icone {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  background: #eef2f7;
+  color: #47566a;
+}
+
+.bo-journal-icone--inscription {
+  background: #eef3fe;
+  color: #21499b;
+}
+
+.bo-journal-icone--connexion {
+  background: #eaf7ef;
+  color: #186b3c;
+}
+
+.bo-journal-icone--paiement {
+  background: #fff1e6;
+  color: #a24d09;
+}
+
+.bo-journal-texte {
+  flex: 1;
+  min-width: 0;
+}
+
+.bo-journal-titre {
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bo-journal-detail {
+  font-size: 12px;
+  color: var(--bo-doux);
+}
+
+.bo-journal-date {
+  font-size: 11px;
+  color: var(--bo-doux);
+  white-space: nowrap;
+  text-align: right;
+  flex: 0 0 auto;
+}
+
+/* ─────────────────────────── Barres 7 jours ─────────────────────────── */
+
+.bo-barres {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  height: 150px;
+  padding: 4px 2px 0;
+}
+
+.bo-barre-colonne {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  justify-content: flex-end;
+}
+
+.bo-barre {
+  width: 100%;
+  max-width: 46px;
+  border-radius: 5px 5px 0 0;
+  background: linear-gradient(180deg, #ffb066 0%, var(--bo-accent) 100%);
+  min-height: 4px;
+  position: relative;
+}
+
+.bo-barre--vide {
+  background: #e6ebf2;
+}
+
+.bo-barre-valeur {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.bo-barre-nom {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--bo-doux);
+}
+
+/* ─────────────────────────── États vides, chargement, alertes ─────────────────────────── */
+
+.bo-vide {
+  padding: 34px 20px;
+  text-align: center;
+  color: var(--bo-doux);
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.bo-vide-titre {
+  font-weight: 600;
+  color: var(--bo-texte);
+}
+
+.bo-chargement {
+  padding: 26px 16px;
+  text-align: center;
+  color: var(--bo-doux);
+  font-size: 13px;
+}
+
+.bo-squelette {
+  height: 12px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #eef1f6 25%, #e2e8f2 37%, #eef1f6 63%);
+  background-size: 400% 100%;
+  animation: bo-brillance 1.3s ease infinite;
+}
+
+@keyframes bo-brillance {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0 50%;
+  }
+}
+
+.bo-alerte {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  border: 1px solid transparent;
+}
+
+.bo-alerte--erreur {
+  background: #fdeeee;
+  border-color: #f2c2c2;
+  color: #9e2b2b;
+}
+
+.bo-alerte--succes {
+  background: #eaf7ef;
+  border-color: #b4e0c4;
+  color: #186b3c;
+}
+
+.bo-alerte--info {
+  background: #eef3fe;
+  border-color: #c3d4f7;
+  color: #21499b;
+}
+
+.bo-alerte--attention {
+  background: #fff7e6;
+  border-color: #f4d69b;
+  color: #92610f;
+}
+
+/* Bouton « Fermer » d'une alerte : repoussé à droite, sans devenir un bouton plein. */
+.bo-alerte-fermer {
+  margin-left: auto;
+  font-size: 11px;
+  white-space: nowrap;
+  align-self: center;
+}
+
+/* ─────────────────────────── Tiroir de détail (fiche d'un compte) ─────────────────────────── */
+
+.bo-tiroir-fond {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(16, 24, 40, 0.48);
+  display: flex;
+  justify-content: flex-end;
+  animation: bo-fondu 0.16s ease;
+}
+
+.bo-tiroir {
+  width: min(560px, 100%);
+  height: 100%;
+  background: var(--bo-fond);
+  display: flex;
+  flex-direction: column;
+  box-shadow: -14px 0 34px rgba(16, 24, 40, 0.22);
+  animation: bo-glisse 0.2s ease;
+}
+
+.bo-tiroir-tete {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  background: var(--bo-panneau);
+  border-bottom: 1px solid var(--bo-trait);
+}
+
+.bo-tiroir-corps {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 18px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.bo-tiroir-pied {
+  padding: 12px 18px;
+  background: var(--bo-panneau);
+  border-top: 1px solid var(--bo-trait);
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.bo-fiche-titre {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+.bo-fiche-nom {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.bo-fiche-sous {
+  font-size: 12px;
+  color: var(--bo-doux);
+}
+
+.bo-dl {
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr);
+  gap: 7px 12px;
+  font-size: 13px;
+}
+
+.bo-dl dt {
+  color: var(--bo-doux);
+  font-size: 12px;
+}
+
+.bo-dl dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+.bo-mini-tuiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: 10px;
+}
+
+.bo-mini-tuile {
+  background: var(--bo-panneau);
+  border: 1px solid var(--bo-trait);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.bo-mini-tuile-valeur {
+  font-size: 19px;
+  font-weight: 700;
+}
+
+/* ─────────────────────────── Écran de connexion au back-office ─────────────────────────── */
+
+.bo-connexion {
+  min-height: 100vh;
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  background: var(--bo-fond);
+  font-family: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  color: var(--bo-texte);
+}
+
+.bo-connexion-presentation {
+  background: linear-gradient(160deg, #101828 0%, #1b2536 65%, #22304a 100%);
+  color: #e2e8f0;
+  padding: 46px 44px;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  justify-content: center;
+}
+
+.bo-connexion-marque {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.bo-connexion-titre {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+  max-width: 22ch;
+}
+
+.bo-connexion-texte {
+  font-size: 14px;
+  color: #a9b6c7;
+  max-width: 46ch;
+}
+
+.bo-connexion-liste {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  /* C'est une vraie <ul> : on neutralise les puces et le retrait par défaut du navigateur,
+     l'icône de chaque ligne joue déjà le rôle de puce. */
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.bo-connexion-item {
+  display: flex;
+  gap: 11px;
+  align-items: flex-start;
+  font-size: 13px;
+  color: #cbd5e1;
+}
+
+.bo-connexion-item-icone {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: rgba(255, 122, 24, 0.16);
+  color: var(--bo-accent);
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.bo-connexion-formulaire {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+}
+
+.bo-connexion-boite {
+  width: 100%;
+  max-width: 380px;
+  background: var(--bo-panneau);
+  border: 1px solid var(--bo-trait);
+  border-radius: 12px;
+  padding: 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 18px 40px rgba(16, 24, 40, 0.09);
+}
+
+.bo-connexion-boite-titre {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.bo-connexion-boite-sous {
+  font-size: 13px;
+  color: var(--bo-doux);
+}
+
+.bo-connexion-note {
+  font-size: 11px;
+  color: var(--bo-doux);
+  border-top: 1px solid var(--bo-trait);
+  padding-top: 12px;
+}
+
+/* ─────────────────────────── Outils d'écran ─────────────────────────── */
+
+/* Barre d'outils d'un panneau : onglets à gauche, recherche à droite. */
+.bo-barre-outils {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--bo-trait);
+  background: #fcfdff;
+}
+
+/* Confirmation d'une action sensible (valider / rejeter un dépôt) : un bloc INLINE,
+   pas une fenêtre modale — la ligne concernée reste sous les yeux de l'administrateur. */
+.bo-bloc-action {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid #f4d69b;
+  border-radius: 9px;
+  background: #fffaf0;
+}
+
+.bo-bloc-action-titre {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* Deuxième ligne d'une cellule (numéro sous le nom, motif sous la pastille d'état). */
+.bo-sous-ligne {
+  display: block;
+}
+
+/* Boutons de reprise qui suivent un message d'alerte. */
+.bo-actions-sous-alerte {
+  margin-top: 12px;
+}
+
+/* Actions de fin de ligne de tableau : collées à droite. */
+.bo-ligne-actions--droite {
+  justify-content: flex-end;
+}
+
+/* Barre d'outils en pied de panneau (pagination) : le trait passe au-dessus. */
+.bo-barre-outils--pied {
+  border-bottom: 0;
+  border-top: 1px solid var(--bo-trait);
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* ─────────────────────────── Animations ─────────────────────────── */
+
+@keyframes bo-fondu {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes bo-glisse {
+  from {
+    transform: translateX(24px);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* Rotation continue : icône « loader » ou « refresh » pendant un appel réseau.
+   L'app mobile utilise l'animation Tailwind ; le back-office, qui n'importe pas
+   Tailwind, a la sienne ici. */
+@keyframes bo-tourne {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.bo-tourne {
+  animation: bo-tourne 0.9s linear infinite;
+  transform-origin: 50% 50%;
+}
+
+@keyframes bo-apparition {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.bo-apparition {
+  animation: bo-apparition 0.18s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bo-tiroir,
+  .bo-tiroir-fond,
+  .bo-apparition,
+  .bo-squelette {
+    animation: none;
+  }
+}
+
+/* ─────────────────────────── Adaptation aux petits écrans ─────────────────────────── */
+
+@media (max-width: 1024px) {
+  .bo-colonnes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .bo {
+    flex-direction: column;
+  }
+
+  .bo-nav {
+    width: 100%;
+    flex: 0 0 auto;
+    position: static;
+    height: auto;
+    padding: 12px 12px 10px;
+    gap: 12px;
+  }
+
+  .bo-nav-sections {
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 8px;
+  }
+
+  .bo-nav-sections > div {
+    display: flex;
+    gap: 6px;
+  }
+
+  .bo-nav-titre {
+    display: none;
+  }
+
+  .bo-nav-lien {
+    width: auto;
+    white-space: nowrap;
+    border-left: 0;
+    border-bottom: 3px solid transparent;
+    border-radius: 6px 6px 0 0;
+  }
+
+  .bo-nav-lien--actif {
+    border-left-color: transparent;
+    border-bottom-color: var(--bo-accent);
+  }
+
+  .bo-nav-pied {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    border-top: 0;
+    padding-top: 0;
+    gap: 10px;
+  }
+
+  .bo-entete,
+  .bo-contenu {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .bo-connexion {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bo-connexion-presentation {
+    padding: 28px 22px;
+    gap: 16px;
+  }
+
+  .bo-connexion-titre {
+    font-size: 23px;
+  }
+
+  .bo-dl {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+
+  .bo-dl dd {
+    margin-bottom: 8px;
+  }
+}
+
+
+
+

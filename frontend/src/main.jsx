@@ -9,6 +9,10 @@ import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
 import { enregistrerServiceWorker } from './utils/pwa.js';
 import './styles/theme.css';
+// Feuille de style du BACK-OFFICE (espace /admin) : volontairement séparée de theme.css —
+// le back-office est un outil de travail (tableaux, densité, police système), pas la vitrine
+// mobile. Les deux fichiers cohabitent sans se marcher dessus (tout est préfixé `bo-`).
+import './styles/admin.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

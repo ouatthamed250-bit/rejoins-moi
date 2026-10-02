@@ -23,6 +23,7 @@ import ArtisansMisEnAvant from '../components/ArtisansMisEnAvant.jsx';
 import EstablishmentCard from '../components/EstablishmentCard.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import InfoBanner from '../components/InfoBanner.jsx';
+import PromptLocalisation from '../components/PromptLocalisation.jsx';
 import { Icon } from '../components/Icons.jsx';
 import { api } from '../utils/api/client.js';
 import { filtrerEtablissementsDemo, TAGS_PAR_CATEGORIE } from '../data/demoData.js';
@@ -48,7 +49,15 @@ export default function Search() {
     const coords = position.position || null;
     try {
       const requete = new URLSearchParams({ limit: '40' });
-      if (terme.trim()) requete.set('q', terme.trim());
+      if (terme.trim()) {
+        requete.set('q', terme.trim());
+        // Recherche par mot-clé = PROXIMITÉ PURE. On désactive le mélange équilibré
+        // par catégorie (diversite=0, voir backend/src/routes/establishments.js) pour
+        // que les fiches les PLUS PROCHES correspondantes sortent en premier, au lieu
+        // d'un échantillon par catégorie. Le tri client (trierParProximite) les
+        // ordonne ensuite par distance croissante.
+        requete.set('diversite', '0');
+      }
       if (categorie !== 'tous') requete.set('categorie', categorie);
       if (coords) {
         requete.set('lat', coords.lat);
@@ -160,13 +169,15 @@ export default function Search() {
         </InfoBanner>
       )}
 
+      <PromptLocalisation position={position} className="mb-3" />
+
       <p className="mb-2 text-[11px] font-semibold text-ink-muted">
         {chargement
           ? 'Recherche…'
           : `${ordonnes.length} résultat${ordonnes.length > 1 ? 's' : ''}${
-              position.position && !position.approximatif ? ' · triés par distance' : ''
+              position.position && !position.depuisCache ? ' · triés par distance' : ''
             }`}
-        {position.approximatif && !chargement && ' · distance approximative (Plateau)'}
+        {position.depuisCache && !chargement && ' · distance basée sur votre dernière position'}
       </p>
 
       {chargement && ordonnes.length === 0 ? (

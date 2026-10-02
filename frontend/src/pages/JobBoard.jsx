@@ -28,6 +28,7 @@ import EmptyState from '../components/EmptyState.jsx';
 import InfoBanner from '../components/InfoBanner.jsx';
 import StarRating from '../components/StarRating.jsx';
 import TagBadge from '../components/TagBadge.jsx';
+import BlocDepot from '../components/BlocDepot.jsx';
 import { Icon } from '../components/Icons.jsx';
 import { api } from '../utils/api/client.js';
 import { paiementDisponible, FRAIS_DEBLOCAGE } from '../utils/payment.js';
@@ -76,6 +77,9 @@ export default function JobBoard() {
     telephoneDebloque,
     debloquer,
     verifierPaiement,
+    maDemande,
+    demanderDepot,
+    verifierMaDemande,
   } = useDeblocageContact({
     horsLigne,
     cheminConnexion: '/main-doeuvre',
@@ -187,10 +191,11 @@ export default function JobBoard() {
       )}
 
       {paiementInfo.configure === false && !horsLigne && (
-        <InfoBanner variante="alerte" titre="Paiement mobile money non activé" className="mb-3">
-          La passerelle Wave / Orange Money n’est pas encore branchée sur cet environnement. Les
-          besoins restent consultables, mais aucun contact ne peut être débloqué — et aucun paiement
-          n’est simulé.
+        <InfoBanner variante="info" titre="Payer par dépôt mobile money" className="mb-3">
+          La passerelle automatique n’est pas encore branchée : envoyez les{' '}
+          {formatFcfa(paiementInfo.frais)} au numéro Wave / Orange Money / MTN MoMo affiché sur le
+          besoin, puis déclarez votre paiement. Notre équipe le vérifie et le numéro s’affiche
+          ensuite dans l’app. Aucun paiement n’est simulé.
         </InfoBanner>
       )}
 
@@ -301,11 +306,11 @@ export default function JobBoard() {
               : `${liste.length} besoin${liste.length > 1 ? 's' : ''} ouvert${
                   liste.length > 1 ? 's' : ''
                 }${
-                  position.position && !position.approximatif
+                  position.position && !position.depuisCache
                     ? ' · du plus proche au plus loin'
                     : ''
                 }`}
-            {position.approximatif && !chargement && ' · distances approximatives (Plateau)'}
+            {position.depuisCache && !chargement && ' · distances basées sur votre dernière position'}
           </p>
 
           {chargement ? (
@@ -333,7 +338,13 @@ export default function JobBoard() {
                   telephone={telephoneDebloque(b.id)}
                   verifEnAttente={Boolean(contacts[String(b.id)]?.transactionId)}
                   enCours={enCours === String(b.id)}
-                  indisponible={paiementInfo.configure === false || horsLigne}
+                  indisponible={horsLigne || estDemo}
+                  modeDepot={paiementInfo.mode === 'depot'}
+                  depots={paiementInfo.depots}
+                  support={paiementInfo.support}
+                  demande={maDemande(b.id)}
+                  onDeclarerDepot={(infos) => demanderDepot(b, infos)}
+                  onVerifierDepot={() => verifierMaDemande(b)}
                   onDebloquer={() => debloquer(b)}
                   onVerifier={() => verifierPaiement(b)}
                 />
@@ -371,6 +382,12 @@ function CarteBesoin({
   verifEnAttente,
   enCours,
   indisponible,
+  modeDepot,
+  depots,
+  support,
+  demande,
+  onDeclarerDepot,
+  onVerifierDepot,
   onDebloquer,
   onVerifier,
 }) {
@@ -465,7 +482,17 @@ function CarteBesoin({
             Numéro masqué : {formatFcfa(FRAIS_DEBLOCAGE)} pour le révéler
           </p>
 
-          {verifEnAttente ? (
+          {modeDepot ? (
+            <BlocDepot
+              montant={FRAIS_DEBLOCAGE}
+              depots={depots}
+              support={support}
+              demande={demande}
+              enCours={enCours}
+              onDeclarer={onDeclarerDepot}
+              onVerifier={onVerifierDepot}
+            />
+          ) : verifEnAttente ? (
             <button
               type="button"
               className="bouton-principal mt-2 w-full text-sm"
@@ -490,8 +517,9 @@ function CarteBesoin({
           )}
 
           <p className="mt-1 text-center text-[10px] text-ink-muted">
-            Wave · Orange Money · MTN MoMo · Moov. Le paiement est vérifié côté serveur avant toute
-            révélation du numéro.
+            {modeDepot
+              ? 'Le déblocage est vérifié par notre équipe avant toute révélation du numéro.'
+              : 'Wave · Orange Money · MTN MoMo · Moov. Le paiement est vérifié côté serveur avant toute révélation du numéro.'}
           </p>
         </div>
       )}
@@ -565,7 +593,7 @@ function FormulaireBesoin({
     setEnvoi(true);
     setRetour({ type: '', texte: '' });
     try {
-      const coords = position || CENTRE_ABIDJAN;
+      const coords = position.position || CENTRE_ABIDJAN;
       await api.post('/jobs', {
         typeAnnonce,
         metier: form.metier,

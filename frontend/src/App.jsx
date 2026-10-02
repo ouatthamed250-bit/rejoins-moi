@@ -40,9 +40,10 @@ import Jobs from './pages/Jobs.jsx';
 import Messages from './pages/Messages.jsx';
 import Profile from './pages/Profile.jsx';
 import Login from './pages/Login.jsx';
+import Admin from './pages/Admin.jsx';
 
 /** Routes affichées en plein écran : ni TopBar ni BottomNav. */
-const ROUTES_PLEIN_ECRAN = [/^\/etablissement\//];
+const ROUTES_PLEIN_ECRAN = [/^\/etablissement\//, /^\/admin\/?$/];
 
 /**
  * Base de déploiement de l'app, telle que Vite l'a compilée :
@@ -108,6 +109,8 @@ function Structure() {
           <Route path="/messages" element={<Messages />} />
           <Route path="/profil" element={<Profile />} />
           <Route path="/connexion" element={<Login />} />
+          {/* Back-office : écran plein écran, jeton admin distinct du compte utilisateur. */}
+          <Route path="/admin" element={<Admin />} />
           {/* Toute route inconnue revient au feed : jamais d'écran blanc. */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -24,6 +24,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import InfoBanner from '../components/InfoBanner.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import TagBadge from '../components/TagBadge.jsx';
+import BlocDepot from '../components/BlocDepot.jsx';
 import { Icon } from '../components/Icons.jsx';
 import { api } from '../utils/api/client.js';
 import { paiementDisponible, FRAIS_DEBLOCAGE } from '../utils/payment.js';
@@ -86,6 +87,9 @@ export default function Jobs() {
     debloquer,
     verifierPaiement,
     contacts,
+    maDemande,
+    demanderDepot,
+    verifierMaDemande,
   } = useDeblocageContact({
     horsLigne,
     cheminConnexion: '/jobs',
@@ -252,10 +256,11 @@ export default function Jobs() {
       )}
 
       {paiementInfo.configure === false && !horsLigne && !abonnement.actif && (
-        <InfoBanner variante="alerte" titre="Paiement mobile money non activé" className="mb-3">
-          La passerelle Wave / Orange Money n’est pas branchée sur cet environnement : les annonces
-          restent consultables, mais aucun contact ne peut être débloqué — et aucun paiement n’est
-          simulé.
+        <InfoBanner variante="info" titre="Payer par dépôt mobile money" className="mb-3">
+          La passerelle automatique n’est pas encore branchée : envoyez les{' '}
+          {formatFcfa(paiementInfo.frais)} au numéro Wave / Orange Money / MTN MoMo affiché sur
+          l’annonce, puis déclarez votre paiement. Notre équipe le vérifie et le numéro de contact
+          s’affiche ensuite dans l’app. Aucun paiement n’est simulé.
         </InfoBanner>
       )}
 
@@ -330,9 +335,9 @@ export default function Jobs() {
         {chargement
           ? 'Chargement des annonces…'
           : `${liste.length} ${onglet === 'offre' ? 'offre' : 'demande'}${liste.length > 1 ? 's' : ''}${
-              position.position && !position.approximatif ? ' · du plus proche au plus loin' : ''
+              position.position && !position.depuisCache ? ' · du plus proche au plus loin' : ''
             }`}
-        {position.approximatif && !chargement && ' · distances approximatives (Plateau)'}
+        {position.depuisCache && !chargement && ' · distances basées sur votre dernière position'}
       </p>
 
       {chargement ? (
@@ -362,6 +367,12 @@ export default function Jobs() {
               frais={paiementInfo.frais}
               abonnementActif={abonnement.actif}
               indisponible={horsLigne || estDemo}
+              modeDepot={paiementInfo.mode === 'depot' && !abonnement.actif}
+              depots={paiementInfo.depots}
+              support={paiementInfo.support}
+              demande={maDemande(annonce.id)}
+              onDeclarerDepot={(infos) => demanderDepot(annonce, infos)}
+              onVerifierDepot={() => verifierMaDemande(annonce)}
               onDebloquer={() => debloquer(annonce)}
               onVerifier={() => verifierPaiement(annonce)}
             />
@@ -402,6 +413,12 @@ function CarteAnnonce({
   frais,
   abonnementActif,
   indisponible,
+  modeDepot,
+  depots,
+  support,
+  demande,
+  onDeclarerDepot,
+  onVerifierDepot,
   onDebloquer,
   onVerifier,
 }) {
@@ -498,7 +515,17 @@ function CarteAnnonce({
               : `Numéro masqué : ${formatFcfa(frais)} pour le révéler`}
           </p>
 
-          {verifEnAttente ? (
+          {modeDepot ? (
+            <BlocDepot
+              montant={frais}
+              depots={depots}
+              support={support}
+              demande={demande}
+              enCours={enCours}
+              onDeclarer={onDeclarerDepot}
+              onVerifier={onVerifierDepot}
+            />
+          ) : verifEnAttente ? (
             <button type="button" className="bouton-principal mt-2 w-full text-sm" onClick={onVerifier} disabled={enCours}>
               <Icon name="unlock" size={17} />
               {enCours ? 'Vérification du paiement…' : 'J’ai payé — vérifier mon paiement'}
@@ -520,8 +547,9 @@ function CarteAnnonce({
           )}
 
           <p className="mt-1 text-center text-[10px] text-ink-muted">
-            Wave · Orange Money · MTN MoMo · Moov. Le déblocage est vérifié côté serveur avant toute
-            révélation du numéro.
+            {modeDepot
+              ? 'Le déblocage est vérifié par notre équipe avant toute révélation du numéro.'
+              : 'Wave · Orange Money · MTN MoMo · Moov. Le déblocage est vérifié côté serveur avant toute révélation du numéro.'}
           </p>
         </div>
       )}

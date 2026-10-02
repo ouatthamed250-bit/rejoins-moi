@@ -103,9 +103,11 @@ export default function EstablishmentCard({
   const distance =
     distanceKm != null
       ? Number(distanceKm)
-      : position
-        ? distanceDepuis(position, etablissement || { localisation: null })
-        : null;
+      : etablissement?.distanceKm != null
+        ? Number(etablissement.distanceKm)
+        : position
+          ? distanceDepuis(position, etablissement || { localisation: null })
+          : null;
   const fichier = `/etablissement/${e.id}`;
   const libelleCategorie = LIBELLES_CATEGORIES[e.categorie] || e.categorie;
 

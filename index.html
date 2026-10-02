@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <!-- Couleur de la barre d'état / du splash (PWA). v2 du 30/09 : la valeur est
+         le MÉLANGE EXACT du haut du dégradé d'en-tête (--gradient-header, orange
+         à 18 %) sur le fond ivoire — un aplat orange vif au-dessus d'un en-tête
+         adouci aurait recréé la bande agressive que la refonte supprime. -->
+    <meta name="theme-color" content="#FFE5D0" />
+    <meta
+      name="description"
+      content="Rejoins'Moi — Trouvez un artisan de quartier à Abidjan et connectez-vous à la main-d'œuvre locale."
+    />
+
+    <!-- PWA légère : l'app doit s'installer sur l'écran d'accueil d'un smartphone.
+         Le manifeste décrit le nom, l'icône et le mode « standalone » ; c'est lui
+         qui rend le bouton « Installer » du navigateur disponible.
+         Chemins VOLONTAIREMENT relatifs (sans « / » au début) : l'app fonctionne
+         aussi bien à la racine d'un domaine (Vercel) que dans un sous-dossier
+         (GitHub Pages : /rejoins-moi/). Avec un « / », le manifeste et les icônes
+         seraient cherchés à la racine et l'installation échouerait.
+
+         ICÔNES (correctif du 30/09 — « carré orange en trop » sur l'écran
+         d'accueil Android) : le manifeste déclare DEUX jeux, dans cet ordre —
+           1. `purpose: "any"` (icon-192.png, icon-512.png) : le logo seul, coins
+              transparents, aucun fond ajouté. C'est la référence de l'illustration.
+           2. `purpose: "maskable"` (icon-maskable-192/512.png) : la MÊME
+              illustration remplie jusqu'aux bords, pour les lanceurs qui
+              découpent l'icône à leur forme (cercle, goutte, squircle) ; elle sert
+              donc de secours. Elle est désormais FABRIQUÉE à partir de
+              l'illustration (scripts/generer-icones.mjs) au lieu d'être posée sur
+              un aplat orange : quel que soit le jeu retenu par le téléphone, il
+              n'y a plus de cadre orange collé derrière le logo.
+         Un lanceur qui ne sait pas découper les icônes maskable affiche la
+         seconde telle quelle : c'est une tuile pleine, comme les autres apps. -->
+    <link rel="manifest" href="manifest.json" />
+    <!-- Favicons : uniquement le jeu PNG (logo définitif du fondateur).
+         L'ancien `icon.svg` provisoire a été retiré volontairement : un SVG
+         déclaré ici l'emportait sur les PNG dans Chrome et Firefox, si bien que
+         l'onglet continuait d'afficher l'ancien logo malgré les nouvelles images. -->
+    <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+    <!-- Apple ignore le manifeste pour ces points : il faut ses propres balises,
+         sinon l'app ajoutée à l'écran d'accueil s'ouvre dans Safari (barre d'adresse). -->
+    <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon-180.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Rejoins'Moi" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <!-- Typographie : Poppins (titres) + Nunito (texte), cohérente avec le theme.css -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&family=Poppins:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <title>Rejoins'Moi — Découvre · Soutiens · Connecte-toi</title>
+    <script type="module" crossorigin src="/rejoins-moi/assets/index-Dhx3jAsb.js"></script>
+    <link rel="stylesheet" crossorigin href="/rejoins-moi/assets/index-CTHcNNs1.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

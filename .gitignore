@@ -26,6 +26,13 @@ build/
 #   node backend/scripts/importer-etablissements.js --fichier=mon-fichier.json
 backend/data/
 
+# ── Preuves de recette (captures et rapports) ────────────────────────────────
+# Les scripts de capture écrivent leurs PNG et leur _rapport.json dans le dossier passé
+# en argument (ex. : node frontend/scripts/capture-admin.mjs captures-admin-production).
+# Ce sont des preuves visuelles, pas du code : elles ne sont PAS versionnées.
+captures-refonte/
+frontend/captures-admin-en-ligne/
+frontend/captures-admin-production/
 # ── Divers ───────────────────────────────────────────────────────────────────
 npm-debug.log*
 yarn-error.log*

@@ -25,8 +25,8 @@
 // Prérequis :
 //   - MONGODB_URI renseigné dans backend/.env (voir docs/DEPLOIEMENT.md §1) ;
 //   - le compte admin existe : npm run admin:creer
-//     (numéro « 0102030405 » / mot de passe « 00admin-fix » par défaut —
-//      surchargeables par ADMIN_IDENTIFIANT et ADMIN_MOT_DE_PASSE).
+//     (numéro « 0102030405 » par défaut ; mot de passe dans ADMIN_MOT_DE_PASSE —
+//      AUCUN mot de passe par défaut : sans cette variable, arrêt immédiat).
 
 import 'dotenv/config';
 import { randomInt } from 'node:crypto';
@@ -40,7 +40,7 @@ const PORT = Number(process.env.PORT_VERIFICATION_DEPOT) || 4102;
 const BASE = `http://127.0.0.1:${PORT}`;
 const GARDER = process.argv.includes('--garder');
 const ADMIN_IDENTIFIANT = process.env.ADMIN_IDENTIFIANT || '0102030405';
-const ADMIN_MOT_DE_PASSE = process.env.ADMIN_MOT_DE_PASSE || '00admin-fix';
+const ADMIN_MOT_DE_PASSE = process.env.ADMIN_MOT_DE_PASSE; // aucun défaut : ce dépôt est PUBLIC
 
 let reussis = 0;
 const echecs = [];
@@ -143,6 +143,20 @@ async function principal() {
 
   // index.js lit process.env.PORT à l'import : on le fixe AVANT de l'importer.
   process.env.PORT = String(PORT);
+
+  // ADMIN_MOT_DE_PASSE est OBLIGATOIRE : aucun mot de passe par défaut n'existe (dépôt PUBLIC).
+  // On s'arrête ici, AVANT de démarrer le serveur et de créer des comptes de test :
+  // la base reste intacte et le mot de passe en place n'est pas touché.
+  if (!ADMIN_MOT_DE_PASSE || ADMIN_MOT_DE_PASSE.trim() === '') {
+    console.error('\n❌ ADMIN_MOT_DE_PASSE est absent : aucun mot de passe par défaut n’est fourni.');
+    console.error('   PowerShell, depuis /backend :');
+    console.error("     $env:ADMIN_IDENTIFIANT='0102030405'");
+    console.error("     $env:ADMIN_MOT_DE_PASSE='celui du compte admin'");
+    console.error('     npm run verifier:depot');
+    console.error('');
+    process.exitCode = 2;
+    return;
+  }
 
   titre('0. Démarrage du serveur');
   await import('../src/index.js');

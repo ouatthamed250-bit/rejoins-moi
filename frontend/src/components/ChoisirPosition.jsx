@@ -4,7 +4,7 @@
 // Un utilisateur qui a refusé la localisation (ou dont le téléphone refuse le GPS
 // dans le navigateur) n'avait AUCUN moyen d'obtenir des distances : l'application
 // affichait les fiches sans distance, ce qui rend un annuaire de proximité inutile.
-// Ici, il déplace la carte sur son quartier et valide : les distances repartent de
+// Ici, il place un repère sur son quartier et valide : les distances repartent de
 // ce point. C'est un CHOIX déclaré, jamais une mesure déguisée — l'écran l'écrit
 // noir sur blanc, et l'origine est mémorisée comme telle (`source: 'manuel'`).
 //
@@ -16,8 +16,9 @@
 // l'annonce et on laisse fermer, sans jamais bloquer l'écran d'origine.
 //
 // Aucune icône-image n'est utilisée (les marqueurs Leaflet classiques demandent des
-// PNG à recopier dans le build) : le point se dessine en SVG (`circleMarker`), comme
-// les icônes maison du reste de l'application.
+// PNG à recopier dans le build) : le repère se dessine en SVG (`divIcon`), comme les
+// icônes maison du reste de l'application. Ce repère est DÉPLAÇABLE (exigence B2) :
+// ce sont SES coordonnées qui sont enregistrées, pas le centre de la carte.
 
 import { useEffect, useRef, useState } from 'react';
 
@@ -26,6 +27,16 @@ import { CENTRE_DEFAUT } from '../utils/position.js';
 
 const ZOOM_INITIAL = 14;
 const TUILES = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+/**
+ * Repère dessiné en SVG — le `mapPin` de l'application (Icons.jsx), en orange, avec la
+ * pointe qui marque le lieu exact. Rendu par `divIcon` : aucun PNG à recopier dans le
+ * build. La classe `repere-position` sert aussi de sélecteur aux preuves automatisées.
+ */
+const ICONE_REPERE = `<svg width="30" height="30" viewBox="0 0 24 24" aria-hidden="true" style="display:block">
+  <path d="M12 22s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11Z" fill="#f59e0b" stroke="#b45309" stroke-width="1.6" stroke-linejoin="round" />
+  <circle cx="12" cy="10" r="2.6" fill="#ffffff" />
+</svg>`;
 
 /**
  * @param {{ ouvert: boolean, onFermer: () => void, onValider: (lat: number, lng: number) => void,
@@ -74,21 +85,30 @@ export default function ChoisirPosition({ ouvert, onFermer, onValider, centre = 
         attributionControl: true,
       });
       L.tileLayer(TUILES, { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(instance);
-      marqueur.current = L.circleMarker([depart.lat, depart.lng], {
-        radius: 9,
-        color: '#b45309',
-        weight: 3,
-        fillColor: '#f59e0b',
-        fillOpacity: 0.85,
+      // Le repère est DÉPLAÇABLE : c'est lui qui porte les coordonnées enregistrées,
+      // jamais le centre de la carte (exigence B2).
+      marqueur.current = L.marker([depart.lat, depart.lng], {
+        draggable: true,
+        keyboard: true,
+        title: 'Ma position',
+        icon: L.divIcon({
+          className: 'repere-position',
+          html: ICONE_REPERE,
+          iconSize: [30, 30],
+          iconAnchor: [15, 28],
+        }),
       }).addTo(instance);
 
-      // Le point SUIT le centre de la carte : l'utilisateur déplace la carte, pas un pion.
-      instance.on('move', () => {
-        marqueur.current?.setLatLng(instance.getCenter());
+      // Deux façons de placer le repère, au doigt : le glisser, ou toucher la carte
+      // (l'appui amène le repère à cet endroit). Dans les deux cas, le point affiché
+      // et validé est celui du repère.
+      marqueur.current.on('dragend', () => {
+        const p = marqueur.current?.getLatLng();
+        if (p) setPoint({ lat: p.lat, lng: p.lng });
       });
-      instance.on('moveend', () => {
-        const c = instance.getCenter();
-        setPoint({ lat: c.lat, lng: c.lng });
+      instance.on('click', (evt) => {
+        marqueur.current?.setLatLng(evt.latlng);
+        setPoint({ lat: evt.latlng.lat, lng: evt.latlng.lng });
       });
 
       carte.current = instance;
@@ -125,8 +145,8 @@ export default function ChoisirPosition({ ouvert, onFermer, onValider, centre = 
           <span className="flex-1">
             <span className="block text-sm font-bold text-ink">Ma position sur la carte</span>
             <span className="block text-[11px] leading-snug text-ink/70">
-              Déplacez la carte : le point orange reste au centre. Quand il est sur votre quartier,
-              validez — les distances partiront de là.
+              Faites glisser le repère orange sur votre quartier (ou touchez la carte : le repère s’y
+              place). Puis validez — les distances partiront de ce point.
             </span>
           </span>
           <button

@@ -23,16 +23,18 @@
 //    même chose (validateEstablishmentPhotos), mieux vaut le dire avant l'envoi.
 //  - Le texte du bouton d'action est pré-rempli avec « Aller chez <nom> » mais
 //    reste modifiable (§5).
-//  - La position GPS est reprise du hook useGeolocation ; l'utilisateur peut la
-//    remplacer par une saisie manuelle de quartier/commune (tout le monde n'a pas
-//    le GPS actif).
+//  - La position GPS est reprise du hook useGeolocation. Un refus (ou un téléphone
+//    sans GPS) ne doit PAS empêcher d'inscrire un établissement : l'étape 3 exige une
+//    position, elle propose donc AUSSI de désigner soi-même son point sur la carte
+//    (« Placer ma position sur la carte », bloc B2). Quartier et commune restent des
+//    informations d'ADRESSAGE : ils ne remplacent jamais le point.
 //  - Envoi établissement : POST /api/establishments (authentifié). Sans compte, on
 //    redirige vers /connexion en mémorisant la destination.
 //  - Profil simple sans compte : on crée le compte ici même (POST /users/register,
 //    qui accepte déjà chercheTravail / estArtisan) puis on ouvre /profil. Un champ
 //    de moins à une étape de plus : le compte se crée là où on en a besoin.
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import PhotoUploadField from '../components/PhotoUploadField.jsx';
@@ -43,6 +45,10 @@ import { api } from '../utils/api/client.js';
 import { CATEGORIES, METIERS, TAGS_PAR_CATEGORIE } from '../data/demoData.js';
 import { useAuth } from '../hooks/useAuth.js';
 import { useGeolocation } from '../hooks/useGeolocation.js';
+
+// Chargement À LA DEMANDE : Leaflet ne descend sur le téléphone que si l'inscripteur
+// ouvre la carte (même règle que PromptLocalisation.jsx). Le formulaire reste léger.
+const ChoisirPosition = lazy(() => import('../components/ChoisirPosition.jsx'));
 
 const ETAPES_ETABLISSEMENT = ['Photos', 'Produits', 'Infos'];
 const CATEGORIES_INSCRIPTION = CATEGORIES.filter((c) => c.slug !== 'tous' && c.slug !== 'sante');
@@ -89,6 +95,9 @@ export default function RegisterEstablishment() {
   const [quartier, setQuartier] = useState('');
   const [commune, setCommune] = useState('');
   const [coords, setCoords] = useState(null);
+  // Carte de désignation du point (bloc B2) : ouverte à la demande seulement, donc
+  // Leaflet ne se charge que si l'inscripteur la touche.
+  const [carteOuverte, setCarteOuverte] = useState(false);
   const [telephone, setTelephone] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
   const [horaires, setHoraires] = useState('');
@@ -160,7 +169,8 @@ export default function RegisterEstablishment() {
     }
     if (aEtablissement && index === 2) {
       if (!nom.trim()) return 'Indiquez le nom de votre établissement.';
-      if (!coords) return 'Localisation obligatoire : activez la position ou renseignez votre quartier.';
+      if (!coords)
+        return 'Position obligatoire : touchez « Utiliser ma position actuelle », ou « Placer sur la carte ».';
       if (!telephone.trim() && !whatsapp.trim()) return 'Indiquez un numéro de téléphone ou WhatsApp.';
     }
     return '';
@@ -368,22 +378,40 @@ export default function RegisterEstablishment() {
         />
       </label>
 
-      {/* Localisation : GPS ou saisie manuelle */}
+      {/* Localisation : GPS, ou point désigné par l'utilisateur sur la carte (bloc B2).
+          Le repli par la carte est indispensable ICI : l'étape 3 exige une position,
+          et quelqu'un qui a refusé la géolocalisation doit pouvoir s'inscrire quand
+          même — sinon l'inscription est impossible, sans aucune issue. */}
       <div className="rounded-md border border-line p-3">
         <p className="mb-1 text-sm font-bold text-ink">Localisation</p>
         {coords ? (
           <p className="mb-2 flex items-center gap-1 text-[11px] font-semibold text-health-dark">
             <Icon name="mapPin" size={13} />
             Position enregistrée ({coords.lat.toFixed(4)}, {coords.lng.toFixed(4)})
+            {position.source === 'manuel' ? ' — point que vous avez choisi' : ''}
             {position.depuisCache ? ' — dernière position enregistrée' : ''}
           </p>
         ) : (
-          <p className="mb-2 text-[11px] text-danger">Position non détectée : autorisez la géolocalisation.</p>
+          <p className="mb-2 text-[11px] text-danger">
+            {position.refuser
+              ? 'Localisation bloquée pour ce site : débloquez-la depuis le cadenas du navigateur, ou placez votre position vous-même sur la carte.'
+              : 'Position non détectée : touchez « Utiliser ma position actuelle », ou « Placer sur la carte ».'}
+          </p>
         )}
-        <button type="button" className="btn-ghost w-full py-2 text-xs" onClick={position.relancer}>
-          <Icon name="mapPin" size={15} />
-          {coords ? 'Actualiser ma position' : 'Détecter ma position'}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="btn-ghost flex-1 py-2 text-xs" onClick={position.relancer}>
+            <Icon name="mapPin" size={15} />
+            {position.source === 'gps' ? 'Actualiser ma position' : 'Utiliser ma position actuelle'}
+          </button>
+          <button
+            type="button"
+            className="btn-ghost flex-1 py-2 text-xs"
+            onClick={() => setCarteOuverte(true)}
+          >
+            <Icon name="mapPin" size={15} />
+            Placer sur la carte
+          </button>
+        </div>
         <div className="mt-2 grid grid-cols-2 gap-2">
           <input
             value={quartier}
@@ -399,6 +427,27 @@ export default function RegisterEstablishment() {
           />
         </div>
       </div>
+
+      {/* Carte de désignation du point (bloc B2). Leaflet n'arrive qu'ici, et seulement
+          si l'inscripteur ouvre la carte. Valider y inscrit le point CHOISI : il est
+          mémorisé comme tel (`source: 'manuel'`), donc annoncé comme un choix, jamais
+          comme une mesure GPS. */}
+      {carteOuverte && (
+        <Suspense fallback={null}>
+          <ChoisirPosition
+            ouvert={carteOuverte}
+            onFermer={() => setCarteOuverte(false)}
+            centre={coords || position.position}
+            onValider={(lat, lng) => {
+              position.choisirPosition?.(lat, lng);
+              setCoords({ lat, lng });
+              setErreur('');
+              setCarteOuverte(false);
+            }}
+            onGps={position.relancer}
+          />
+        </Suspense>
+      )}
 
       <div className="grid grid-cols-2 gap-2">
         <label className="block">

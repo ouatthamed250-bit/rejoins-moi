@@ -22,8 +22,12 @@
 //   T1 refus enregistré      → 0 appel GPS, marche à suivre précise, repli carte ;
 //   T2 accordé               → appel automatique (non-régression), position stockée ;
 //   T3 jamais demandé        → 0 appel au chargement, exactement 1 après le geste ;
-//   T4 repli carte           → point choisi = point stocké, et il survit au rechargement ;
-//   T5 autorisé entre-temps  → position obtenue SANS aucun clic.
+//   T4 repli carte           → repère déplaçable, attribution OpenStreetMap visible,
+//                              point choisi = point stocké, et il survit au rechargement ;
+//   T4ter GPS disponible      → le repère démarre sur la mesure, pas sur le centre ;
+//   T5 autorisé entre-temps  → position obtenue SANS aucun clic ;
+//   T6 inscription (bloc B2) → un refus n'empêche plus d'inscrire un établissement :
+//                              le point se place sur la carte, sans un seul appel GPS.
 //
 // Usage : npm run verifier:permissions   (construire `dist/` avant : npm run build)
 
@@ -301,7 +305,7 @@ async function capture(nom) {
  * position), la seconde pour un démarrage réellement à froid, comme une nouvelle
  * visite sur le téléphone.
  */
-async function charger({ permission = null, gps = true, garderMemoire = false } = {}) {
+async function charger({ permission = null, gps = true, garderMemoire = false, point = POINT_GPS } = {}) {
   if (permission) {
     await navigateur.send('Browser.setPermission', {
       origin: ORIGINE,
@@ -309,7 +313,8 @@ async function charger({ permission = null, gps = true, garderMemoire = false } 
       setting: permission,
     });
   }
-  if (gps) await page.send('Emulation.setGeolocationOverride', POINT_GPS);
+  // `point` permet de simuler une mesure ailleurs qu'au Plateau (carte centrée sur le GPS).
+  if (gps) await page.send('Emulation.setGeolocationOverride', point);
   else await page.send('Emulation.clearGeolocationOverride');
 
   await page.send('Page.navigate', { url: `${ORIGINE}/` });
@@ -347,15 +352,23 @@ console.log('1) Refus déjà enregistré : plus aucun appel, marche à suivre à
   verifier('il propose le repli immédiat par la carte', contenu.includes('Choisir sur la carte'));
 }
 
-/** Déplace la carte comme le ferait un doigt : appui, glissement, relâchement. */
-async function deplacerCarte(dx, dy) {
-  const boite = await page.evaluer(`(() => {
-    const carte = document.querySelector('.leaflet-container');
-    if (!carte) return null;
-    const r = carte.getBoundingClientRect();
+/** Le repère : c'est LUI qui porte les coordonnées enregistrées (exigence B2). */
+const SELECTEUR_REPERE = '.repere-position';
+
+/** Boîte à l'écran d'un élément (son centre), pour le piloter comme un doigt. */
+async function boiteDe(selecteur) {
+  return page.evaluer(`(() => {
+    const el = document.querySelector(${JSON.stringify(selecteur)});
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
     return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
   })()`);
-  if (!boite) return false;
+}
+
+/** Glisse un élément comme le ferait un doigt : appui, glissement, relâchement. */
+async function glisser(selecteur, dx, dy) {
+  const depart = await boiteDe(selecteur);
+  if (!depart) return false;
   const souris = (type, x, y) =>
     page.send('Input.dispatchMouseEvent', {
       type,
@@ -365,13 +378,40 @@ async function deplacerCarte(dx, dy) {
       buttons: type === 'mouseReleased' ? 0 : 1,
       clickCount: 1,
     });
-  await souris('mousePressed', boite.x, boite.y);
+  await souris('mousePressed', depart.x, depart.y);
   for (let i = 1; i <= 8; i += 1) {
-    await souris('mouseMoved', boite.x + (dx * i) / 8, boite.y + (dy * i) / 8);
+    await souris('mouseMoved', depart.x + (dx * i) / 8, depart.y + (dy * i) / 8);
     await pause(30);
   }
-  await souris('mouseReleased', boite.x + dx, boite.y + dy);
+  await souris('mouseReleased', depart.x + dx, depart.y + dy);
   return true;
+}
+
+const glisserRepere = (dx, dy) => glisser(SELECTEUR_REPERE, dx, dy);
+const glisserCarte = (dx, dy) => glisser('.leaflet-container', dx, dy);
+
+/** Attribution affichée par la carte : la licence OpenStreetMap doit être VISIBLE. */
+const attributionCarte = () =>
+  page.evaluer(`(() => {
+    const el = document.querySelector('.leaflet-control-attribution');
+    return el ? el.innerText.trim() : '';
+  })()`);
+
+/**
+ * Ouvre l'étape 3 (« Infos ») du formulaire d'inscription d'un établissement : c'est
+ * l'étape qui exige une position, donc celle où se joue le bloc B2.
+ */
+async function ouvrirEtape3Inscription() {
+  await page.send('Page.navigate', { url: `${ORIGINE}/inscription` });
+  const question = await jusqua('document.body.innerText.includes("Avez-vous un établissement ?")');
+  await cliquer('Oui, j’ai un établissement');
+  await jusqua('document.body.innerText.includes("Étape 1/3")');
+  await cliquer('Suivant'); // les photos sont facultatives
+  await jusqua('document.querySelectorAll("button[aria-pressed]").length >= 3');
+  const pastilles = await cocherTags(3);
+  await cliquer('Suivant');
+  const etape3 = await jusqua('document.body.innerText.includes("Localisation")');
+  return { question: Boolean(question), pastilles, etape3: Boolean(etape3) };
 }
 
 // ── T2) Autorisation accordée : non-régression (comportement d’origine) ────
@@ -451,21 +491,43 @@ console.log('\n4) Refus toujours en place : l’utilisateur désigne son quartie
     Boolean(depart) && Math.abs(depart.lat - 5.3242) < 0.02 && Math.abs(depart.lng + 4.0206) < 0.02,
     JSON.stringify(depart)
   );
+  verifier('le repère est présent, prêt à être déplacé', await page.evaluer(`Boolean(document.querySelector("${SELECTEUR_REPERE}"))`));
+  const attribution = await attributionCarte();
+  verifier(
+    'les tuiles OpenStreetMap affichent leur attribution, visible',
+    /OpenStreetMap/.test(attribution),
+    attribution
+  );
 
-  // L'utilisateur fait glisser la carte jusqu'à son quartier.
+  // L'utilisateur fait glisser LE REPÈRE jusqu'à son quartier.
   let arrivee = null;
   let essais = 0;
   while (essais < 3) {
     essais += 1;
-    await deplacerCarte(-70, -55);
+    await glisserRepere(-70, -55);
     await pause(700);
     arrivee = await pointAffiche();
     if (arrivee && depart && Math.abs(arrivee.lat - depart.lat) > 0.0001) break;
   }
   verifier(
-    'le point suit la carte quand on la fait glisser',
+    'le repère est déplaçable et le point affiché suit le repère',
     Boolean(arrivee) && Boolean(depart) && Math.abs(arrivee.lat - depart.lat) > 0.0001,
     `${JSON.stringify(depart)} → ${JSON.stringify(arrivee)} (${essais} glissement(s))`
+  );
+
+  // Déplacer la CARTE, en revanche, ne doit plus déplacer le point : les coordonnées
+  // enregistrées sont celles du repère, jamais le centre de l'écran (exigence B2).
+  const avantCarte = await pointAffiche();
+  await glisserCarte(-80, -60);
+  await pause(900);
+  const apresCarte = await pointAffiche();
+  verifier(
+    'déplacer la carte ne change PAS le point : la coordonnée est celle du repère',
+    Boolean(avantCarte) &&
+      Boolean(apresCarte) &&
+      Math.abs(apresCarte.lat - avantCarte.lat) < 1e-9 &&
+      Math.abs(apresCarte.lng - avantCarte.lng) < 1e-9,
+    `${JSON.stringify(apresCarte)} (repère : ${JSON.stringify(avantCarte)})`
   );
 
   const validation = await cliquer('Valider cette position');
@@ -509,6 +571,34 @@ console.log('\n4) Refus toujours en place : l’utilisateur désigne son quartie
   );
 }
 
+// ── T4 ter) GPS disponible : le repère démarre sur la mesure ────────────────
+// Exigence B2 : « Le repère est déplaçable et centré sur le GPS si disponible. »
+console.log('\n4 ter) GPS disponible : la carte s’ouvre sur la position mesurée');
+{
+  // Une mesure AILLEURS qu'au Plateau : sinon « centré sur le GPS » serait indiscernable
+  // du centre de carte par défaut (les deux valent 5,3242 / -4,0206).
+  const POINT_AILLEURS = { latitude: 5.35, longitude: -4.07, accuracy: 20 }; // Yopougon
+  await charger({ permission: 'granted', point: POINT_AILLEURS });
+  await jusqua('localStorage.getItem("rejoinsmoi.position") !== null', { maxMs: 10000 });
+  const { etape3 } = await ouvrirEtape3Inscription();
+  const vu = await texte();
+  verifier('l’étape 3 du formulaire reprend la position détectée', etape3 && /Position enregistrée/.test(vu));
+
+  await cliquer('Placer sur la carte');
+  const prete = await jusqua(`Boolean(document.querySelector("${SELECTEUR_REPERE}"))`, { maxMs: 25000 });
+  await pause(900);
+  const departGps = await pointAffiche();
+  await capture('4ter-repere-part-du-gps');
+  verifier(
+    'le repère démarre sur la mesure GPS, pas sur le centre de carte par défaut',
+    Boolean(prete) &&
+      Boolean(departGps) &&
+      Math.abs(departGps.lat - POINT_AILLEURS.latitude) < 0.002 &&
+      Math.abs(departGps.lng - POINT_AILLEURS.longitude) < 0.002,
+    JSON.stringify(departGps)
+  );
+}
+
 // ── T5) L'utilisateur autorise depuis les réglages : aucun clic nécessaire ──
 console.log('\n5) Autorisation accordée pendant la visite : la position arrive sans aucun clic');
 {
@@ -537,6 +627,156 @@ console.log('\n5) Autorisation accordée pendant la visite : la position arrive 
   verifier(
     'le bandeau de localisation disparaît de l’écran',
     !contenu.includes('Localisation désactivée') && !contenu.includes('Localisation bloquée')
+  );
+}
+
+/** Renseigne un champ comme le ferait un doigt (React n'écoute que les vrais événements). */
+function remplir(placeholder, valeur) {
+  return page.evaluer(`(() => {
+    const champ = [...document.querySelectorAll('input')].find((i) => i.placeholder === ${JSON.stringify(placeholder)});
+    if (!champ) return false;
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    setter.call(champ, ${JSON.stringify(valeur)});
+    champ.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  })()`);
+}
+
+/** Présence d'un bouton portant ce libellé, sans le toucher. */
+const boutonPresent = (libelle) =>
+  page.evaluer(`[...document.querySelectorAll('button')].some((b) => b.textContent.includes(${JSON.stringify(libelle)}))`);
+
+/** Coche `nombre` pastilles de produits/services (seules elles portent `aria-pressed`). */
+function cocherTags(nombre) {
+  return page.evaluer(`(() => {
+    const pastilles = [...document.querySelectorAll('button[aria-pressed]')];
+    if (pastilles.length < ${nombre}) return pastilles.length;
+    pastilles.slice(0, ${nombre}).forEach((p) => p.click());
+    return ${nombre};
+  })()`);
+}
+
+// ── T6) Bloc B2 : un refus n'empêche plus d'inscrire un établissement ───────
+// LE cas visé : l'étape 3 du formulaire EXIGE une position. Avant B2, la seule issue
+// proposée était « autorisez la géolocalisation » (et une saisie de quartier qui ne
+// remplaçait pas le point) : quelqu'un qui avait refusé ne pouvait donc PAS inscrire
+// son établissement. Tout le parcours ci-dessous se fait avec un refus ENREGISTRÉ.
+console.log('\n6) Refus toujours en place : l’inscription de l’établissement va jusqu’au bout');
+{
+  await charger({ permission: 'denied' });
+  const appelsAvant = await appelsGps();
+  const { question, pastilles, etape3 } = await ouvrirEtape3Inscription();
+  verifier('le formulaire d’inscription s’ouvre malgré le refus', question);
+  verifier('trois produits/services cochés (minimum exigé par l’étape 2)', pastilles === 3, `${pastilles} pastille(s)`);
+  verifier('l’étape 3 (celle qui exige une position) est atteinte', etape3);
+
+  // Étape 3 : nom et numéro renseignés, position volontairement absente.
+  const nomRempli = await remplir('Ex. Chez Fatou', 'Chez Awa');
+  const telRempli = await remplir('07 07 12 34 56', '0707123456');
+  const quartierRempli = await remplir('Quartier', 'Cocody');
+  verifier(
+    'le nom, le numéro et le quartier sont renseignés (seule la position manque)',
+    nomRempli && telRempli && quartierRempli
+  );
+  await capture('6-inscription-sans-position');
+
+  const sansPosition = await texte();
+  verifier(
+    'l’écran nomme la vraie cause : blocage POUR CE SITE',
+    sansPosition.includes('Localisation bloquée pour ce site')
+  );
+  verifier(
+    'il propose la sortie du blocage : placer soi-même son point (bloc B2)',
+    await boutonPresent('Placer sur la carte')
+  );
+  verifier(
+    'aucun appel GPS n’a été tenté jusque-là (le refus est respecté)',
+    (await appelsGps()) === appelsAvant,
+    `${await appelsGps()} appel(s)`
+  );
+
+  // Un quartier saisi ne suffit pas : la fiche exige un POINT, et le message le dit.
+  await cliquer('Publier ma fiche');
+  await pause(500);
+  const refus = await texte();
+  const pageApresRefus = await page.evaluer('location.pathname');
+  await capture('6-inscription-refus-sans-point');
+  verifier(
+    'sans point, la fiche n’est pas publiée',
+    refus.includes('Position obligatoire') && pageApresRefus === '/inscription',
+    pageApresRefus
+  );
+  verifier(
+    'le message renvoie bien vers les DEUX issues (GPS ou carte)',
+    refus.includes('Utiliser ma position actuelle') && refus.includes('Placer sur la carte')
+  );
+
+  // La carte de désignation : c'est elle qui débloque l'inscription.
+  const ouverture = await cliquer('Placer sur la carte');
+  const cartePrete = await jusqua(`Boolean(document.querySelector("${SELECTEUR_REPERE}"))`, { maxMs: 25000 });
+  await pause(900);
+  await capture('6-inscription-carte-ouverte');
+  verifier('le bouton ouvre la carte de désignation', ouverture === true && Boolean(cartePrete));
+  const attribution = await attributionCarte();
+  verifier(
+    'l’attribution « © OpenStreetMap » est visible sous la carte',
+    /OpenStreetMap/.test(attribution),
+    attribution
+  );
+
+  const depart = await pointAffiche();
+  let arrivee = null;
+  let essais = 0;
+  while (essais < 3) {
+    essais += 1;
+    await glisserRepere(-60, -45);
+    await pause(700);
+    arrivee = await pointAffiche();
+    if (arrivee && depart && Math.abs(arrivee.lat - depart.lat) > 0.0001) break;
+  }
+  verifier(
+    'le repère se déplace et le point affiché suit le repère',
+    Boolean(depart) && Boolean(arrivee) && Math.abs(arrivee.lat - depart.lat) > 0.0001,
+    `${JSON.stringify(depart)} → ${JSON.stringify(arrivee)}`
+  );
+
+  await cliquer('Valider cette position');
+  await pause(800);
+  const stockee = await positionStockee();
+  const contenu = await texte();
+  await capture('6-inscription-point-choisi');
+  verifier(
+    'le point validé devient la position de l’inscription, mémorisée comme un CHOIX',
+    Boolean(stockee) &&
+      stockee.source === 'manuel' &&
+      Boolean(arrivee) &&
+      Math.abs(stockee.lat - arrivee.lat) < 0.0001 &&
+      Math.abs(stockee.lng - arrivee.lng) < 0.0001,
+    `${JSON.stringify(stockee)} (carte : ${JSON.stringify(arrivee)})`
+  );
+  verifier(
+    'le formulaire l’affiche en le présentant comme un choix, jamais comme une mesure',
+    contenu.includes('Position enregistrée') && contenu.includes('point que vous avez choisi')
+  );
+  verifier(
+    'la carte se referme après validation',
+    (await page.evaluer('Boolean(document.querySelector(".leaflet-container"))')) === false
+  );
+
+  // Preuve finale : la validation passe et l'envoi part vraiment. Sans compte, le
+  // formulaire redirige vers la connexion — c'est exactement le comportement d'`envoyer()`.
+  await cliquer('Publier ma fiche');
+  const partiVersConnexion = await jusqua('location.pathname === "/connexion"', { maxMs: 8000 });
+  await capture('6-inscription-envoi-accepte');
+  verifier(
+    'l’inscription passe enfin la validation (redirection vers la connexion, faute de compte)',
+    Boolean(partiVersConnexion),
+    await page.evaluer('location.pathname')
+  );
+  verifier(
+    'ce parcours complet n’a coûté AUCUN appel GPS',
+    (await appelsGps()) === appelsAvant,
+    `${await appelsGps()} appel(s)`
   );
 }
 

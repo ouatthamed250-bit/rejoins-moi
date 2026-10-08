@@ -18,7 +18,9 @@
     "verifier:rate-limit": "node scripts/verifier-rate-limit.js",
     "verifier:compteurs": "node scripts/verifier-compteurs.js",
     "verifier:depot": "node scripts/verifier-depot.js",
-    "verifier:pagination": "node scripts/verifier-pagination-proximite.js"
+    "verifier:pagination": "node scripts/verifier-pagination-proximite.js",
+    "verifier:demarrage-api": "node scripts/verifier-demarrage-api.js",
+    "verifier:poids-listes": "node scripts/verifier-poids-listes.js"
   },
   "engines": {
     "node": ">=20"

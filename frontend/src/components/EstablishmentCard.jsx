@@ -88,7 +88,11 @@ export default function EstablishmentCard({
     id: etablissement?.id ?? etablissement?._id ?? '',
     nom: etablissement?.nom ?? nom,
     categorie: etablissement?.categorie ?? categorie,
-    photoDevanture: etablissement?.photoDevanture ?? photo ?? '',
+    // PHOTO : `photoDevantureUrl` est l'URL servie par l'API (`/photo/devanture`),
+    // valable pour une image stockée en base64 comme pour une URL distante. Depuis la
+    // correction de lancement, les listes ne transportent plus l'image elle-même :
+    // on préfère donc l'URL, et on retombe sur `photo` (données de démo) sinon.
+    photoDevanture: etablissement?.photoDevantureUrl || etablissement?.photoDevanture || photo || '',
     noteMoyenne: Number(etablissement?.noteMoyenne ?? note) || 0,
     nombreAvis: Number(etablissement?.nombreAvis ?? nbAvis) || 0,
     tags: etablissement?.tags ?? tags ?? [],
@@ -117,7 +121,13 @@ export default function EstablishmentCard({
       <article className="carte flex items-stretch gap-3 p-2 animate-fade-up">
         <Link to={fichier} className="shrink-0" aria-label={`Ouvrir ${e.nom}`}>
           {e.photoDevanture ? (
-            <img src={e.photoDevanture} alt={e.nom} className="h-[86px] w-[86px] rounded-md object-cover" />
+            <img
+              src={e.photoDevanture}
+              alt={e.nom}
+              loading="lazy"
+              decoding="async"
+              className="h-[86px] w-[86px] rounded-md object-cover"
+            />
           ) : (
             <PhotoSecours nom={e.nom} compact className="h-[86px] w-[86px] rounded-md" />
           )}
@@ -156,7 +166,13 @@ export default function EstablishmentCard({
     <article className="carte animate-fade-up">
       <Link to={fichier} className="relative block">
         {e.photoDevanture ? (
-          <img src={e.photoDevanture} alt={`Devanture de ${e.nom}`} className="h-44 w-full object-cover" />
+          <img
+            src={e.photoDevanture}
+            alt={`Devanture de ${e.nom}`}
+            loading="lazy"
+            decoding="async"
+            className="h-44 w-full object-cover"
+          />
         ) : (
           <PhotoSecours nom={e.nom} className="h-44 w-full" />
         )}

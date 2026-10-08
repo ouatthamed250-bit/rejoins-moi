@@ -24,10 +24,25 @@ import {
   escapeRegex,
 } from '../utils/validators.js';
 import { getDistanceKm, parseCoords } from '../utils/geo.js';
+import { decoderPhoto, estImageIntegree, estUrlDistante } from '../utils/photos.js';
 import CompteurJournalier from '../models/CompteurJournalier.js';
 
 const router = express.Router();
 router.use(requireDb);
+
+/**
+ * Origine publique de l'API pour la requête en cours (« https://hote »).
+ *
+ * Indispensable pour les PHOTOS : le frontend est servi par un autre domaine, donc
+ * une URL relative `/api/...` pointerait chez le frontend et non chez l'API. On
+ * s'appuie sur l'en-tête `Host` de l'appelant, que Render transmet (l'app est
+ * derrière un proxy, `trust proxy` est réglé dans index.js).
+ */
+function basePublique(req) {
+  const hote = req.get('host');
+  if (!hote) return '';
+  return `${req.protocol}://${hote}`;
+}
 
 /** Clé d'identité du compteur : l'utilisateur connecté, sinon son adresse IP (anonyme). */
 function cleIncrement(req) {
@@ -431,7 +446,7 @@ router.get(
         : coords
           ? getDistanceKm(coords.lat, coords.lng, doc.localisation?.lat, doc.localisation?.lng)
           : null;
-      return doc.toCardJSON({ distanceKm });
+      return doc.toCardJSON({ distanceKm, base: basePublique(req) });
     });
 
     res.json({
@@ -536,7 +551,7 @@ router.post(
       await req.user.save();
     }
 
-    res.status(201).json({ etablissement: doc.toCardJSON() });
+    res.status(201).json({ etablissement: doc.toCardJSON({ base: basePublique(req) }) });
   })
 );
 
@@ -653,9 +668,54 @@ router.get(
       : null;
 
     res.json({
-      etablissement: doc.toCardJSON({ distanceKm }),
+      etablissement: doc.toCardJSON({ distanceKm, base: basePublique(req) }),
       avis: (doc.avis || []).slice().reverse().slice(0, 50),
     });
+  })
+);
+
+/**
+ * GET /api/establishments/:id/photo/:role — sert une photo d'établissement.
+ *
+ * POURQUOI CETTE ROUTE EXISTE : une photo peut être stockée en data-URI base64
+ * (jusqu'à ~5,5 Mo). La renvoyer dans le JSON d'une liste rendait la page d'accueil
+ * inutilisable sur un réseau lent. Les listes ne transportent donc plus qu'une URL,
+ * et c'est ici que les octets de l'image partent — une seule fois, puis le
+ * navigateur les garde en cache (`Cache-Control` long).
+ *
+ * `role` : `devanture` (défaut) ou `vendeur`.
+ * - URL https : redirection vers l'hébergeur (aucun octet ne traverse l'API) ;
+ * - data-URI : décodage en octets et envoi en image binaire.
+ */
+router.get(
+  '/:id/photo/:role',
+  asyncHandler(async (req, res) => {
+    const role = req.params.role === 'vendeur' ? 'vendeur' : 'devanture';
+    const champ = role === 'vendeur' ? 'photoVendeur' : 'photoDevanture';
+
+    const doc = await Establishment.findById(req.params.id).select(
+      'photoDevanture photoVendeur updatedAt'
+    );
+    if (!doc) throw new ApiError(404, 'Établissement introuvable.');
+
+    const valeur = String(doc[champ] || '').trim();
+    if (!valeur) throw new ApiError(404, 'Aucune photo pour cet établissement.');
+
+    // Un jour pour les URL distantes (l'hébergeur gère sa propre mise en cache),
+    // une semaine pour les images servies ici : la photo d'une fiche ne change pas
+    // à chaque visite. Une mise à jour de la fiche change l'ETag ci-dessous.
+    if (estUrlDistante(valeur)) {
+      res.set('Cache-Control', 'public, max-age=86400');
+      return res.redirect(302, valeur);
+    }
+
+    const decode = decoderPhoto(valeur);
+    if (!decode) throw new ApiError(404, 'Photo illisible pour cet établissement.');
+
+    res.set('Content-Type', decode.contentType);
+    res.set('Cache-Control', 'public, max-age=604800, immutable');
+    res.set('ETag', `"${doc.updatedAt ? new Date(doc.updatedAt).getTime() : 0}-${decode.buffer.length}"`);
+    return res.send(decode.buffer);
   })
 );
 
@@ -755,7 +815,7 @@ router.patch(
     }
 
     await doc.save();
-    res.json({ etablissement: doc.toCardJSON() });
+    res.json({ etablissement: doc.toCardJSON({ base: basePublique(req) }) });
   })
 );
 

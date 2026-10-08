@@ -71,10 +71,25 @@ app.use(
 );
 
 // ── Journal de requêtes minimal (utile sur réseau instable : on voit ce qui part) ──
+//
+// Le temps de traitement est aussi renvoyé dans l'en-tête `X-Temps-Serveur`. C'est
+// ce qui permet de SÉPARER le temps serveur du temps réseau lors d'une mesure :
+// le client lit cet en-tête au lieu de le deviner. Il est posé juste avant l'envoi
+// de la réponse (en interceptant `res.writeHead`), donc il est toujours présent.
 app.use((req, res, next) => {
   const debut = Date.now();
+  // `X-Temps-Serveur` doit être annoncé tôt : on l'inscrit dans l'en-tête avant
+  // l'envoi. La valeur est donc calculée au moment où le corps part réellement
+  // (hook `res.writeHead`), ce qui reste exact sans charger les routes.
+  const ecrireEntete = res.writeHead.bind(res);
+  res.writeHead = function writeHeadAvecTemps(...params) {
+    res.setHeader('X-Temps-Serveur', `${Date.now() - debut}ms`);
+    res.setHeader('Access-Control-Expose-Headers', 'X-Temps-Serveur');
+    return ecrireEntete(...params);
+  };
   res.on('finish', () => {
-    console.log(`${req.method} ${req.originalUrl} -> ${res.statusCode} (${Date.now() - debut} ms)`);
+    const duree = Date.now() - debut;
+    console.log(`${req.method} ${req.originalUrl} -> ${res.statusCode} (${duree} ms)`);
   });
   next();
 });

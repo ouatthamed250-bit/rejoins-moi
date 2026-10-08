@@ -72,17 +72,52 @@ export function deconnexion() {
 // ── Requête générique ────────────────────────────────────────────────────────
 
 /**
+ * DÉMARRAGE À FROID (bloc A, correction de lancement).
+ *
+ * Mesuré en production : une fois l'instance réveillée, `GET /api/establishments`
+ * répond en moins de 2 s. Mais l'hébergement endort l'instance après quelques
+ * minutes d'inactivité : le TOUT PREMIER appel de la journée traverse un
+ * démarrage à froid qui peut dépasser 20 s. Avec l'ancien délai unique de 20 s,
+ * la page d'accueil abandonnait, et l'écran basculait sur les données d'EXEMPLE :
+ * l'utilisateur croyait l'annuaire vide.
+ *
+ * Trois règles compensent cela, sans jamais bloquer l'écran :
+ *   1. le PREMIER appel d'une session attend plus longtemps (60 s au lieu de 20 s) ;
+ *   2. cet appel est RETENTÉ une fois — il a justement servi à réveiller l'instance ;
+ *   3. les appels suivants gardent le délai court : une fois l'instance éveillée,
+ *      inutile de faire patienter l'utilisateur une minute sur un réseau lent.
+ * Le tout est BORNÉ : 90 s au maximum (60 s + 30 s), jamais plus. Mesure réelle du
+ * 08/10 : 23,7 s à froid, 0,5–0,8 s à chaud — l'attente est donc rare ET expliquée.
+ * Aucun écran n'est laissé sans information : les écrans affichent un message
+ * « réveil du service » tant que l'attente dure (voir Feed.jsx).
+ */
+export const REVEIL_TIMEOUT_MS = 60000;
+/** Budget TOTAL d'un premier appel, second essai compris : il ne dépasse jamais 90 s. */
+export const BUDGET_REVEIL_MS = 90000;
+export const TIMEOUT_DEFAUT_MS = 20000;
+/** Au-delà de ce silence, l'API est probablement endormie. */
+const INACTIVITE_REVEIL_MS = 5 * 60 * 1000;
+
+let dernierSuccesAt = 0;
+
+/** Vrai si l'API n'a encore jamais répondu dans cette session, ou plus depuis longtemps. */
+export function apiProbablementEndormie() {
+  return dernierSuccesAt === 0 || Date.now() - dernierSuccesAt > INACTIVITE_REVEIL_MS;
+}
+
+/**
  * @param {string} chemin  ex. '/establishments?categorie=beaute'
  * @param {object} [options]
  * @param {'GET'|'POST'|'PATCH'|'DELETE'} [options.method]
  * @param {object} [options.body]
  * @param {boolean} [options.auth=true]  envoyer le JWT s'il existe
  * @param {AbortSignal} [options.signal]
- * @param {number} [options.timeoutMs=20000]  au-delà, on considère le réseau perdu
+ * @param {number} [options.timeoutMs]  au-delà, on considère le réseau perdu
+ *                                      (défaut : 60 s au 1er appel, 20 s ensuite)
  * @returns {Promise<any>} le JSON désérialisé
  * @throws {ApiError}
  */
-export async function requete(chemin, { method = 'GET', body, auth = true, signal, timeoutMs = 20000 } = {}) {
+export async function requete(chemin, { method = 'GET', body, auth = true, signal, timeoutMs } = {}) {
   const url = `${BASE}/api${chemin.startsWith('/') ? chemin : `/${chemin}`}`;
   const headers = { Accept: 'application/json' };
 
@@ -90,23 +125,64 @@ export async function requete(chemin, { method = 'GET', body, auth = true, signa
   const token = auth ? getToken() : null;
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  // Timeout maîtrisé : sans cela, un réseau 3G qui "pend" bloque l'écran à vie.
-  const controleur = new AbortController();
-  const minuteur = setTimeout(() => controleur.abort(), timeoutMs);
-  if (signal) signal.addEventListener('abort', () => controleur.abort(), { once: true });
+  const reveilPossible = apiProbablementEndormie();
+  // Une LECTURE peut être retentée sans risque ; une écriture jamais (un paiement
+  // ou une inscription rejoué créerait un doublon). Et on ne retente pas si
+  // l'écran a été quitté (`signal`).
+  const peutRetenter = method === 'GET' && !signal && reveilPossible;
 
-  let reponse;
-  try {
-    reponse = await fetch(url, {
-      method,
-      headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
-      signal: controleur.signal,
-    });
-  } catch (err) {
-    throw new ApiError(0, 'Serveur injoignable. Vérifiez votre connexion internet.', null, true);
-  } finally {
-    clearTimeout(minuteur);
+  /** Délai de l'essai n° `essai` : 60 s puis 30 s au réveil (budget total borné). */
+  function limiteDeLEssai(essai) {
+    if (timeoutMs != null) return timeoutMs;
+    if (!reveilPossible) return TIMEOUT_DEFAUT_MS;
+    return essai === 0 ? REVEIL_TIMEOUT_MS : BUDGET_REVEIL_MS - REVEIL_TIMEOUT_MS;
+  }
+
+  /** Un essai. `AbortController` maîtrisé : sans lui, un réseau 3G « pend » à vie. */
+  async function tenter(limiteMs) {
+    const controleur = new AbortController();
+    // Distingue « le serveur est lent » (notre minuteur a coupé) de « le réseau est
+    // mort » (échec immédiat de fetch). Seul le premier justifie un nouvel essai.
+    let delaiDepasse = false;
+    const minuteur = setTimeout(() => {
+      delaiDepasse = true;
+      controleur.abort();
+    }, limiteMs);
+    if (signal) signal.addEventListener('abort', () => controleur.abort(), { once: true });
+
+    try {
+      return await fetch(url, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+        signal: controleur.signal,
+      });
+    } catch {
+      const erreur = new ApiError(0, 'Serveur injoignable. Vérifiez votre connexion internet.', null, true);
+      /** Vrai si c'est NOTRE délai qui a coupé : indicatif, ne pas exposer à l'UI. */
+      erreur.delaiDepasse = delaiDepasse;
+      throw erreur;
+    } finally {
+      clearTimeout(minuteur);
+    }
+  }
+
+  const essaisMax = peutRetenter ? 2 : 1;
+  let reponse = null;
+  for (let essai = 0; essai < essaisMax; essai += 1) {
+    const dernierEssai = essai + 1 >= essaisMax;
+    try {
+      reponse = await tenter(limiteDeLEssai(essai));
+    } catch (err) {
+      // Délai dépassé : l'instance se réveille encore et le premier appel l'a
+      // justement réveillée — un second essai aboutit presque toujours. Un échec
+      // réseau franc, lui, échoue tout de suite : inutile de faire patienter.
+      if (!dernierEssai && err.delaiDepasse) continue;
+      throw err;
+    }
+    // 502/503 : l'hébergeur annonce lui-même une instance en cours de démarrage.
+    if (!dernierEssai && (reponse.status === 502 || reponse.status === 503)) continue;
+    break;
   }
 
   let donnees = null;
@@ -147,6 +223,8 @@ export async function requete(chemin, { method = 'GET', body, auth = true, signa
     );
   }
 
+  // L'API a répondu : les prochains appels repassent au délai court.
+  dernierSuccesAt = Date.now();
   return donnees;
 }
 

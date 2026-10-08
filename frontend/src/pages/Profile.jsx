@@ -322,7 +322,15 @@ export default function Profile() {
             {etablissementsFavoris.map((e) => (
               <li key={e.id}>
                 <Link to={`/etablissement/${e.id}`} className="carte flex items-center gap-3 p-2">
-                  <img src={e.photoDevanture} alt={e.nom} className="h-12 w-12 rounded-md object-cover" />
+                  {/* Favoris : issus des données de démo (URL) ou de l'API. On préfère
+                      l'URL servie par l'API quand elle existe. */}
+                  <img
+                    src={e.photoDevantureUrl || e.photoDevanture}
+                    alt={e.nom}
+                    loading="lazy"
+                    decoding="async"
+                    className="h-12 w-12 rounded-md object-cover"
+                  />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-bold text-ink">{e.nom}</span>
                     <span className="block text-[11px] text-ink-muted">

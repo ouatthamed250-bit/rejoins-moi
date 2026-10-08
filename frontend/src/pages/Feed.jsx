@@ -28,7 +28,8 @@ import EmptyState from '../components/EmptyState.jsx';
 import InfoBanner from '../components/InfoBanner.jsx';
 import PromptLocalisation from '../components/PromptLocalisation.jsx';
 import { Icon } from '../components/Icons.jsx';
-import { api } from '../utils/api/client.js';
+import { api, apiProbablementEndormie } from '../utils/api/client.js';
+import { lireCacheAnnuaire, ecrireCacheAnnuaire } from '../utils/cacheAnnuaire.js';
 import { urlItineraire } from '../utils/distance.js';
 import { filtrerEtablissementsDemo } from '../data/demoData.js';
 import { useGeolocation } from '../hooks/useGeolocation.js';
@@ -41,6 +42,16 @@ import { formatCompteur } from '../utils/format.js';
  * backend) : 30 tient dans un écran de smartphone sans monopoliser la 4G.
  */
 const TAILLE_PAGE = 30;
+
+/** Traduit un âge en minutes en libellé court et compréhensible (« il y a 12 min »). */
+function ageLisible(minutes) {
+  const m = Math.max(0, Number(minutes) || 0);
+  if (m < 1) return "à l'instant";
+  if (m < 60) return `il y a ${m} min`;
+  const h = Math.round(m / 60);
+  if (h < 48) return `il y a ${h} h`;
+  return `il y a ${Math.round(h / 24)} j`;
+}
 
 export default function Feed() {
   const navigate = useNavigate();
@@ -55,6 +66,11 @@ export default function Feed() {
   const [chargement, setChargement] = useState(true);
   const [horsLigne, setHorsLigne] = useState(false);
   const [message, setMessage] = useState('');
+  // Démarrage à froid (bloc A) : minutes d'âge de la liste MÉMORISÉE affichée à la
+  // place des données fraîches (`null` = les fiches affichées viennent du serveur).
+  const [memoireAge, setMemoireAge] = useState(null);
+  // Vrai quand l'API, endormie, met plus de 6 s à répondre : l'écran l'explique.
+  const [reveil, setReveil] = useState(false);
 
   /**
    * Charge une page du feed. `numeroPage > 1` AJOUTE la page à la suite (bouton
@@ -62,8 +78,24 @@ export default function Feed() {
    */
   const charger = useCallback(
     async (numeroPage = 1) => {
-      if (numeroPage === 1) setChargement(true);
-      else setChargementPlus(true);
+      if (numeroPage === 1) {
+        setChargement(true);
+        setMemoireAge(null);
+        // Démarrage à froid : on affiche TOUT DE SUITE la dernière liste connue du
+        // téléphone (fiches RÉELLES, jamais des données d'exemple) pendant que l'API
+        // se réveille. Sans cela, l'utilisateur fixait un écran vide pendant une
+        // minute le matin, puis croyait l'annuaire vide quand la requête expirait.
+        const memoire = lireCacheAnnuaire(categorie);
+        if (memoire) {
+          setBruts(memoire.items);
+          setTotal(memoire.total);
+          setEncore(false);
+          setMemoireAge(memoire.ageMinutes);
+          setChargement(false);
+        }
+      } else {
+        setChargementPlus(true);
+      }
 
       const coords = position.position || null;
 
@@ -104,13 +136,28 @@ export default function Feed() {
         setPage(numeroPage);
         setEncore(reponse.hasMore !== false);
         setHorsLigne(false);
-      } catch {
+        setMemoireAge(null);
+        // Mémoire locale (page 1 seulement, catégorie comprise) : c'est elle qui rendra
+        // le prochain démarrage à froid instantané. Périmètre strict : cette liste
+        // PUBLIQUE d'annuaire, jamais un compte ni un paiement (voir cacheAnnuaire.js).
         if (numeroPage === 1) {
-          // Repli : données de démonstration (jamais d'écran vide, cf. tournée terrain).
+          ecrireCacheAnnuaire(categorie, items, Number(reponse.total) || 0);
+        }
+      } catch {
+        const memoire = lireCacheAnnuaire(categorie);
+        if (numeroPage === 1 && !memoire) {
+          // Aucune liste mémorisée : repli sur les données de démonstration (jamais
+          // d'écran vide, cf. tournée terrain) — mais le bandeau le dit clairement.
           setBruts(filtrerEtablissementsDemo({ categorie }));
           setTotal(0);
           setEncore(false);
-        } else {
+        } else if (memoire) {
+          // Des fiches RÉELLES sont déjà affichées : on les garde et on indique leur
+          // âge. Remplacer des vraies fiches par des fiches d'exemple était la pire
+          // des réponses — l'annuaire semblait faux.
+          setMemoireAge(memoire.ageMinutes);
+        }
+        if (numeroPage > 1) {
           setMessage('La suite n’a pas pu être chargée — vérifiez votre connexion.');
         }
         setHorsLigne(true);
@@ -135,6 +182,21 @@ export default function Feed() {
     if (!positionPrete) return;
     charger(1);
   }, [charger, positionPrete]);
+
+  /**
+   * Démarrage à froid (bloc A) : si l'API est probablement endormie et n'a rien
+   * répondu au bout de 6 s, l'écran EXPLIQUE l'attente au lieu de laisser un
+   * indicateur muet. Un utilisateur qui ne comprend pas une attente appuie sur
+   * « retour » et conclut que l'application est en panne.
+   */
+  useEffect(() => {
+    if (!chargement || !apiProbablementEndormie()) {
+      setReveil(false);
+      return undefined;
+    }
+    const minuteur = setTimeout(() => setReveil(true), 6000);
+    return () => clearTimeout(minuteur);
+  }, [chargement]);
 
   // Filet de sécurité côté client : la catégorie est déjà filtrée par l'API (et par
   // `filtrerEtablissementsDemo` en repli), mais pendant un changement d'onglet la
@@ -243,9 +305,38 @@ export default function Feed() {
         </button>
       </div>
 
-      {horsLigne && (
-        <InfoBanner variante="demo" titre="Données d’exemple" className="mb-3">
-          Le serveur Rejoins’Moi est injoignable pour le moment. Les profils ci-dessous servent à tester l’application.
+      {/* Démarrage à froid (bloc A) : deux cas clairement distingués, jamais confondus.
+          1. La liste affichée vient de la mémoire du téléphone (fiches RÉELLES mais
+             datées) → on le dit, avec l'âge et un bouton pour rafraîchir.
+          2. Aucune liste connue et serveur injoignable → données d'EXEMPLE, annoncées
+             comme telles, avec un bouton pour réessayer. */}
+      {memoireAge !== null && !horsLigne && (
+        <InfoBanner variante="info" titre="Liste de votre dernière visite" className="mb-3">
+          Fiches réelles enregistrées {ageLisible(memoireAge)}. Recherche des nouveautés en cours…
+        </InfoBanner>
+      )}
+
+      {memoireAge !== null && horsLigne && (
+        <InfoBanner
+          variante="alerte"
+          titre="Liste de votre dernière visite"
+          className="mb-3"
+          action={{ libelle: 'Réessayer', onClick: () => charger(1) }}
+        >
+          Le serveur Rejoins’Moi est injoignable. Les établissements ci-dessous viennent de votre dernière
+          visite ({ageLisible(memoireAge)}) : les nouveautés ne sont pas encore incluses.
+        </InfoBanner>
+      )}
+
+      {horsLigne && memoireAge === null && (
+        <InfoBanner
+          variante="demo"
+          titre="Données d’exemple"
+          className="mb-3"
+          action={{ libelle: 'Réessayer', onClick: () => charger(1) }}
+        >
+          Le serveur Rejoins’Moi est injoignable pour le moment. Les profils ci-dessous servent à tester
+          l’application : ils ne correspondent à aucun commerce réel.
         </InfoBanner>
       )}
 
@@ -272,7 +363,15 @@ export default function Feed() {
       )}
 
       {chargement ? (
-        <EmptyState chargement titre="Chargement du quartier…" />
+        <EmptyState
+          chargement
+          titre={reveil ? 'Réveil du service en cours…' : 'Chargement du quartier…'}
+          description={
+            reveil
+              ? 'Le serveur Rejoins’Moi sort de veille après une période d’inactivité : la première réponse peut demander jusqu’à une minute. Merci de patienter, rien n’est bloqué.'
+              : ''
+          }
+        />
       ) : orderedEstablishments.length === 0 ? (
         <EmptyState
           icone="grid"

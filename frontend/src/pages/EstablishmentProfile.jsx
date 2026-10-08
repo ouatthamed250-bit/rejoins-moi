@@ -262,9 +262,12 @@ export default function EstablishmentProfile() {
     <div className="espace-barre-fixe min-h-full bg-white">
       {/* ── Grande photo de devanture + médaillon du vendeur/gérant ── */}
       <header className="relative">
-        {etablissement.photoDevanture ? (
+        {/* PHOTO : on préfère l'URL servie par l'API (`photoDevantureUrl`), valable
+            quelle que soit la façon dont l'image est stockée (base64 ou URL
+            distante). `photoDevanture` reste utilisé en repli. */}
+        {etablissement.photoDevantureUrl || etablissement.photoDevanture ? (
           <img
-            src={etablissement.photoDevanture}
+            src={etablissement.photoDevantureUrl || etablissement.photoDevanture}
             alt={`Devanture de ${etablissement.nom}`}
             className="h-56 w-full object-cover"
           />
@@ -321,9 +324,9 @@ export default function EstablishmentProfile() {
       <div className="ecran">
         {/* Médaillon de la photo du vendeur, chevauchant la devanture */}
         <div className="-mt-10 flex items-end justify-between gap-3">
-          {etablissement.photoVendeur ? (
+          {etablissement.photoVendeurUrl || etablissement.photoVendeur ? (
             <img
-              src={etablissement.photoVendeur}
+              src={etablissement.photoVendeurUrl || etablissement.photoVendeur}
               alt={`Vendeur / gérant de ${etablissement.nom}`}
               className="h-20 w-20 rounded-full border-4 border-white object-cover shadow-card"
             />

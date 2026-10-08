@@ -12,6 +12,7 @@
 //   POST /api/establishments/:id/action  -> +1 utilisateurs (clic bouton d'action)
 
 import mongoose from 'mongoose';
+import { photoLegere } from '../utils/photos.js';
 
 const avisSchema = new mongoose.Schema(
   {
@@ -217,16 +218,33 @@ establishmentSchema.methods.recalculerNote = function recalculerNote() {
 /**
  * Sérialisation pour l'API : expose toujours les DEUX compteurs séparément.
  * (On n'ajoute volontairement aucun champ "total" qui les fusionnerait.)
+ *
+ * PHOTOS (bloc A, correction de lancement) : le JSON ne transporte JAMAIS l'image
+ * en base64. `photoDevanture` / `photoVendeur` restent des URL https quand c'en est
+ * une (cas des fiches seedées), valent '' quand l'image est stockée en base64, et
+ * sont alors remplacées par `photoDevantureUrl` / `photoVendeurUrl` — l'URL de la
+ * route qui sert l'image binairement (voir utils/photos.js et
+ * GET /api/establishments/:id/photo/:role). Le frontend prend
+ * `photoDevantureUrl || photoDevanture` : le comportement ne change pas, mais une
+ * liste ne peut plus peser plusieurs mégaoctets.
+ *
+ * @param {{distanceKm?: number, base?: string}} options `base` = origine publique
+ *   de l'API (« https://hote »), nécessaire pour construire une URL absolue.
  */
-establishmentSchema.methods.toCardJSON = function toCardJSON({ distanceKm } = {}) {
+establishmentSchema.methods.toCardJSON = function toCardJSON({ distanceKm, base = '' } = {}) {
+  const devanture = photoLegere(this.photoDevanture, base, this._id, 'devanture');
+  const vendeur = photoLegere(this.photoVendeur, base, this._id, 'vendeur');
   return {
     id: this._id,
     nom: this.nom,
     categorie: this.categorie,
     sousCategorie: this.sousCategorie || '',
     description: this.description,
-    photoDevanture: this.photoDevanture,
-    photoVendeur: this.photoVendeur,
+    photoDevanture: devanture.valeur,
+    photoVendeur: vendeur.valeur,
+    photoDevantureUrl: devanture.url,
+    photoVendeurUrl: vendeur.url,
+
     tags: this.tags || [],
     localisation: this.localisation,
     commune: this.commune,

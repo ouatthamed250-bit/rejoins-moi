@@ -37,6 +37,9 @@ frontend/captures-admin-production/
 # avec `npm run verifier:demarrage` et `npm run verifier:poids-listes`, donc non
 # versionnés pour ne pas alourdir le dépôt.
 captures-demarrage/
+# Preuves de l'autorisation de localisation (bloc B) : captures d'écran du parcours
+# réel et _rapport.json, tous deux régénérables par `npm run verifier:permissions`.
+captures-permissions/
 # ── Divers ───────────────────────────────────────────────────────────────────
 npm-debug.log*
 yarn-error.log*

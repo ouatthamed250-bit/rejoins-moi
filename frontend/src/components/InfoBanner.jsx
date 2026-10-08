@@ -21,9 +21,21 @@ const ICONES = {
 
 /**
  * @param {{ variante?: 'info'|'succes'|'alerte'|'erreur'|'demo', titre?: string,
- *   children?: any, action?: { libelle: string, onClick: () => void }, className?: string }} props
+ *   children?: any, action?: { libelle: string, onClick: () => void },
+ *   actions?: Array<{ libelle: string, onClick: () => void }>, className?: string }} props
  */
-export default function InfoBanner({ variante = 'info', titre, children, action, className = '' }) {
+export default function InfoBanner({
+  variante = 'info',
+  titre,
+  children,
+  action,
+  actions,
+  className = '',
+}) {
+  // Deux boutons au plus : au-delà, ce n'est plus un bandeau mais un formulaire.
+  // `action` reste accepté seul (usages existants), `actions` le remplace quand il y
+  // en a deux — cas de la localisation : « Activer » ET « choisir sur la carte ».
+  const listeActions = (actions || (action ? [action] : [])).slice(0, 2);
   return (
     <div
       role="status"
@@ -36,11 +48,16 @@ export default function InfoBanner({ variante = 'info', titre, children, action,
         {titre && <p className="font-bold">{titre}</p>}
         {children}
       </div>
-      {action && (
-        <button type="button" onClick={action.onClick} className="shrink-0 font-bold underline">
-          {action.libelle}
-        </button>
+      {listeActions.length > 0 && (
+        <span className="flex shrink-0 flex-col items-end gap-1">
+          {listeActions.map((a) => (
+            <button key={a.libelle} type="button" onClick={a.onClick} className="font-bold underline">
+              {a.libelle}
+            </button>
+          ))}
+        </span>
       )}
     </div>
   );
 }
+

@@ -15,6 +15,12 @@
  *     quelle. Le serveur reste seul juge du paiement (règle de sécurité du projet).
  */
 
+// v8 : VAGUE 1 (blocs B1/B2, C, D, E). L'écran d'inscription change visiblement (repère
+//      « Placer sur la carte » déplaçable, compte créé DANS le parcours), le fil s'ouvre
+//      par proximité, une fiche importée propose « C'est votre établissement ? » et
+//      l'écran /admin gagne la file des réclamations. Les empreintes JS/CSS changent :
+//      sans nouveau nom de cache, un téléphone déjà installé garderait l'ANCIEN index.html
+//      en secours — donc l'ancienne app, sans réclamations ni compte créé au parcours.
 // v3 : passage aux icônes DÉFINITIVES (logo du fondateur, jeu PNG).
 // v6 : correctifs du 30/09 (soir) — fondu d'en-tête continu, plus de bandeau
 //      d'installation une fois l'app installée, icônes d'écran d'accueil refaites
@@ -40,7 +46,7 @@
 //      en secours, donc l'ANCIENNE app — sans l'écran /admin.
 // Changer la version est indispensable dès que les fichiers « cache d'abord »
 // (icônes) ou l'app shell changent de façon visible.
-const VERSION = 'v7';
+const VERSION = 'v8';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

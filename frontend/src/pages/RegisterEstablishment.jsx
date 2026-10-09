@@ -234,6 +234,12 @@ export default function RegisterEstablishment() {
       if (!coords)
         return 'Position obligatoire : touchez « Utiliser ma position actuelle », ou « Placer sur la carte ».';
       if (!telephone.trim() && !whatsapp.trim()) return 'Indiquez un numéro de téléphone ou WhatsApp.';
+      // Le compte se crée à la fin de CE parcours : on demande les deux informations ici,
+      // une seule fois, plutôt que de renvoyer l'utilisateur vers un autre écran.
+      if (!connecte) {
+        if (!telephoneCompte.trim()) return 'Indiquez votre numéro de téléphone pour créer votre compte.';
+        if (String(motDePasse).length < 6) return 'Choisissez un mot de passe de 6 caractères minimum.';
+      }
     }
     return '';
   }
@@ -301,13 +307,21 @@ export default function RegisterEstablishment() {
   }
 
   async function envoyer() {
-    if (!connecte) {
-      navigate('/connexion', { state: { depuis: '/inscription' } });
-      return;
-    }
     setEnCours(true);
     setErreur('');
     try {
+      // Pas encore de compte ? Il se crée MAINTENANT, dans le même parcours : la fiche en
+      // cours de saisie (photos, tags, position) ne doit jamais être perdue. Avant, on
+      // renvoyait vers /connexion et il fallait tout recommencer — c'était le principal
+      // abandon du parcours « nouveau venu » (QR code ou lien TikTok).
+      if (!connecte) {
+        await inscription({
+          telephone: telephoneCompte.trim(),
+          motDePasse,
+          prenom: prenom.trim(),
+          nom: nomPersonne.trim(),
+        });
+      }
       const reponse = await api.post('/establishments', {
         nom: nom.trim(),
         categorie,
@@ -827,12 +841,43 @@ export default function RegisterEstablishment() {
         {aEtablissement === true && etape === 2 && etapeInfos}
       </section>
 
-      {/* Le formulaire n'est pas connecté à un compte : on l'indique avant l'envoi. */}
+      {/* Le compte n'existe pas encore : il se crée ICI, à la fin du parcours. Avant, on
+          renvoyait vers /connexion — l'inscripteur perdait ses photos, ses tags et sa
+          position, et beaucoup abandonnaient à ce moment-là. */}
       {aEtablissement && !connecte && etape === 2 && (
-        <InfoBanner variante="info" titre="Un compte est nécessaire" className="mt-3">
-          Créez votre compte (numéro + mot de passe) pour publier la fiche : cela vous permettra de la modifier plus
-          tard.
-        </InfoBanner>
+        <section className="carte mt-3 p-4">
+          <p className="mb-1 text-sm font-bold text-ink">Créer mon compte</p>
+          <p className="mb-3 text-[11px] leading-snug text-ink-muted">
+            Votre numéro sert d’identifiant et vous permettra de modifier votre fiche plus tard. Il n’est jamais
+            publié sans votre accord.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block">
+              <span className="mb-1 block text-sm font-bold text-ink">
+                Téléphone <span className="text-danger">*</span>
+              </span>
+              <input
+                type="tel"
+                value={telephoneCompte}
+                onChange={(e) => setTelephoneCompte(e.target.value)}
+                placeholder="07 07 12 34 56"
+                className="w-full rounded-md border border-line px-3 py-3 text-sm font-semibold outline-none focus:border-primary"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-sm font-bold text-ink">
+                Mot de passe <span className="text-danger">*</span>
+              </span>
+              <input
+                type="password"
+                value={motDePasse}
+                onChange={(e) => setMotDePasse(e.target.value)}
+                placeholder="6 caractères minimum"
+                className="w-full rounded-md border border-line px-3 py-3 text-sm outline-none focus:border-primary"
+              />
+            </label>
+          </div>
+        </section>
       )}
 
       {/* Barre d'action fixe — absente sur l'écran de question : le choix se fait

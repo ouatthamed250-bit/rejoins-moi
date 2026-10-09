@@ -46,3 +46,7 @@ yarn-error.log*
 .DS_Store
 Thumbs.db
 *.log
+
+# Preuves du parcours « nouveau venu » (bloc E) : captures d'ecran et rapport regenerables.
+captures-parcours/
+

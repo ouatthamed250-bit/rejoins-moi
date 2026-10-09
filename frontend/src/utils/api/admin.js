@@ -113,6 +113,10 @@ export const adminApi = {
   depots: (statut = 'en_attente') => requeteAdmin(`/depots${chaineParametres({ statut })}`),
   validerDepot: (id) => requeteAdmin(`/depots/${id}/valider`, { method: 'POST', body: {} }),
   rejeterDepot: (id, noteAdmin) => requeteAdmin(`/depots/${id}/rejeter`, { method: 'POST', body: { noteAdmin } }),
+  // Réclamations de fiches importées (bloc D) : « c'est mon établissement » à trancher.
+  reclamations: (statut = 'en_attente') => requeteAdmin(`/reclamations${chaineParametres({ statut })}`),
+  deciderReclamation: (etablissementId, decision) =>
+    requeteAdmin(`/reclamations/${etablissementId}`, { method: 'POST', body: { decision } }),
 };
 
 export default adminApi;

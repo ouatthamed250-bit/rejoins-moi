@@ -19,6 +19,7 @@
     "verifier:compteurs": "node scripts/verifier-compteurs.js",
     "verifier:depot": "node scripts/verifier-depot.js",
     "verifier:pagination": "node scripts/verifier-pagination-proximite.js",
+    "verifier:reclamations": "node scripts/verifier-reclamations.js",
     "verifier:demarrage-api": "node scripts/verifier-demarrage-api.js",
     "verifier:poids-listes": "node scripts/verifier-poids-listes.js"
   },

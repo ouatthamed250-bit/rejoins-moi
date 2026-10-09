@@ -98,6 +98,11 @@ export default function RegisterEstablishment() {
   // Carte de désignation du point (bloc B2) : ouverte à la demande seulement, donc
   // Leaflet ne se charge que si l'inscripteur la touche.
   const [carteOuverte, setCarteOuverte] = useState(false);
+  // Fiche importée reconnue par le gérant (bloc D) : proposée dès que le nom et la
+  // position sont connus, pour ne PAS créer une seconde fiche pour le même commerce.
+  const [candidats, setCandidats] = useState([]);
+  const [reclamationEnvoi, setReclamationEnvoi] = useState('');
+  const [reclamationInfo, setReclamationInfo] = useState('');
   const [telephone, setTelephone] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
   const [horaires, setHoraires] = useState('');
@@ -119,6 +124,63 @@ export default function RegisterEstablishment() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [position.position]);
+
+  // ── Bloc D : « C'est votre établissement ? » ────────────────────────────────
+  // Dès que le nom ET la position sont connus, on regarde si une fiche PUBLIQUE IMPORTÉE
+  // non réclamée porte ce commerce à moins de 150 m. L'application ne décide rien : elle
+  // PROPOSE (le serveur tranche), et seulement dans le parcours « j'ai un établissement »,
+  // à l'étape 3, avec un compte ouvert. Sans candidat, aucun message n'apparaît.
+  useEffect(() => {
+    if (!connecte || aEtablissement !== true || etape !== 2 || nom.trim().length < 3 || !coords) {
+      setCandidats([]);
+      return undefined;
+    }
+    let vivant = true;
+    const minuteur = setTimeout(async () => {
+      try {
+        const reponse = await api.get(
+          `/establishments/rapprochement?nom=${encodeURIComponent(nom.trim())}&lat=${coords.lat}&lng=${coords.lng}`
+        );
+        if (vivant) setCandidats(reponse?.candidats || []);
+      } catch {
+        // Une recherche qui échoue ne doit JAMAIS bloquer une inscription : on continue.
+        if (vivant) setCandidats([]);
+      }
+    }, 500);
+    return () => {
+      vivant = false;
+      clearTimeout(minuteur);
+    };
+  }, [connecte, aEtablissement, etape, nom, coords]);
+
+  /**
+   * « Oui, c'est le mien » : on REPREND la fiche existante au lieu d'en créer une seconde.
+   * Acceptée tout de suite si le gérant est sur place (150 m ou moins, décidé par le
+   * serveur) ; sinon la demande part en file d'attente et l'équipe tranche.
+   */
+  async function reprendreFiche(candidat) {
+    setReclamationEnvoi(candidat.id);
+    setErreur('');
+    try {
+      const reponse = await api.post(`/establishments/${candidat.id}/reclamer`, {
+        nomDeclare: nom.trim(),
+        lat: coords?.lat,
+        lng: coords?.lng,
+      });
+      if (reponse?.statut === 'acceptee') {
+        navigate(`/etablissement/${candidat.id}`, { replace: true });
+        return;
+      }
+      setReclamationInfo(
+        'Demande envoyée : l’équipe vérifie que cette fiche est bien la vôtre, puis vous la rattache. Aucune fiche en double n’a été créée.'
+      );
+      setCandidats([]);
+    } catch (err) {
+      setErreur(err?.message || 'Reprise impossible pour le moment. Réessayez dans un instant.');
+    } finally {
+      setReclamationEnvoi('');
+    }
+  }
 
   // Le libellé du bouton suit le nom saisi tant que l'utilisateur ne l'a pas personnalisé.
   useEffect(() => {
@@ -729,6 +791,33 @@ export default function RegisterEstablishment() {
           {erreur}
         </InfoBanner>
       )}
+
+      {/* Bloc D : une fiche publique importée porte peut-être déjà ce commerce. On le
+          propose AVANT la création, pour que le quartier n'affiche pas deux fois le même
+          lieu (avis, photos et compteurs séparés). */}
+      {reclamationInfo ? (
+        <InfoBanner variante="succes" titre="Demande envoyée" className="mb-3">
+          {reclamationInfo}
+        </InfoBanner>
+      ) : null}
+
+      {candidats.length > 0 ? (
+        <InfoBanner
+          variante="alerte"
+          titre="C’est votre établissement ?"
+          className="mb-3"
+          actions={[
+            {
+              libelle: reclamationEnvoi ? 'Envoi…' : 'Oui, c’est le mien',
+              onClick: () => (reclamationEnvoi ? undefined : reprendreFiche(candidats[0])),
+            },
+          ]}
+        >
+          Une fiche existe déjà à {candidats[0].distanceMetres} m : « {candidats[0].nom} »
+          {candidats[0].quartier ? ` (${candidats[0].quartier})` : ''}. Si c’est le vôtre, reprenez-la : vos
+          informations restent sur cette fiche, et aucune fiche en double n’est créée.
+        </InfoBanner>
+      ) : null}
 
       <section className="carte p-4">
         {question && ecranQuestion}

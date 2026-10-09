@@ -24,6 +24,12 @@ import {
   escapeRegex,
 } from '../utils/validators.js';
 import { getDistanceKm, parseCoords } from '../utils/geo.js';
+import {
+  DISTANCE_DOUBLON_M,
+  DISTANCE_RECLAMATION_M,
+  distanceMetresEntre,
+  nomsProches,
+} from '../utils/rapprochement.js';
 import { decoderPhoto, estImageIntegree, estUrlDistante } from '../utils/photos.js';
 import CompteurJournalier from '../models/CompteurJournalier.js';
 
@@ -47,6 +53,34 @@ function basePublique(req) {
 /** Clé d'identité du compteur : l'utilisateur connecté, sinon son adresse IP (anonyme). */
 function cleIncrement(req) {
   return req.user ? `u:${req.user._id}` : `ip:${req.ip || req.socket?.remoteAddress || 'inconnue'}`;
+}
+
+/**
+ * Fiches situées dans `rayonMetres` d'un point, dont le NOM est proche (bloc D).
+ *
+ * Le travail géographique est fait par l'index 2dsphere (`$geoNear`) : on ne compare des
+ * noms qu'entre fiches réellement voisines, jamais sur 6 700 documents. Sert les deux
+ * usages du rapprochement : proposer « C'est votre établissement ? » et refuser un doublon.
+ */
+async function fichesProchesParNom(nom, coords, rayonMetres, filtre = {}) {
+  if (!nom || !coords) return [];
+  const trouvees = await Establishment.aggregate([
+    {
+      $geoNear: {
+        near: { type: 'Point', coordinates: [coords.lng, coords.lat] },
+        key: 'position',
+        distanceField: 'distanceMetres',
+        maxDistance: rayonMetres,
+        query: filtre,
+      },
+    },
+    { $sort: { distanceMetres: 1, _id: 1 } },
+    { $limit: 30 },
+    { $project: { nom: 1, categorie: 1, quartier: 1, commune: 1, localisation: 1, distanceMetres: 1 } },
+  ]);
+  return trouvees
+    .filter((f) => nomsProches(f.nom, nom))
+    .map((f) => ({ ...f, distanceMetres: Math.round(f.distanceMetres) }));
 }
 
 /**
@@ -520,6 +554,19 @@ router.post(
       throw new ApiError(400, 'Numéro de téléphone / WhatsApp obligatoire pour être joignable.');
     }
 
+    // ── Bloc D : DOUBLON EXACT refusé. Un nom identique (normalisé) à moins de 50 m, c'est
+    //    le même établissement : on oriente vers la reprise de la fiche existante plutôt
+    //    que de laisser une seconde entrée dans le quartier (avis et compteurs séparés).
+    const doublons = await fichesProchesParNom(String(nom).trim(), { lat, lng }, DISTANCE_DOUBLON_M);
+    if (doublons.length > 0) {
+      const fiche = doublons[0];
+      throw new ApiError(
+        409,
+        `« ${fiche.nom} » est déjà enregistré à ${fiche.distanceMetres} m : reprenez cette fiche au lieu d'en créer une seconde.`,
+        { etablissementId: String(fiche._id), reprisePossible: true }
+      );
+    }
+
     const doc = new Establishment({
       nom: String(nom).trim(),
       categorie,
@@ -552,6 +599,99 @@ router.post(
     }
 
     res.status(201).json({ etablissement: doc.toCardJSON({ base: basePublique(req) }) });
+  })
+);
+
+/**
+ * GET /api/establishments/rapprochement?nom=&lat=&lng= — « C'est votre établissement ? »
+ *
+ * Cherche les fiches importées NON RÉCLAMÉES (`estImporte=true`, `reclame=false`) à 150 m
+ * ou moins, dont le nom est proche. Sert UNIQUEMENT à proposer au nouveau venu de reprendre
+ * la fiche de son commerce au lieu d'en créer une seconde. Aucune donnée personnelle n'est
+ * renvoyée : nom, catégorie, quartier et distance de la fiche publique.
+ */
+router.get(
+  '/rapprochement',
+  protect,
+  asyncHandler(async (req, res) => {
+    const coords = parseCoords(req.query);
+    const nom = String(req.query.nom || '').trim();
+    if (!coords || nom.length < 3) return res.json({ candidats: [] });
+
+    const fiches = await fichesProchesParNom(nom, coords, DISTANCE_RECLAMATION_M, {
+      estImporte: true,
+      reclame: false,
+    });
+
+    res.json({
+      candidats: fiches.map((f) => ({
+        id: String(f._id),
+        nom: f.nom,
+        categorie: f.categorie,
+        quartier: f.quartier || '',
+        commune: f.commune || '',
+        distanceMetres: f.distanceMetres,
+      })),
+    });
+  })
+);
+
+/**
+ * POST /api/establishments/:id/reclamer — « C'est mon établissement » (bloc D).
+ *
+ * DÉCISIONS, toutes expliquées au gérant :
+ *   - demandeur à 150 m ou moins (position de son téléphone) → réclamation ACCEPTÉE tout
+ *     de suite : il est sur place, aucune paperasse n'est nécessaire ;
+ *   - au-delà, la demande passe EN ATTENTE et une personne de l'équipe tranche
+ *     (`/api/admin/reclamations`) : jamais d'écrasement silencieux ;
+ *   - fiche DÉJÀ réclamée → refusée (409) : elle a un responsable ;
+ *   - l'acceptation ne crée AUCUNE copie : elle rattache la fiche existante au compte
+ *     (`reclame = true`, `createdByUserId`, `user.etablissementId`).
+ */
+router.post(
+  '/:id/reclamer',
+  protect,
+  asyncHandler(async (req, res) => {
+    const coords = parseCoords(req.query) || parseCoords(req.body || {});
+    const fiche = await Establishment.findById(req.params.id);
+    if (!fiche) throw new ApiError(404, 'Établissement introuvable.');
+    if (fiche.reclame) {
+      throw new ApiError(409, 'Cette fiche est déjà réclamée : elle a un responsable.');
+    }
+
+    const distance = distanceMetresEntre(
+      { lat: coords?.lat, lng: coords?.lng },
+      { lat: fiche.localisation?.lat, lng: fiche.localisation?.lng }
+    );
+    const surPlace = distance != null && distance <= DISTANCE_RECLAMATION_M;
+
+    fiche.reclamation = {
+      statut: surPlace ? 'acceptee' : 'en_attente',
+      demandeurUserId: req.user._id,
+      nomDeclare: String(req.body?.nomDeclare || fiche.nom).trim().slice(0, 120),
+      distanceMetres: distance,
+      demandeeLe: new Date(),
+      traiteeLe: surPlace ? new Date() : null,
+      traiteeParUserId: null,
+    };
+
+    if (surPlace) {
+      fiche.reclame = true;
+      fiche.createdByUserId = req.user._id;
+      await fiche.save();
+      if (!req.user.etablissementId) {
+        req.user.etablissementId = fiche._id;
+        await req.user.save();
+      }
+      return res.json({
+        statut: 'acceptee',
+        distanceMetres: distance,
+        etablissement: fiche.toCardJSON({ base: basePublique(req) }),
+      });
+    }
+
+    await fiche.save();
+    res.status(202).json({ statut: 'en_attente', distanceMetres: distance });
   })
 );
 

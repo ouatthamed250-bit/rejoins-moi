@@ -148,6 +148,20 @@ const establishmentSchema = new mongoose.Schema(
     // fiche pour la compléter (photos, tags, horaires, numéro vérifié).
     estImporte: { type: Boolean, default: false, index: true },
     reclame: { type: Boolean, default: false, index: true },
+    // RÉCLAMATION (bloc D) : un gérant reconnaît une fiche importée comme la sienne.
+    // `statut: ''` = aucune demande. « en_attente » = une personne de l'équipe doit
+    // trancher (`/api/admin/reclamations`) ; « acceptee » / « refusee » = décision prise.
+    // L'acceptation ne CRÉE jamais de copie : elle rattache la fiche EXISTANTE au compte
+    // (`reclame` passe à true, `createdByUserId` devient le demandeur).
+    reclamation: {
+      statut: { type: String, enum: ['', 'en_attente', 'acceptee', 'refusee'], default: '' },
+      demandeurUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+      nomDeclare: { type: String, trim: true, maxlength: 120, default: '' },
+      distanceMetres: { type: Number, default: null },
+      demandeeLe: { type: Date, default: null },
+      traiteeLe: { type: Date, default: null },
+      traiteeParUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    },
     // Numéro relevé dans la source, à confirmer avant publication (usage interne :
     // volontairement ABSENT de toCardJSON, on n'affiche pas un contact non vérifié).
     telephoneAVerifier: { type: String, trim: true, default: '' },

@@ -391,6 +391,99 @@ router.get(
   })
 );
 
+/**
+ * GET /api/admin/reclamations — file d'attente « c'est mon établissement » (bloc D).
+ *
+ * `?statut=traitees` renvoie les décisions déjà prises, par défaut les demandes EN ATTENTE.
+ * Chaque ligne porte de quoi décider sans ouvrir autre chose : la fiche, le nom déclaré, la
+ * distance mesurée et le compte demandeur (qui, quand).
+ */
+router.get(
+  '/reclamations',
+  protectAdmin,
+  asyncHandler(async (req, res) => {
+    const traitees = req.query.statut === 'traitees';
+    const fiches = await Establishment.find({
+      'reclamation.statut': traitees ? { $in: ['acceptee', 'refusee'] } : 'en_attente',
+    })
+      .sort({ 'reclamation.demandeeLe': traitees ? -1 : 1, _id: 1 })
+      .limit(100)
+      .lean();
+
+    const ids = fiches.map((f) => f.reclamation?.demandeurUserId).filter(Boolean);
+    const demandeurs = await User.find({ _id: { $in: ids } }).select('prenom nom telephone').lean();
+    const parId = new Map(demandeurs.map((u) => [String(u._id), u]));
+
+    res.json({
+      total: fiches.length,
+      reclamations: fiches.map((f) => {
+        const demandeur = f.reclamation?.demandeurUserId ? parId.get(String(f.reclamation.demandeurUserId)) : null;
+        return {
+          etablissementId: String(f._id),
+          nomFiche: f.nom,
+          categorie: f.categorie,
+          quartier: f.quartier || '',
+          commune: f.commune || '',
+          statut: f.reclamation?.statut || '',
+          nomDeclare: f.reclamation?.nomDeclare || '',
+          distanceMetres: f.reclamation?.distanceMetres ?? null,
+          demandeeLe: f.reclamation?.demandeeLe || null,
+          traiteeLe: f.reclamation?.traiteeLe || null,
+          demandeur: demandeur
+            ? {
+                id: String(demandeur._id),
+                nomComplet: [demandeur.prenom, demandeur.nom].filter(Boolean).join(' ') || 'Compte sans nom',
+                telephone: demandeur.telephone || '',
+              }
+            : null,
+        };
+      }),
+    });
+  })
+);
+
+/**
+ * POST /api/admin/reclamations/:id — l'équipe tranche : `accepter` ou `refuser` (bloc D).
+ *
+ * L'acceptation rattache la fiche EXISTANTE au demandeur : aucune copie, et aucune des
+ * informations publiques (photos, horaires, description) n'est écrasée. Le refus laisse la
+ * fiche réclamable par quelqu'un d'autre.
+ */
+router.post(
+  '/reclamations/:id',
+  protectAdmin,
+  asyncHandler(async (req, res) => {
+    const decision = String(req.body?.decision || '');
+    if (!['accepter', 'refuser'].includes(decision)) {
+      throw new ApiError(400, 'Décision attendue : « accepter » ou « refuser ».');
+    }
+    const fiche = await Establishment.findById(req.params.id);
+    if (!fiche) throw new ApiError(404, 'Établissement introuvable.');
+    if (!fiche.reclamation?.statut) throw new ApiError(400, 'Aucune réclamation sur cette fiche.');
+    if (fiche.reclame) throw new ApiError(409, 'Cette fiche est déjà réclamée.');
+
+    fiche.reclamation.traiteeLe = new Date();
+    fiche.reclamation.traiteeParUserId = req.user._id;
+
+    if (decision === 'accepter') {
+      fiche.reclamation.statut = 'acceptee';
+      fiche.reclame = true;
+      fiche.createdByUserId = fiche.reclamation.demandeurUserId;
+      await fiche.save();
+      const demandeur = await User.findById(fiche.reclamation.demandeurUserId);
+      if (demandeur && !demandeur.etablissementId) {
+        demandeur.etablissementId = fiche._id;
+        await demandeur.save();
+      }
+      return res.json({ statut: fiche.reclamation.statut, etablissementId: String(fiche._id), reclame: true });
+    }
+
+    fiche.reclamation.statut = 'refusee';
+    await fiche.save();
+    res.json({ statut: fiche.reclamation.statut, etablissementId: String(fiche._id), reclame: false });
+  })
+);
+
 /** GET /api/admin/utilisateurs/:id — fiche complète d'un compte (profil + activité + argent). */
 router.get(
   '/utilisateurs/:id',

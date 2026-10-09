@@ -60,6 +60,13 @@ const SECTIONS = [
     groupe: 'Suivi',
   },
   {
+    cle: 'reclamations',
+    libelle: 'Réclamations',
+    icone: 'mapPin',
+    sous: 'Fiches importées : valider ou refuser « c’est mon établissement »',
+    groupe: 'Suivi',
+  },
+  {
     cle: 'profil',
     libelle: 'Mon profil',
     icone: 'shieldCheck',
@@ -701,6 +708,15 @@ export default function Admin() {
               cle={cle}
               onGererErreur={gererErreur}
               onVoirUtilisateur={ouvrirUtilisateur}
+              onRafraichir={rafraichir}
+            />
+          ) : null}
+
+          {section === 'reclamations' ? (
+            <VueReclamations
+              cle={cle}
+              onMessage={setMessage}
+              onGererErreur={gererErreur}
               onRafraichir={rafraichir}
             />
           ) : null}
@@ -2236,6 +2252,166 @@ function VueActivite({ cle, onGererErreur, onVoirUtilisateur, onRafraichir }) {
  * Le profil est RELU au montage (GET /moi) pour afficher l'état réel côté serveur et
  * non les valeurs gardées en mémoire depuis la connexion.
  */
+/* ─── Réclamations de fiches (bloc D) ─────────────────────────────────────────
+   Les fiches publiques importées ne sont pas réclamées. Quand un gérant reconnaît la
+   sienne, elle est acceptée TOUT DE SUITE s'il est sur place (150 m ou moins, décidé côté
+   serveur). Au-delà, il ne peut pas la reprendre seul : c'est ICI qu'une personne tranche.
+   Accepter RATTACHE la fiche existante à son gérant — aucune copie n'est créée, et rien de
+   public (photos, horaires, description, avis) n'est écrasé. Refuser laisse la fiche
+   réclamable par quelqu'un d'autre. */
+function VueReclamations({ cle, onMessage, onGererErreur, onRafraichir }) {
+  const [statut, setStatut] = useState('en_attente');
+  const [donnees, setDonnees] = useState(null);
+  const [chargement, setChargement] = useState(true);
+  const [erreur, setErreur] = useState('');
+  const [idEnCours, setIdEnCours] = useState('');
+
+  useEffect(() => {
+    let vivant = true;
+    setChargement(true);
+    adminApi
+      .reclamations(statut)
+      .then((reponse) => {
+        if (!vivant) return;
+        setDonnees(reponse);
+        setErreur('');
+      })
+      .catch((err) => {
+        if (!vivant || onGererErreur(err)) return;
+        setErreur(err?.message || 'Réclamations indisponibles pour le moment.');
+      })
+      .finally(() => {
+        if (vivant) setChargement(false);
+      });
+    return () => {
+      vivant = false;
+    };
+  }, [statut, cle, onGererErreur]);
+
+  const lignes = donnees?.reclamations || [];
+
+  async function decider(ligne, decision) {
+    setIdEnCours(ligne.etablissementId);
+    try {
+      await adminApi.deciderReclamation(ligne.etablissementId, decision);
+      // On recharge la file PUIS on annonce le résultat (l'ordre compte : le
+      // rafraîchissement efface le message précédent).
+      onRafraichir();
+      onMessage(
+        decision === 'accepter'
+          ? `« ${ligne.nomFiche} » est désormais rattachée à son gérant.`
+          : `Réclamation refusée pour « ${ligne.nomFiche} ».`
+      );
+    } catch (err) {
+      if (!onGererErreur(err)) setErreur(err?.message || 'Action impossible sur cette réclamation.');
+    } finally {
+      setIdEnCours('');
+    }
+  }
+
+  return (
+    <Panneau
+      titre="Réclamations de fiches"
+      sous="Un gérant demande à reprendre une fiche publique importée. Accepter la lui rattache : aucune fiche en double n’est créée, et aucune information publique n’est écrasée."
+      actions={
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            type="button"
+            className={`bo-btn${statut === 'en_attente' ? ' bo-btn--principal' : ''}`}
+            onClick={() => setStatut('en_attente')}
+          >
+            À traiter
+          </button>
+          <button
+            type="button"
+            className={`bo-btn${statut === 'traitees' ? ' bo-btn--principal' : ''}`}
+            onClick={() => setStatut('traitees')}
+          >
+            Traitées
+          </button>
+        </div>
+      }
+    >
+      {erreur ? (
+        <Alerte variante="erreur" icone="alert" onFermer={() => setErreur('')}>
+          {erreur}
+        </Alerte>
+      ) : null}
+
+      {chargement ? (
+        <EtatChargement texte="Chargement des réclamations…" />
+      ) : lignes.length === 0 ? (
+        <EtatVide
+          texte={statut === 'en_attente' ? 'Aucune réclamation en attente.' : 'Aucune réclamation traitée pour le moment.'}
+          icone="check"
+        />
+      ) : (
+        <div className="bo-tableau-enveloppe">
+          <table className="bo-tableau">
+            <thead>
+              <tr>
+                <th>Fiche</th>
+                <th>Nom déclaré</th>
+                <th>Distance</th>
+                <th>Demandeur</th>
+                <th>Demandée</th>
+                <th>{statut === 'en_attente' ? 'Décision' : 'Statut'}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lignes.map((ligne) => (
+                <tr key={ligne.etablissementId}>
+                  <td>
+                    <strong>{ligne.nomFiche}</strong>
+                    <div>{[ligne.quartier, ligne.commune].filter(Boolean).join(', ')}</div>
+                  </td>
+                  <td>{ligne.nomDeclare || '—'}</td>
+                  <td>{ligne.distanceMetres == null ? 'inconnue' : `${ligne.distanceMetres} m`}</td>
+                  <td>
+                    {ligne.demandeur
+                      ? `${ligne.demandeur.nomComplet} — ${formatTelephone(ligne.demandeur.telephone)}`
+                      : 'compte supprimé'}
+                  </td>
+                  <td>{ligne.demandeeLe ? formatDateRelative(ligne.demandeeLe) : '—'}</td>
+                  <td className="bo-tableau-actions">
+                    {statut === 'en_attente' ? (
+                      <>
+                        <button
+                          type="button"
+                          className="bo-btn bo-btn--ok"
+                          disabled={idEnCours === ligne.etablissementId}
+                          onClick={() => decider(ligne, 'accepter')}
+                        >
+                          Accepter
+                        </button>
+                        <button
+                          type="button"
+                          className="bo-btn bo-btn--danger"
+                          disabled={idEnCours === ligne.etablissementId}
+                          onClick={() => decider(ligne, 'refuser')}
+                        >
+                          Refuser
+                        </button>
+                      </>
+                    ) : (
+                      <Badge
+                        variante={ligne.statut === 'acceptee' ? 'ok' : 'ko'}
+                        icone={ligne.statut === 'acceptee' ? 'check' : 'ban'}
+                      >
+                        {ligne.statut === 'acceptee' ? 'Acceptée' : 'Refusée'}
+                      </Badge>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Panneau>
+  );
+}
+
 function VueProfil({ admin, onAdmin, onMessage, onGererErreur, onDeconnecter }) {
   const [ancien, setAncien] = useState('');
   const [nouveau, setNouveau] = useState('');

@@ -1,9 +1,12 @@
 // InstallAppButton.jsx — Invitation d'installation de l'app (PWA, sans APK).
 //
 // Décisions :
-//  - BANNIÈRE FLOTTANTE au-dessus de la bottom nav, jamais un simple lien perdu
-//    en bas de page : l'installation est un geste rare, il faut la rendre visible
-//    sur le premier écran, sans gêner la navigation (elle se ferme en un clic).
+//  - BANNIÈRE FLOTTANTE au-dessus du bloc fixe du bas (navigation + barre d'action
+//    éventuelle), jamais un simple lien perdu en bas de page : l'installation est
+//    un geste rare, il faut la rendre visible sur le premier écran, sans gêner la
+//    navigation (elle se ferme en un clic). Sa position suit la hauteur MESURÉE du
+//    bloc (--hauteur-bloc-bas) — même correctif du 08/10 que la barre d'action, qui
+//    ne doit plus jamais flotter avec un interstice.
 //  - Charte v2 respectée : la bannière n'est plus un bandeau orange PLEIN (elle
 //    pesait lourd au-dessus de la bottom nav, sur toutes les pages). C'est
 //    désormais une surface blanche/ivoire sur fond clair : l'orange ne revient
@@ -91,8 +94,10 @@ export default function InstallAppButton({ className = '' }) {
         }}
         aria-label="Réafficher l’invitation d’installation"
         className="fixed right-3 z-30 inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-white px-3 py-2 text-[11px] font-bold text-primary-dark shadow-card transition hover:bg-soft active:scale-95"
-        // Même marge que la bannière : au-dessus de la bottom nav (§8).
-        style={{ bottom: 'calc(env(safe-area-inset-bottom) + 96px)' }}
+        // Même règle que la bannière : posée sur le haut du bloc fixe du bas, dont
+        // la hauteur est MESURÉE (--hauteur-bloc-bas, useMesureBlocBas.js). Le 96px
+        // n'est qu'un repli pour la toute première image, avant la mesure.
+        style={{ bottom: 'var(--hauteur-bloc-bas, 96px)' }}
       >
         <Icon name="download" size={14} />
         Installer l’app
@@ -106,8 +111,11 @@ export default function InstallAppButton({ className = '' }) {
       role="region"
       aria-label="Installer l’application"
       className={`fixed left-0 right-0 z-30 ${className}`}
-      // 96px = hauteur de la bottom nav + le bouton central surélevé (§8).
-      style={{ bottom: 'calc(env(safe-area-inset-bottom) + 96px)' }}
+      // Posée sur le haut du bloc fixe du bas, dont la hauteur est MESURÉE :
+      // navigation + barre d'action, ou navigation + bouton « + » surélevé selon
+      // l'écran (variables CSS de hooks/useMesureBlocBas.js). 96px = repli avant la
+      // mesure ; la barre système est déjà comprise dans la hauteur mesurée.
+      style={{ bottom: 'var(--hauteur-bloc-bas, 96px)' }}
     >
       <div className="ecran">
         {diagnostic && (

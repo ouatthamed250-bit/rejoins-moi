@@ -11,11 +11,19 @@
 //    zéro à l'ouverture). Le code reste prêt pour un vrai compteur API.
 //  - L'onglet actif reste orange partout : le vert est réservé à la section santé
 //    (§6) pour ne pas brouiller le repère de navigation.
+//  - GÉOMÉTRIE MESURÉE (correctif du 08/10) : la hauteur de cette navigation n'est
+//    jamais supposée. Elle est mesurée (ResizeObserver) et publiée en variables CSS
+//    par hooks/useMesureBlocBas.js, parce que la barre système du téléphone, le
+//    zoom de police et la police réellement chargée la font varier. C'est ce qui
+//    permet à la barre d'action (components/BarreActionFixe.jsx) de s'y poser
+//    EXACTEMENT, sans interstice. Le fond est opaque et les classes de position
+//    vivent dans theme.css (.nav-basse), pas ici.
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { Icon } from './Icons.jsx';
 import { useAuth } from '../hooks/useAuth.js';
+import { useMesureNavBas } from '../hooks/useMesureBlocBas.js';
 
 const ONGLETS = [
   { to: '/', label: 'Accueil', icone: 'home' },
@@ -49,6 +57,9 @@ export default function BottomNav() {
   const [feuilleOuverte, setFeuilleOuverte] = useState(false);
   const navigate = useNavigate();
   const { messagesNonLus } = useAuth();
+  // Mesure de la navigation (hauteur réelle → variables CSS du bloc du bas).
+  const nav = useRef(null);
+  useMesureNavBas(nav);
 
   function aller(chemin) {
     setFeuilleOuverte(false);
@@ -64,7 +75,7 @@ export default function BottomNav() {
           role="presentation"
         >
           <div
-            className="absolute bottom-[74px] left-1/2 w-[92%] max-w-[420px] -translate-x-1/2 rounded-lg bg-white p-3 shadow-lg"
+            className="au-dessus-du-bloc absolute left-1/2 w-[92%] max-w-[420px] -translate-x-1/2 rounded-lg bg-white p-3 shadow-lg"
             onClick={(evt) => evt.stopPropagation()}
             role="menu"
           >
@@ -92,11 +103,7 @@ export default function BottomNav() {
         </div>
       )}
 
-      <nav
-        aria-label="Navigation principale"
-        className="fixed bottom-0 left-0 right-0 z-30 border-t border-line bg-white/95 backdrop-blur"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
-      >
+      <nav ref={nav} aria-label="Navigation principale" className="nav-basse">
         <div className="mx-auto flex max-w-[480px] items-center justify-between px-2">
           {ONGLETS.slice(0, 2).map((onglet) => (
             <Onglet key={onglet.to} {...onglet} />

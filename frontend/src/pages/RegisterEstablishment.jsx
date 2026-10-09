@@ -39,6 +39,7 @@ import { useNavigate } from 'react-router-dom';
 
 import PhotoUploadField from '../components/PhotoUploadField.jsx';
 import InfoBanner from '../components/InfoBanner.jsx';
+import BarreActionFixe from '../components/BarreActionFixe.jsx';
 import { Icon } from '../components/Icons.jsx';
 import TagBadge from '../components/TagBadge.jsx';
 import { api } from '../utils/api/client.js';
@@ -746,7 +747,12 @@ export default function RegisterEstablishment() {
   const question = aEtablissement === null;
 
   return (
-    <div className={`ecran py-3 ${question ? '' : 'espace-barre-action'}`}>
+    /* L'espace sous le contenu (barre d'action incluse) n'est plus une classe de
+       page : le corps de page réserve la hauteur RÉELLE du bloc fixe du bas
+       (theme.css + hooks/useMesureBlocBas.js). C'est ce qui met le correctif à
+       l'abri du `py-3` ci-dessous, qui écrasait l'ancienne réserve
+       `espace-barre-action` dans la feuille compilée. */
+    <div className="ecran py-3">
       <h1 className="text-xl font-bold text-ink">
         {question ? 'Créer mon profil' : aEtablissement ? 'Inscrire mon établissement' : 'Mon profil'}
       </h1>
@@ -881,13 +887,15 @@ export default function RegisterEstablishment() {
       )}
 
       {/* Barre d'action fixe — absente sur l'écran de question : le choix se fait
-          dans la carte, il n'y a rien à valider. La réserve `espace-barre-action`
-          du conteneur garantit que les derniers champs restent atteignables. */}
+          dans la carte, il n'y a rien à valider.
+          Elle est POSÉE sur la navigation basse (composant BarreActionFixe) : sa
+          position vient de la hauteur RÉELLE de la navigation, mesurée au pixel
+          (hooks/useMesureBlocBas.js) — c'était un `bottom-[68px]` écrit en dur, qui
+          la faisait flotter avec un interstice sur les vrais téléphones. L'espace
+          sous le contenu est, lui aussi, mesuré : le dernier champ se défile
+          entièrement au-dessus de la barre. */}
       {!question && (
-        <div
-          className="fixed bottom-[68px] left-0 right-0 z-20 border-t border-line bg-white/95 px-4 py-3 backdrop-blur"
-          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
-        >
+        <BarreActionFixe className="px-4 py-3">
           <div className="mx-auto flex max-w-[480px] gap-2">
             <button
               type="button"
@@ -924,7 +932,7 @@ export default function RegisterEstablishment() {
               </button>
             )}
           </div>
-        </div>
+        </BarreActionFixe>
       )}
     </div>
   );

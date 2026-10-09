@@ -27,7 +27,9 @@
 //   T4ter GPS disponible      → le repère démarre sur la mesure, pas sur le centre ;
 //   T5 autorisé entre-temps  → position obtenue SANS aucun clic ;
 //   T6 inscription (bloc B2) → un refus n'empêche plus d'inscrire un établissement :
-//                              le point se place sur la carte, sans un seul appel GPS.
+//                              le point se place sur la carte, sans un seul appel GPS,
+//                              et le compte puis la fiche PARTENT vraiment (API
+//                              bouchonnée : on lit les requêtes réellement émises).
 //
 // Usage : npm run verifier:permissions   (construire `dist/` avant : npm run build)
 
@@ -43,7 +45,18 @@ const DIST = join(RACINE, 'dist');
 const SORTIE = join(RACINE, 'captures-permissions');
 const PORT = 9455; // serveur local (page de test)
 const PORT_CDP = 9456; // débogage Chrome
-const ORIGINE = `http://127.0.0.1:${PORT}`;
+// L'application PUBLIÉE est servie sous son chemin de déploiement (base Vite
+// « /rejoins-moi », cf. `npm run build:pages`). Le serveur de test doit donc servir
+// SOUS ce préfixe : sinon le navigateur réclame /rejoins-moi/assets/*.js, reçoit
+// index.html (text/html) à la place du module, l'application ne démarre jamais —
+// page blanche, et des vérifications qui « passent » sans rien mesurer (0 appel GPS
+// parce que le code n'a pas tourné). Le préfixe est lu dans dist/index.html, jamais
+// deviné (même règle que verifier-barres-basses.mjs).
+const ADRESSE = `http://127.0.0.1:${PORT}`;
+// `ADRESSE` sert aussi d'ORIGINE au sens des permissions : `Browser.setPermission`
+// refuse une origine contenant un chemin. `ORIGINE`, elle, est complétée par le
+// préfixe dès que dist/index.html est lu (plus bas).
+let ORIGINE = ADRESSE;
 const POINT_GPS = { latitude: 5.3242, longitude: -4.0206, accuracy: 25 }; // Abidjan, Plateau
 
 let echecs = 0;
@@ -111,6 +124,14 @@ verifier(
 verifier('la carte n’est téléchargée qu’à l’ouverture', sourceBandeau.includes("lazy(() => import('./ChoisirPosition.jsx'))"));
 
 // ── 2) Serveur local du `dist/` : l'app est testée telle qu'elle est publiée ─
+// Le chemin de déploiement est celui écrit dans dist/index.html (base Vite) : c'est
+// lui qui compte pour l'application elle-même (BrowserRouter) comme pour ses
+// ressources (`/rejoins-moi/assets/...`).
+const htmlIndex = readFileSync(join(DIST, 'index.html'), 'utf8');
+const trouveAssets = htmlIndex.match(/src="([^"]*\/assets\/[^"]+)"/);
+const PREFIXE_URL = trouveAssets ? trouveAssets[1].replace(/\/assets\/.*$/, '') : '';
+ORIGINE = `${ADRESSE}${PREFIXE_URL}`;
+
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -121,7 +142,12 @@ const TYPES = {
   '.ico': 'image/x-icon',
 };
 const serveur = createServer((requete, reponse) => {
-  const chemin = decodeURIComponent(new URL(requete.url, ORIGINE).pathname);
+  let chemin = decodeURIComponent(new URL(requete.url, ADRESSE).pathname);
+  // Le chemin de déploiement (« /rejoins-moi ») est retiré : les fichiers vivent à
+  // la racine de dist/, exactement comme sur l'hébergement.
+  if (PREFIXE_URL && chemin.startsWith(PREFIXE_URL)) {
+    chemin = chemin.slice(PREFIXE_URL.length) || '/';
+  }
   let fichier = join(DIST, chemin === '/' ? 'index.html' : chemin);
   // L'application est une page unique : toute route inconnue rend index.html.
   if (!fichier.startsWith(DIST) || !existsSync(fichier) || statSync(fichier).isDirectory()) {
@@ -198,6 +224,10 @@ class Cdp {
     this.ws = ws;
     this.id = 0;
     this.attentes = new Map();
+    // Écouteurs d'ÉVÉNEMENTS (messages sans `id`). Sans eux, `Fetch.requestPaused`
+    // resterait sans réponse et les requêtes bouchonnées pendraient : c'est ce
+    // mécanisme qui permet la preuve d'envoi de la T6.
+    this.ecouteurs = new Map();
     ws.addEventListener('message', (evenement) => {
       const message = JSON.parse(evenement.data);
       if (message.id && this.attentes.has(message.id)) {
@@ -205,8 +235,24 @@ class Cdp {
         this.attentes.delete(message.id);
         if (message.error) reject(new Error(JSON.stringify(message.error)));
         else resolve(message.result);
+        return;
+      }
+      if (!message.method) return;
+      for (const rappel of this.ecouteurs.get(message.method) || []) {
+        // Un écouteur ne doit jamais faire mourir le script : on signale et on continue.
+        try {
+          rappel(message.params, message.sessionId);
+        } catch (err) {
+          console.error(`  [CDP] écouteur « ${message.method} » en échec : ${err?.message || err}`);
+        }
       }
     });
+  }
+
+  /** Abonne un écouteur à un événement CDP (ex. « Fetch.requestPaused »). */
+  sur(methode, rappel) {
+    if (!this.ecouteurs.has(methode)) this.ecouteurs.set(methode, []);
+    this.ecouteurs.get(methode).push(rappel);
   }
 
   send(method, params = {}, sessionId = undefined) {
@@ -270,6 +316,16 @@ async function jusqua(expression, { maxMs = 20000, pas = 200 } = {}) {
 }
 
 const texte = () => page.evaluer('document.body ? document.body.innerText : ""');
+// Route de l'application, PRÉFIXE DE DÉPLOIEMENT RETIRÉ : l'application tourne sous
+// « /rejoins-moi » (base Vite), donc `location.pathname` vaut « /rejoins-moi/inscription ».
+// Comparer ce chemin à « /inscription » faisait échouer des vérifications pourtant
+// justes : c'est le préfixe qu'on lit ici, jamais la route qu'on suppose.
+const EXPR_CHEMIN_APP = `(() => {
+  const p = location.pathname;
+  const prefixe = ${JSON.stringify(PREFIXE_URL)};
+  return prefixe && p.startsWith(prefixe) ? (p.slice(prefixe.length) || '/') : p;
+})()`;
+const cheminApp = () => page.evaluer(EXPR_CHEMIN_APP);
 const appelsGps = () => page.evaluer('Array.isArray(window.__appelsGeo) ? window.__appelsGeo.length : -1');
 const positionStockee = () =>
   page.evaluer('(() => { try { return JSON.parse(localStorage.getItem("rejoinsmoi.position") || "null"); } catch { return "ILLISIBLE"; } })()');
@@ -308,7 +364,8 @@ async function capture(nom) {
 async function charger({ permission = null, gps = true, garderMemoire = false, point = POINT_GPS } = {}) {
   if (permission) {
     await navigateur.send('Browser.setPermission', {
-      origin: ORIGINE,
+      // `origin` au sens strict (schéma + hôte + port), sans le chemin de déploiement.
+      origin: ADRESSE,
       permission: { name: 'geolocation' },
       setting: permission,
     });
@@ -321,13 +378,22 @@ async function charger({ permission = null, gps = true, garderMemoire = false, p
   await jusqua('document.querySelector("#root") && document.querySelector("#root").children.length > 0');
   if (!garderMemoire) await page.evaluer('localStorage.clear()');
   await page.send('Page.navigate', { url: `${ORIGINE}/` });
-  await jusqua('document.querySelector("#root") && document.querySelector("#root").children.length > 0');
+  // Une page blanche ne doit JAMAIS passer pour un succès : sans rendu, « aucun
+  // appel au GPS » serait vrai par accident (le code n'a pas tourné). On le dit.
+  const rendu = await jusqua('document.querySelector("#root") && document.querySelector("#root").children.length > 0');
+  if (!rendu) {
+    throw new Error(
+      `l'application n'a rien rendu depuis ${ORIGINE}/ — vérifier le préfixe de build ` +
+        `(base Vite « ${PREFIXE_URL || '/'} » lu dans dist/index.html) : les vérifications ` +
+        'navigateur seraient sinon des faux positifs.'
+    );
+  }
   // 1,5 s : largement de quoi laisser un éventuel appel « au chargement » partir.
   await pause(1500);
 }
 
 console.log('\n▶ Même vérification dans un vrai navigateur (Chrome piloté par CDP)');
-console.log(`  page servie depuis dist/ sur ${ORIGINE}\n`);
+console.log(`  page servie depuis dist/ sur ${ORIGINE}  (préfixe de build : « ${PREFIXE_URL || '/'} »)\n`);
 
 // ── T1) Le refus enregistré ne provoque plus AUCUN appel ────────────────────
 console.log('1) Refus déjà enregistré : plus aucun appel, marche à suivre à l’écran');
@@ -607,7 +673,8 @@ console.log('\n5) Autorisation accordée pendant la visite : la position arrive 
 
   // L'utilisateur sort dans les réglages du navigateur et choisit « Autoriser ».
   await navigateur.send('Browser.setPermission', {
-    origin: ORIGINE,
+    // Ici aussi : origine stricte, sans chemin.
+    origin: ADRESSE,
     permission: { name: 'geolocation' },
     setting: 'granted',
   });
@@ -642,6 +709,31 @@ function remplir(placeholder, valeur) {
   })()`);
 }
 
+/**
+ * Renseigne le champ porté par le <label> dont le TEXTE est exactement `libelle`.
+ *
+ * Pourquoi cette variante : à l'étape 3, DEUX champs portent le placeholder
+ * « 07 07 12 34 56 » — le numéro affiché sur la fiche (label « Téléphone ») et le
+ * numéro du COMPTE (label « Téléphone * »). `remplir()` prend le premier trouvé dans
+ * le DOM, c'est-à-dire celui de la fiche : le numéro du compte restait vide et
+ * « Publier ma fiche » s'arrêtait sur « Indiquez votre numéro de téléphone pour créer
+ * votre compte » — un échec qui n'avait rien à voir avec la localisation.
+ */
+function remplirSousLibelle(libelle, valeur) {
+  return page.evaluer(`(() => {
+    const normaliser = (t) => String(t || '').replace(/\\s+/g, ' ').trim();
+    const etiquette = [...document.querySelectorAll('label')].find(
+      (l) => normaliser(l.innerText) === ${JSON.stringify(libelle)}
+    );
+    const champ = etiquette && etiquette.querySelector('input, textarea');
+    if (!champ) return false;
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    setter.call(champ, ${JSON.stringify(valeur)});
+    champ.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  })()`);
+}
+
 /** Présence d'un bouton portant ce libellé, sans le toucher. */
 const boutonPresent = (libelle) =>
   page.evaluer(`[...document.querySelectorAll('button')].some((b) => b.textContent.includes(${JSON.stringify(libelle)}))`);
@@ -654,6 +746,111 @@ function cocherTags(nombre) {
     pastilles.slice(0, ${nombre}).forEach((p) => p.click());
     return ${nombre};
   })()`);
+}
+
+// ── L'API bouchonnée de la preuve finale de la T6 ───────────────────────────
+// Le `dist/` servi ici est un site STATIQUE : « /api/users/register » y reçoit du
+// HTML, que le client traduit (à juste titre) par « serveur injoignable ». Impossible
+// donc de distinguer « la validation bloque » de « le réseau manque ». On installe
+// donc un bouchon AU NIVEAU DU RÉSEAU (CDP `Fetch`), qui répond du JSON comme l'API
+// et NOTE chaque appel : c'est cette liste qui prouve que l'envoi part vraiment.
+const TELEPHONE_COMPTE = '0707987654';
+const MOT_DE_PASSE_COMPTE = 'motdepasse6';
+const NOM_FICHE = 'Chez Awa';
+// Forme d'une fiche servie par l'API (mêmes champs que src/data/demoData.js) : la
+// fiche publiée doit pouvoir s'OUVRIR, sinon la capture finale ne montrerait qu'un
+// écran vide.
+const ETABLISSEMENT_ESSAI = {
+  id: 'etab-essai',
+  nom: NOM_FICHE,
+  categorie: 'alimentation',
+  description: 'Maquis de quartier, plats du jour et jus naturels.',
+  photoDevanture: '',
+  photoVendeur: '',
+  tags: ['Attiéké', 'Poisson braisé', 'Jus naturels'],
+  localisation: null,
+  commune: '',
+  quartier: 'Cocody',
+  horaires: '',
+  telephone: '0707123456',
+  whatsapp: '0707123456',
+  texteBoutonAction: `Aller chez ${NOM_FICHE}`,
+  noteMoyenne: 0,
+  nombreAvis: 0,
+  compteurVisites: 1,
+  compteurUtilisateurs: 1,
+  verifie: false,
+};
+
+const appelsApi = [];
+
+async function poserApiFactice() {
+  await page.send('Fetch.enable', {
+    // ⚠️ Le motif est VOLONTAIREMENT large : le `dist/` publié porte l'adresse du
+    // backend déployé (`VITE_API_URL`, cf. `npm run build:pages`) — un motif limité à
+    // l'origine locale ne retiendrait RIEN, et la T6 publierait pour de vrai un
+    // compte et une fiche d'essai sur l'API de production. Seules les requêtes d'API
+    // sont ainsi détournées ; le site (JS, CSS, images, tuiles) passe normalement.
+    patterns: [{ urlPattern: '*/api/*', requestStage: 'Request' }],
+  });
+  // En-têtes CORS : l'appel bouchonné peut viser une AUTRE origine que la page, et le
+  // navigateur vérifie donc la réponse (y compris le préflight OPTIONS, que le POST
+  // JSON déclenche).
+  const normesCors = [
+    { name: 'Access-Control-Allow-Origin', value: '*' },
+    { name: 'Access-Control-Allow-Methods', value: 'GET, POST, PATCH, DELETE, OPTIONS' },
+    { name: 'Access-Control-Allow-Headers', value: 'content-type, authorization, accept' },
+    { name: 'Access-Control-Max-Age', value: '600' },
+  ];
+  navigateur.sur('Fetch.requestPaused', async ({ requestId, request }) => {
+    // « /api » peut être précédé d'un chemin (site statique) ou suivi du domaine de
+    // l'API déployée : on ne garde que la route réellement appelée.
+    const chemin = new URL(request.url).pathname.split('/api').pop() || '';
+    const repondre = (statut, donnees, entetes = []) =>
+      page.send('Fetch.fulfillRequest', {
+        requestId,
+        responseCode: statut,
+        responseHeaders: [
+          { name: 'Content-Type', value: 'application/json; charset=utf-8' },
+          ...normesCors,
+          ...entetes,
+        ],
+        ...(statut === 204 ? {} : { body: Buffer.from(JSON.stringify(donnees)).toString('base64') }),
+      });
+    try {
+      // Préflight CORS : il ne compte pas comme un appel de l'application.
+      if (request.method === 'OPTIONS') {
+        await repondre(204);
+        return;
+      }
+      let corps = null;
+      if (request.postData) {
+        try {
+          corps = JSON.parse(request.postData);
+        } catch {
+          corps = { brut: request.postData };
+        }
+      }
+      appelsApi.push({ methode: request.method, chemin, corps });
+      if (chemin === '/users/register') {
+        await repondre(201, {
+          token: 'jeton-dessai',
+          user: { id: 'u-essai', telephone: corps?.telephone || '', nomComplet: 'Awa Traoré' },
+        });
+      } else if (chemin === '/establishments' && request.method === 'POST') {
+        await repondre(201, { etablissement: { ...ETABLISSEMENT_ESSAI, localisation: corps?.localisation || null } });
+      } else if (/^\/establishments\/[^/]+$/.test(chemin) && request.method === 'GET') {
+        await repondre(200, { etablissement: { ...ETABLISSEMENT_ESSAI }, avis: [] });
+      } else {
+        // Le reste (visite comptée, interactions…) : succès vide, comme l'API le fait
+        // pour ces appels sans contenu attendu.
+        await repondre(200, { ok: true });
+      }
+    } catch (err) {
+      // Requête annulée par la page pendant qu'on répondait : sans conséquence.
+      console.error(`  [API d'essai] ${request.method} ${chemin} : ${err?.message || err}`);
+    }
+  });
 }
 
 // ── T6) Bloc B2 : un refus n'empêche plus d'inscrire un établissement ───────
@@ -670,9 +867,11 @@ console.log('\n6) Refus toujours en place : l’inscription de l’établissemen
   verifier('trois produits/services cochés (minimum exigé par l’étape 2)', pastilles === 3, `${pastilles} pastille(s)`);
   verifier('l’étape 3 (celle qui exige une position) est atteinte', etape3);
 
-  // Étape 3 : nom et numéro renseignés, position volontairement absente.
-  const nomRempli = await remplir('Ex. Chez Fatou', 'Chez Awa');
-  const telRempli = await remplir('07 07 12 34 56', '0707123456');
+  // Étape 3 : nom et numéro renseignés, position volontairement absente. Le numéro
+  // visé ici est celui de la FICHE (« Téléphone » sans astérisque) : l'autre champ
+  // « 07 07 12 34 56 » de l'écran est celui du compte, il vient plus bas.
+  const nomRempli = await remplir('Ex. Chez Fatou', NOM_FICHE);
+  const telRempli = await remplirSousLibelle('Téléphone', '0707123456');
   const quartierRempli = await remplir('Quartier', 'Cocody');
   verifier(
     'le nom, le numéro et le quartier sont renseignés (seule la position manque)',
@@ -699,7 +898,7 @@ console.log('\n6) Refus toujours en place : l’inscription de l’établissemen
   await cliquer('Publier ma fiche');
   await pause(500);
   const refus = await texte();
-  const pageApresRefus = await page.evaluer('location.pathname');
+  const pageApresRefus = await cheminApp();
   await capture('6-inscription-refus-sans-point');
   verifier(
     'sans point, la fiche n’est pas publiée',
@@ -763,15 +962,52 @@ console.log('\n6) Refus toujours en place : l’inscription de l’établissemen
     (await page.evaluer('Boolean(document.querySelector(".leaflet-container"))')) === false
   );
 
-  // Preuve finale : la validation passe et l'envoi part vraiment. Sans compte, le
-  // formulaire redirige vers la connexion — c'est exactement le comportement d'`envoyer()`.
-  await cliquer('Publier ma fiche');
-  const partiVersConnexion = await jusqua('location.pathname === "/connexion"', { maxMs: 8000 });
-  await capture('6-inscription-envoi-accepte');
+  // ── Preuve finale : la validation passe, et l'envoi PART VRAIMENT ─────────
+  // Depuis le parcours « nouveau venu », l'inscription ne renvoie plus vers
+  // /connexion : elle CRÉE le compte dans le même écart d'écran, puis publie la fiche
+  // — sinon photos, tags et point choisi seraient perdus, et c'était le principal
+  // abandon du parcours. On prouve donc la suite RÉELLE des deux appels (« POST
+  // /users/register » puis « POST /establishments »), pas une redirection : c'est la
+  // seule façon de distinguer « le formulaire a laissé passer » de « c'est parti ».
+  const identification = await remplirSousLibelle('Téléphone *', TELEPHONE_COMPTE);
+  const motDePasseCompte = await remplirSousLibelle('Mot de passe *', MOT_DE_PASSE_COMPTE);
+  await capture('6-inscription-compte-renseigne');
   verifier(
-    'l’inscription passe enfin la validation (redirection vers la connexion, faute de compte)',
-    Boolean(partiVersConnexion),
-    await page.evaluer('location.pathname')
+    'le numéro et le mot de passe du COMPTE sont saisis (les deux champs « 07 07… » de l’écran sont distincts)',
+    identification && motDePasseCompte,
+    `compte : ${TELEPHONE_COMPTE}`
+  );
+
+  await poserApiFactice();
+  await cliquer('Publier ma fiche');
+  const partiSurLaFiche = await jusqua(`${EXPR_CHEMIN_APP} === "/etablissement/etab-essai"`, { maxMs: 15000 });
+  await capture('6-inscription-envoi-accepte');
+  const creationCompte = appelsApi.find((a) => a.chemin === '/users/register');
+  const publication = appelsApi.find((a) => a.chemin === '/establishments' && a.methode === 'POST');
+  verifier(
+    'le compte est créé dans le parcours, avec le numéro saisi à l’écran',
+    Boolean(creationCompte) && creationCompte.corps?.telephone === TELEPHONE_COMPTE,
+    creationCompte ? `POST /users/register — ${creationCompte.corps?.telephone}` : 'aucun appel'
+  );
+  verifier(
+    'la fiche part avec le POINT choisi sur la carte (jamais une mesure GPS)',
+    Boolean(publication) &&
+      Boolean(arrivee) &&
+      Math.abs((publication.corps?.localisation?.lat ?? NaN) - arrivee.lat) < 0.0001 &&
+      Math.abs((publication.corps?.localisation?.lng ?? NaN) - arrivee.lng) < 0.0001,
+    publication ? JSON.stringify(publication.corps?.localisation) : 'aucun appel'
+  );
+  verifier(
+    'la fiche publiée porte le nom, le quartier et le numéro saisis',
+    publication?.corps?.nom === NOM_FICHE &&
+      publication?.corps?.quartier === 'Cocody' &&
+      publication?.corps?.telephone === '0707123456',
+    publication ? `« ${publication.corps.nom} » / ${publication.corps.quartier} / ${publication.corps.telephone}` : '—'
+  );
+  verifier(
+    'l’écran bascule sur la fiche publiée, sans repasser par la connexion',
+    Boolean(partiSurLaFiche),
+    await cheminApp()
   );
   verifier(
     'ce parcours complet n’a coûté AUCUN appel GPS',

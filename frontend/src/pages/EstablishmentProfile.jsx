@@ -21,6 +21,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import EmptyState from '../components/EmptyState.jsx';
+import BarreActionFixe from '../components/BarreActionFixe.jsx';
 import InfoBanner from '../components/InfoBanner.jsx';
 import PhotoSecours from '../components/PhotoSecours.jsx';
 import StarRating from '../components/StarRating.jsx';
@@ -118,6 +119,18 @@ export default function EstablishmentProfile() {
         /* une visite non comptée n'est pas une raison de gêner la lecture */
       });
   }, [etablissement, horsLigne]);
+
+  // ── Fond de l'écran ──
+  // La fiche est blanche de bout en bout : on le déclare sur <html> pour que la
+  // réserve d'espace du bas (hauteur mesurée du bloc fixe, theme.css) prolonge ce
+  // blanc, au lieu de laisser apparaître un liseré ivoire juste au-dessus de la
+  // barre « Aller chez … ».
+  useEffect(() => {
+    document.documentElement.dataset.fond = 'blanc';
+    return () => {
+      delete document.documentElement.dataset.fond;
+    };
+  }, []);
 
   const estSante = etablissement?.categorie === 'sante';
   const distance = useMemo(
@@ -255,11 +268,13 @@ export default function EstablishmentProfile() {
   const whatsapp = etablissement.whatsapp || etablissement.telephone;
 
   return (
-    /* `espace-barre-fixe` (theme.css) : cet écran est en plein écran (pas de bottom
-       nav) mais sa barre « Aller chez … » est FIXE au bas de la fenêtre. Sans cette
-       réserve, les derniers avis / le dernier bloc restaient coincés derrière la
-       barre, impossible à atteindre (correctif « contenu coupé » du 30/09). */
-    <div className="espace-barre-fixe min-h-full bg-white">
+    /* Écran PLEIN (pas de bottom nav) mais avec une barre « Aller chez … » FIXE au
+       bas de la fenêtre : `data-fond` prolonge le fond blanc de la fiche sous la
+       réserve de pied de page, et BarreActionFixe pose la barre au bas réel de la
+       fenêtre en publiant sa hauteur mesurée — le contenu reste donc entièrement
+       défilable au-dessus d'elle (correctifs « contenu coupé » du 30/09 et « barre
+       flottante » du 08/10). */
+    <div className="min-h-full bg-white">
       {/* ── Grande photo de devanture + médaillon du vendeur/gérant ── */}
       <header className="relative">
         {/* PHOTO : on préfère l'URL servie par l'API (`photoDevantureUrl`), valable
@@ -549,8 +564,10 @@ export default function EstablishmentProfile() {
         </div>
       </div>
 
-      {/* ── Bouton d'action fixe : le TEXTE est dynamique, « Aller chez <nom> » (§5) ── */}
-      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
+      {/* ── Bouton d'action fixe : le TEXTE est dynamique, « Aller chez <nom> » (§5).
+          BarreActionFixe le colle au bas RÉEL de la fenêtre et publie sa hauteur :
+          aucun avis, aucun bloc ne reste coincé derrière (barre système comprise). ── */}
+      <BarreActionFixe>
         <div className="ecran flex items-center gap-3 py-3">
           <div className="min-w-0 flex-1">
             <p className="truncate text-[10px] font-bold uppercase tracking-wide text-ink-muted">
@@ -571,7 +588,7 @@ export default function EstablishmentProfile() {
             {texteBouton}
           </button>
         </div>
-      </div>
+      </BarreActionFixe>
     </div>
   );
 }

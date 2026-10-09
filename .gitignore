@@ -47,6 +47,15 @@ yarn-error.log*
 Thumbs.db
 *.log
 
-# Preuves du parcours � nouveau venu � (bloc E) : captures d'ecran et rapport regenerables.
+# Preuves du parcours « nouveau venu » (bloc E) : captures d'écran et rapport régénérables.
 captures-parcours/
+
+# Preuves du correctif des barres basses (bloc B) : captures, rapports et journaux
+# avant/apres, tous regenerables par `npm run verifier:barres`.
+frontend/captures-barres/
+# Journaux de console des recettes (perm.out, barres.err, *.pid) : sorties brutes
+# ecrites a cote des scripts, regenerables et sans interet pour le depot.
+frontend/*.out
+frontend/*.err
+frontend/*.pid
 

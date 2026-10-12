@@ -23,7 +23,8 @@
     "verifier:reclamations": "node scripts/verifier-reclamations.js",
     "verifier:demarrage-api": "node scripts/verifier-demarrage-api.js",
     "verifier:poids-listes": "node scripts/verifier-poids-listes.js",
-    "mesurer:capacite": "node scripts/mesurer-capacite.js"
+    "mesurer:capacite": "node scripts/mesurer-capacite.js",
+    "auditer:tests": "node scripts/auditer-tests.js"
   },
   "engines": {
     "node": ">=20"

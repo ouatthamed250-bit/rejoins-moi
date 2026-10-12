@@ -44,9 +44,15 @@
 //      contact. Nouveau nom de cache : l'app shell change (nouvelles empreintes
 //      JS/CSS), un téléphone déjà installé garderait sinon l'ancien index.html
 //      en secours, donc l'ANCIENNE app — sans l'écran /admin.
+// v9 : correctif des barres basses (08/10) — la barre d'action se POSE sur la
+//      navigation au lieu de flotter à 68px au-dessus, et la réserve d'espace du
+//      bas suit la hauteur RÉELLE mesurée du bloc. L'app shell change (empreintes
+//      JS/CSS) : sans nouveau nom de cache, un téléphone déjà installé servirait
+//      l'ancien index.html en secours, donc l'ANCIENNE app — avec la barre qui
+//      flotte avec un interstice, exactement le bug corrigé.
 // Changer la version est indispensable dès que les fichiers « cache d'abord »
 // (icônes) ou l'app shell changent de façon visible.
-const VERSION = 'v8';
+const VERSION = 'v9';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

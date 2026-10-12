@@ -41,6 +41,7 @@ import Messages from './pages/Messages.jsx';
 import Profile from './pages/Profile.jsx';
 import Login from './pages/Login.jsx';
 import Admin from './pages/Admin.jsx';
+import MentionsLegales from './pages/MentionsLegales.jsx';
 
 /** Routes affichées en plein écran : ni TopBar ni BottomNav. */
 const ROUTES_PLEIN_ECRAN = [/^\/etablissement\//, /^\/admin\/?$/];
@@ -109,6 +110,10 @@ function Structure() {
           <Route path="/messages" element={<Messages />} />
           <Route path="/profil" element={<Profile />} />
           <Route path="/connexion" element={<Login />} />
+          {/* Page « Mentions légales » (bloc G) : données collectées, ce qui est public,
+              et suppression/correction par WhatsApp — accessible depuis le profil, la
+              connexion et le menu principal. */}
+          <Route path="/mentions-legales" element={<MentionsLegales />} />
           {/* Back-office : écran plein écran, jeton admin distinct du compte utilisateur. */}
           <Route path="/admin" element={<Admin />} />
           {/* Toute route inconnue revient au feed : jamais d'écran blanc. */}

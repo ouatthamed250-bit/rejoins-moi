@@ -45,6 +45,10 @@ const SECTIONS = [
       { to: '/profil', icone: 'user', libelle: 'Mon profil' },
       { to: '/messages', icone: 'message', libelle: 'Messages & mises en relation' },
       { to: '/inscription', icone: 'store', libelle: 'Inscrire mon établissement' },
+      // Bloc G : la page dit ce qui est enregistré et comment faire supprimer ou
+      // corriger ses données (WhatsApp). Elle est atteignable depuis ici, depuis le
+      // profil et depuis l'écran de connexion.
+      { to: '/mentions-legales', icone: 'lock', libelle: 'Mentions légales' },
     ],
   },
 ];

@@ -22,6 +22,7 @@ import EmptyState from '../components/EmptyState.jsx';
 import { Icon } from '../components/Icons.jsx';
 import { useAuth } from '../hooks/useAuth.js';
 import { METIERS } from '../data/demoData.js';
+import { TEXTE_DONNEES, LIEN_DONNEES } from '../config/legal.js';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -221,9 +222,30 @@ export default function Login() {
       </form>
 
       <p className="mt-4 text-center text-[11px] leading-snug text-ink-muted">
-        Vos données (numéro, photo, position) ne sont collectées qu’avec votre accord et servent uniquement à la mise
-        en relation (déclaration ARTCI en cours).{' '}
-        <Link to="/" className="font-semibold text-primary underline">
+        Vos données (numéro, photo, position) ne sont collectées qu’avec votre accord et servent
+        uniquement à la mise en relation.{' '}
+        <Link to="/mentions-legales" className="font-semibold text-primary underline">
+          Mentions légales
+        </Link>
+      </p>
+
+      {/* Phrase UNIQUE de suppression/correction (config/legal.js) : le même texte est sur
+          le profil et sur la page Mentions légales. Il n'existe pas de bouton
+          « supprimer mon compte » : on ne promet donc pas autre chose. */}
+      <p className="mt-2 text-center text-[11px] leading-snug text-ink-muted">
+        <a
+          className="font-semibold text-primary underline"
+          href={LIEN_DONNEES}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {TEXTE_DONNEES}
+        </a>
+      </p>
+
+      {/* Échappement conservé : on peut utiliser l’app sans créer de compte. */}
+      <p className="mt-3 text-center">
+        <Link to="/" className="text-xs font-semibold text-primary underline">
           Continuer sans compte
         </Link>
       </p>

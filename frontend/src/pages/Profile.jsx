@@ -22,6 +22,7 @@ import { api } from '../utils/api/client.js';
 import { useAuth } from '../hooks/useAuth.js';
 import { formatFcfa, formatTelephone, initiales } from '../utils/format.js';
 import { METIERS, ETABLISSEMENTS_DEMO } from '../data/demoData.js';
+import { TEXTE_DONNEES, LIEN_DONNEES } from '../config/legal.js';
 
 const FORMULAIRE_VIDE = {
   prenom: '',
@@ -390,9 +391,22 @@ export default function Profile() {
         </button>
       </div>
 
+      {/* Suppression / correction des données (bloc G) : un VRAI moyen de contact, et
+          non plus « depuis l'onglet Messages » (cet écran ne permet rien de tel).
+          Le numéro et le lien viennent de config/legal.js : une seule source. */}
       <p className="mt-4 text-center text-[11px] leading-snug text-ink-muted">
-        Conformité ARTCI (Loi n°2013-450) : vous pouvez demander la suppression de vos données à tout moment depuis
-        l’onglet Messages.
+        <a
+          className="font-semibold text-primary underline"
+          href={LIEN_DONNEES}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {TEXTE_DONNEES}
+        </a>
+        .{' '}
+        <Link to="/mentions-legales" className="font-semibold text-primary underline">
+          Mentions légales
+        </Link>
       </p>
     </div>
   );

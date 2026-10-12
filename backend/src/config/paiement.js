@@ -17,12 +17,19 @@ function chiffres(valeur) {
   return String(valeur || '').replace(/\D/g, '');
 }
 
-/** Convertit un numéro local ivoirien (« 0554233234 ») en format E.164 sans « + » (pour wa.me). */
+/**
+ * Convertit un numéro local ivoirien (« 0554233234 ») en format international pour
+ * wa.me : « 2250554233234 ».
+ *
+ * ATTENTION (correction du 12/10, bloc G) : le 0 initial fait PARTIE du numéro
+ * ivoirien depuis la refonte de 2021 (+225 05 54 23 32 34). La version précédente le
+ * supprimait, ce qui produisait un lien WhatsApp vers un numéro inexistant.
+ */
 export function enFormatWhatsapp(numero) {
   const d = chiffres(numero);
   if (!d) return '';
-  const sansZero = d.startsWith('0') ? d.slice(1) : d;
-  return `225${sansZero}`;
+  if (d.startsWith('225') && d.length > 10) return d; // déjà au format international
+  return `225${d}`;
 }
 
 /**

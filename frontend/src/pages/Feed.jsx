@@ -35,7 +35,7 @@ import { filtrerEtablissementsDemo } from '../data/demoData.js';
 import { useGeolocation } from '../hooks/useGeolocation.js';
 import { useFeedAlgorithm } from '../hooks/useFeedAlgorithm.js';
 import { useAuth } from '../hooks/useAuth.js';
-import { formatCompteur } from '../utils/format.js';
+import { phraseContactUtilisateurs } from '../utils/format.js';
 
 /**
  * Nombre de fiches chargées par page. L'API plafonne à 60 (voir LIMITE_MAX côté
@@ -264,6 +264,9 @@ export default function Feed() {
 
   const prenom = profil?.prenom || (profil?.nomComplet || '').split(' ')[0] || '';
   const totalUtilisateurs = orderedEstablishments.reduce((s, e) => s + (e.compteurUtilisateurs || 0), 0);
+  // Phrase unique (utils/format.js) : singulier/pluriel géré et chaîne VIDE quand il
+  // n'y a personne à annoncer — dans ce cas on n'affiche rien (bloc I).
+  const phraseUtilisateurs = phraseContactUtilisateurs(totalUtilisateurs);
 
   return (
     <div className="ecran py-3 fond-traits-fins">
@@ -354,11 +357,13 @@ export default function Feed() {
       <ArtisansMisEnAvant className="mb-3" />
 
       {/* Vue synthétique : uniquement le compteur UTILISATEURS, jamais fusionné
-          avec les visites (les deux restent strictement séparés, §3). */}
-      {orderedEstablishments.length > 0 && (
+          avec les visites (les deux restent strictement séparés, §3).
+          À zéro, la phrase n'est PAS affichée (bloc I) : « 0 utilisateurs ont
+          contacté » donne l'impression d'un compteur en panne. */}
+      {orderedEstablishments.length > 0 && phraseUtilisateurs && (
         <p className="mb-2 text-[11px] font-semibold text-ink-muted">
           <Icon name="users" size={12} className="mr-1 inline align-[-2px]" />
-          {formatCompteur(totalUtilisateurs)} utilisateurs ont contacté ces établissements
+          {phraseUtilisateurs}
         </p>
       )}
 

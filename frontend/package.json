@@ -16,6 +16,7 @@
     "verifier:parcours": "node scripts/verifier-parcours-nouveau.mjs",
     "verifier:mentions": "node scripts/verifier-mentions-legales.mjs",
     "verifier:sante": "node scripts/verifier-sante.mjs",
+    "verifier:phrase": "node scripts/verifier-phrase-fil.mjs",
     "icones": "node scripts/generer-icones.mjs",
     "captures": "node scripts/capture-ecrans.mjs",
     "captures:admin": "node scripts/capture-admin.mjs",

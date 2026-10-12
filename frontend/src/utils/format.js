@@ -29,6 +29,26 @@ export function formatCompteur(n) {
   return `${Math.round(v / 1000)} k`;
 }
 
+/**
+ * Phrase du fil d'accueil : « 24 utilisateurs ont contacté ces établissements ».
+ *
+ * Deux corrections (bloc I du 12/10) :
+ *   1. SINGULIER : à 1, la phrase affichait « 1 utilisateurs ont contacté » ;
+ *   2. ZÉRO : la phrase n'est plus affichée du tout (chaîne vide) — « 0 utilisateurs
+ *      ont contacté ces établissements » fait croire à un compteur cassé, alors que
+ *      c'est simplement qu'aucun établissement de la liste n'a encore été contacté.
+ * L'appelant teste la chaîne : si elle est vide, il n'affiche rien.
+ *
+ * @param {number} total somme des compteurs d'utilisateurs de la liste affichée
+ * @returns {string} la phrase, ou '' s'il n'y a rien à annoncer
+ */
+export function phraseContactUtilisateurs(total) {
+  const v = Number(total);
+  if (!Number.isFinite(v) || v <= 0) return '';
+  if (v === 1) return '1 utilisateur a contacté ces établissements';
+  return `${formatCompteur(v)} utilisateurs ont contacté ces établissements`;
+}
+
 const MOIS = [
   'janv.',
   'févr.',

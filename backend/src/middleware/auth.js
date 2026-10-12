@@ -10,6 +10,16 @@ import User from '../models/User.js';
 
 const FALLBACK_SECRET = 'rejoins-moi-dev-secret-non-securise';
 
+/**
+ * Durée de vie du jeton du BACK-OFFICE (bloc F du 12/10) : 12 heures.
+ * Un jeton admin ouvre TOUT (valider un dépôt = révéler un contact payé, suspendre un
+ * compte, lire les numéros de tout le monde). Il n'a aucune raison de vivre 30 jours
+ * comme celui d'un utilisateur : la session du back-office est courte, une journée de
+ * travail suffit. À échéance, l'administrateur se reconnecte (10 secondes).
+ * Surchargeable par ADMIN_JWT_EXPIRES_IN dans backend/.env.
+ */
+export const DUREE_JETON_ADMIN = process.env.ADMIN_JWT_EXPIRES_IN || '12h';
+
 export function getJwtSecret() {
   if (!process.env.JWT_SECRET) {
     if (process.env.NODE_ENV === 'production') {
@@ -21,8 +31,14 @@ export function getJwtSecret() {
   return process.env.JWT_SECRET;
 }
 
-/** Génère un JWT pour un utilisateur donné. */
-export function signToken(user) {
+/**
+ * Génère un JWT pour un utilisateur donné.
+ * @param {{_id: any, telephone?: string}} user
+ * @param {{expiresIn?: string}} [options] durée de vie ; par défaut JWT_EXPIRES_IN
+ *   (30 jours — un utilisateur de l'app ne doit pas se reconnecter sans arrêt sur son
+ *   téléphone). Le back-office passe `DUREE_JETON_ADMIN` (12 h).
+ */
+export function signToken(user, { expiresIn } = {}) {
   // Le jeton ne porte aucune notion de rôle : le compte est UNIFIÉ (ajout du 29/09).
   // Les capacités (estArtisan, chercheTravail) sont relues en base à chaque requête
   // via `protect`, donc toujours à jour — un jeton émis il y a 20 jours ne peut pas
@@ -30,7 +46,7 @@ export function signToken(user) {
   return jwt.sign(
     { sub: String(user._id), telephone: user.telephone },
     getJwtSecret(),
-    { expiresIn: process.env.JWT_EXPIRES_IN || '30d' }
+    { expiresIn: expiresIn || process.env.JWT_EXPIRES_IN || '30d' }
   );
 }
 
@@ -138,4 +154,4 @@ export async function optionalAuth(req, res, next) {
  * ou sur la présence d'un abonnement (voir routes/subscriptions.js).
  */
 
-export default { protect, optionalAuth, protectAdmin, signToken, getJwtSecret };
+export default { protect, optionalAuth, protectAdmin, signToken, getJwtSecret, DUREE_JETON_ADMIN };

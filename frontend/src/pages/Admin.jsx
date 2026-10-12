@@ -1125,14 +1125,36 @@ function VueDepots({ cle, onMessage, onGererErreur, onVoirUtilisateur, onRafraic
               ? 'Valider ce dépôt et révéler le contact ?'
               : 'Rejeter ce dépôt de paiement ?'}
           </p>
-          <p className="bo-petit bo-doux">
-            {nomComplet(action.depot.utilisateur)} · {libelleOperateur(action.depot.operateur)} ·{' '}
-            {formatFcfa(action.depot.montant)}
-            {action.depot.reference ? ` · réf. ${action.depot.reference}` : ''}
-            {action.type === 'valider'
-              ? ' — le contact de l’annonce deviendra visible pour cet utilisateur.'
-              : ' — le contact RESTERA masqué et le motif ci-dessous lui sera affiché.'}
-          </p>
+          {/* Récapitulatif COMPLET avant une décision IRRÉVERSIBLE (bloc F) : montant,
+              opérateur, numéro payeur et référence, un par ligne. L’administrateur doit
+              pouvoir comparer avec son relevé mobile money sans quitter l’écran : une fois
+              validé, le contact est révélé et le dépôt ne peut plus être rejeté. */}
+          <div className="bo-bloc-action-recap">
+            <p className="bo-petit bo-doux">
+              <strong>Compte :</strong> {nomComplet(action.depot.utilisateur) || 'compte inconnu'}
+              {action.depot.utilisateur?.telephone
+                ? ` (${formatTelephone(action.depot.utilisateur.telephone)})`
+                : ''}
+            </p>
+            <p className="bo-petit bo-doux">
+              <strong>Montant :</strong> {formatFcfa(action.depot.montant)}
+            </p>
+            <p className="bo-petit bo-doux">
+              <strong>Opérateur :</strong> {libelleOperateur(action.depot.operateur)}
+            </p>
+            <p className="bo-petit bo-doux">
+              <strong>Numéro payeur :</strong>{' '}
+              {formatTelephone(action.depot.telephonePayeur) || 'non précisé'}
+            </p>
+            <p className="bo-petit bo-doux">
+              <strong>Référence :</strong> {action.depot.reference || 'aucune référence fournie'}
+            </p>
+            <p className="bo-petit bo-doux">
+              {action.type === 'valider'
+                ? 'Le contact de l’annonce deviendra visible pour cet utilisateur. Décision DÉFINITIVE : un dépôt validé ne pourra plus être rejeté.'
+                : 'Le contact RESTERA masqué et le motif ci-dessous sera affiché à l’utilisateur. Décision définitive.'}
+            </p>
+          </div>
           {action.type === 'rejeter' ? (
             <label className="bo-champ">
               <span className="bo-etiquette">Motif du rejet (visible par l’utilisateur)</span>
@@ -1296,6 +1318,15 @@ function VueDepots({ cle, onMessage, onGererErreur, onVoirUtilisateur, onRafraic
                       {depot.statut === 'rejete' && depot.noteAdmin ? (
                         <span className="bo-sous-ligne bo-petit bo-doux" title={depot.noteAdmin}>
                           motif : {depot.noteAdmin}
+                        </span>
+                      ) : null}
+                      {/* QUI a tranché (bloc F) : la décision est définitive, elle doit être
+                          attribuable. `validePar` est renvoyé par GET /api/admin/depots. */}
+                      {depot.statut !== 'en_attente' ? (
+                        <span className="bo-sous-ligne bo-petit bo-doux">
+                          {depot.statut === 'valide' ? 'validé par' : 'rejeté par'}{' '}
+                          {depot.validePar?.nom || 'administrateur inconnu'}
+                          {depot.valideAt ? ` · ${formatDateRelative(depot.valideAt)}` : ''}
                         </span>
                       ) : null}
                     </td>
@@ -1887,6 +1918,13 @@ function TiroirUtilisateur({ utilisateurId, onFermer, onMessage, onGererErreur, 
                             <StatutDepot statut={depot.statut} />
                             {depot.noteAdmin ? (
                               <span className="bo-sous-ligne bo-petit bo-doux">{depot.noteAdmin}</span>
+                            ) : null}
+                            {/* Qui a tranché ce dépôt (bloc F). */}
+                            {depot.statut !== 'en_attente' ? (
+                              <span className="bo-sous-ligne bo-petit bo-doux">
+                                {depot.statut === 'valide' ? 'validé par' : 'rejeté par'}{' '}
+                                {depot.validePar?.nom || 'administrateur inconnu'}
+                              </span>
                             ) : null}
                           </td>
                         </tr>

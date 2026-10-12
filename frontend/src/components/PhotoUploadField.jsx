@@ -10,9 +10,14 @@
 // Décisions techniques pour le terrain :
 //  - `capture="environment"` : sur Android, ouvre directement l'appareil photo
 //    arrière (le gérant prend sa devanture sur place pendant la tournée terrain).
-//  - Compression côté navigateur AVANT envoi (max 1000 px, JPEG qualité 0,72) :
-//    une photo de smartphone pèse 3-5 Mo ; compressée elle passe sous 250 Ko, ce
-//    qui la rend envoyable en 3G et évite de saturer la limite de 12 Mo de l'API.
+//  - Compression côté navigateur AVANT envoi : cible 1000 px de large et JPEG 0,72,
+//    puis on DESCEND par paliers (qualité, puis dimensions) jusqu'à passer sous
+//    les 300 Ko (bloc F du 12/10). Une photo de smartphone pèse 3-5 Mo : compressée
+//    elle passe sous 250 Ko, donc envoyable en 3G. Si même le plancher (640 px /
+//    qualité 0,5) ne suffit pas, la photo est REFUSÉE avec un message clair : mieux
+//    vaut ça qu'une fiche de 5 Mo qui ne se charge jamais sur le terrain.
+//  - Le plafond de 300 Ko est la contrepartie exacte du plafond serveur
+//    (backend/src/utils/validators.js, MAX_PHOTO_OCTETS) : les deux vont ensemble.
 //  - Aperçu immédiat avec possibilité de retirer/remplacer : indispensable quand
 //    la photo prise est floue.
 
@@ -20,11 +25,40 @@ import { useRef, useState } from 'react';
 import { Icon } from './Icons.jsx';
 
 const TAILLE_MAX_PX = 1000;
+const TAILLE_MIN_PX = 640;
 const QUALITE_JPEG = 0.72;
+const QUALITE_MIN = 0.5;
+const PAS_QUALITE = 0.08;
+const PAS_DIMENSION = 0.8;
+
+/** Plafond d'UNE photo : 300 Ko (aligné sur le serveur). */
+export const PLAFOND_PHOTO_OCTETS = 300 * 1024;
+
+/** Poids réel (octets) d'une data-URI, sans la décoder (base64 = 4/3 du binaire). */
+export function poidsDataUriOctets(dataUri) {
+  const v = String(dataUri || '');
+  const separateur = v.indexOf(',');
+  if (separateur === -1) return 0;
+  return Math.floor(((v.length - separateur - 1) * 3) / 4);
+}
+
+/** Redimensionne puis encode l'image en JPEG à la taille et à la qualité demandées. */
+function dessiner(image, maxPx, qualite) {
+  const ratio = Math.min(1, maxPx / Math.max(image.width, image.height));
+  const largeur = Math.max(1, Math.round(image.width * ratio));
+  const hauteur = Math.max(1, Math.round(image.height * ratio));
+  const canvas = document.createElement('canvas');
+  canvas.width = largeur;
+  canvas.height = hauteur;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(image, 0, 0, largeur, hauteur);
+  return canvas.toDataURL('image/jpeg', qualite);
+}
 
 /**
- * Redimensionne et compresse une image en data-URI JPEG.
+ * Redimensionne et compresse une image en data-URI JPEG sous 300 Ko.
  * @returns {Promise<string>} data-URI prête à envoyer à l'API
+ * @throws {Error} si la photo reste trop lourde même au plancher (message montré à l'utilisateur)
  */
 export function compresserImage(fichier) {
   return new Promise((resolve, reject) => {
@@ -34,16 +68,35 @@ export function compresserImage(fichier) {
       const image = new Image();
       image.onerror = () => reject(new Error('Fichier image illisible.'));
       image.onload = () => {
-        const ratio = Math.min(1, TAILLE_MAX_PX / Math.max(image.width, image.height));
-        const largeur = Math.round(image.width * ratio);
-        const hauteur = Math.round(image.height * ratio);
+        let maxPx = TAILLE_MAX_PX;
+        let qualite = QUALITE_JPEG;
+        let dataUri = dessiner(image, maxPx, qualite);
 
-        const canvas = document.createElement('canvas');
-        canvas.width = largeur;
-        canvas.height = hauteur;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(image, 0, 0, largeur, hauteur);
-        resolve(canvas.toDataURL('image/jpeg', QUALITE_JPEG));
+        // Paliers : d'abord la qualité (l'image garde sa taille), puis les dimensions.
+        while (poidsDataUriOctets(dataUri) > PLAFOND_PHOTO_OCTETS) {
+          if (qualite - PAS_QUALITE >= QUALITE_MIN - 0.001) {
+            qualite = Math.max(QUALITE_MIN, Number((qualite - PAS_QUALITE).toFixed(2)));
+          } else if (maxPx > TAILLE_MIN_PX) {
+            maxPx = Math.max(TAILLE_MIN_PX, Math.round(maxPx * PAS_DIMENSION));
+            qualite = QUALITE_JPEG;
+          } else {
+            break; // plancher atteint : on refuse proprement (message ci-dessous)
+          }
+          dataUri = dessiner(image, maxPx, qualite);
+        }
+
+        const poids = poidsDataUriOctets(dataUri);
+        if (poids > PLAFOND_PHOTO_OCTETS) {
+          reject(
+            new Error(
+              `Photo trop lourde : ${Math.round(poids / 1024)} Ko même après compression (limite ${Math.round(
+                PLAFOND_PHOTO_OCTETS / 1024
+              )} Ko). Reprenez la photo de plus loin, ou choisissez une autre image.`
+            )
+          );
+          return;
+        }
+        resolve(dataUri);
       };
       image.src = String(lecteur.result);
     };
@@ -150,7 +203,7 @@ export default function PhotoUploadField({
               <span className="text-sm font-semibold">
                 {enCours ? 'Traitement de la photo…' : 'Prendre une photo ou en choisir une'}
               </span>
-              <span className="text-xs">JPEG/PNG — compressée automatiquement</span>
+              <span className="text-xs">JPEG/PNG — compressée automatiquement sous 300 Ko</span>
             </span>
           )}
           {enCours && <span className="absolute inset-0 animate-pulse bg-white/70" />}

@@ -1,13 +1,10 @@
 // index.js — Point d'entrée du serveur Express
-// TODO (DeepSeek) :
-// - Charger dotenv, se connecter à MongoDB via config/db.js
-// - Monter les routes : /api/establishments, /api/users, /api/jobs, /api/health-facilities
-// - Servir sur le port process.env.PORT (défaut 4000)
 //
-// Détails d'implémentation :
-//  - `express.json({ limit: '12mb' })` : l'inscription établissement accepte deux
-//    photos en data-URI (voir utils/validators.js). À réduire à '1mb' quand le
-//    stockage objet (Cloudinary/S3) sera branché.
+// En-têtes de sécurité (bloc F) : `helmet` pose les protections standard sur toutes
+// les réponses (nosniff, referrer-policy, HSTS, pas de `X-Powered-By`).
+// Tailles de corps : 1 Mo par défaut, 3 Mo pour les routes qui transportent des
+// PHOTOS (voir `ROUTES_PHOTOS` ci-dessous) — les photos arrivent en data-URI base64
+// pendant la tournée terrain (utils/validators.js).
 //  - le `verify` conserve le body brut sur `req.rawBody` pour vérifier la
 //    signature HMAC du webhook CinetPay.
 //  - le serveur démarre même sans MongoDB : les routes répondent alors 503 et le
@@ -16,6 +13,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 
 import { connectDB, isDbReady, etatBase } from './config/db.js';
 import { notFound, errorHandler } from './middleware/errorHandler.js';
@@ -36,39 +34,90 @@ const PORT = Number(process.env.PORT) || 4000;
 // Express voit l'IP du proxy (journaux et rate-limiting faux).
 app.set('trust proxy', 1);
 
+// ── En-têtes de sécurité (helmet, bloc F du 12/10) ──
+// L'API ne sert que du JSON et des images binaires (GET /api/establishments/:id/photo/:role) :
+//   • `contentSecurityPolicy: false` : aucun HTML n'est servi ici ; une CSP n'aurait
+//     donc aucun effet, et la valeur par défaut de helmet n'apporterait rien.
+//   • `crossOriginResourcePolicy: { policy: 'cross-origin' }` : INDISPENSABLE — les
+//     photos sont chargées par le frontend, servi depuis un AUTRE domaine (Vercel,
+//     GitHub Pages). La valeur par défaut (« same-origin ») ferait disparaître
+//     silencieusement toutes les photos de l'application.
+// `X-Powered-By`, `X-Content-Type-Options`, `Referrer-Policy`, `Strict-Transport-Security`
+// et consorts restent posés par les réglages par défaut.
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  })
+);
+
 // ── CORS : frontend web (Vite) + éventuelle origine PWA/mobile ──
 const originesAutorisees = (process.env.CLIENT_URL || 'http://localhost:5173')
   .split(',')
   .map((o) => o.trim())
   .filter(Boolean);
 
+/**
+ * Règle UNIQUE d'acceptation d'une origine (partagée par le filtre ci-dessous et par
+ * le middleware `cors`, pour qu'il n'existe jamais deux vérités).
+ * - aucune origine (Postman, webhook CinetPay, curl, requête serveur-à-serveur) : OK ;
+ * - origine listée dans CLIENT_URL (ou « * ») : OK ;
+ * - hors production, tout localhost/LAN : OK, pour tester depuis un téléphone sur le
+ *   même réseau Wi-Fi (typique pendant la tournée terrain).
+ */
+function origineAutorisee(origin) {
+  if (!origin) return true;
+  if (originesAutorisees.includes(origin) || originesAutorisees.includes('*')) return true;
+  if (process.env.NODE_ENV !== 'production' && /localhost|127\.0\.0\.1|192\.168\.\d+\.\d+/.test(origin)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Refus d'origine EXPLICITE et PROPRE (bloc F du 12/10).
+ * Avant : le callback de `cors` levait une Error -> la requête finissait en 500
+ * « Erreur interne du serveur » (faux bug pour l'utilisateur, bruit inutile dans les
+ * journaux). Désormais : 403 + JSON, AVANT d'entrer dans les routes. Conséquence
+ * importante : un appel depuis un site tiers ne déclenche aucun traitement (aucune
+ * écriture, aucun compte, aucun paiement) — il est coupé net.
+ */
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origineAutorisee(origin)) return next();
+  console.warn(`[cors] origine refusée : ${origin}`);
+  return res.status(403).json({
+    error: `Origine non autorisée : ${origin}`,
+    details: { code: 'ORIGINE_REFUSEE' },
+  });
+});
+
 app.use(
   cors({
     origin(origin, callback) {
-      // Requêtes sans Origin (Postman, webhooks CinetPay, curl) : autorisées.
-      if (!origin) return callback(null, true);
-      if (originesAutorisees.includes(origin) || originesAutorisees.includes('*')) {
-        return callback(null, true);
-      }
-      // En développement on tolère tout localhost/LAN pour tester depuis un
-      // téléphone sur le même réseau Wi-Fi (typique en tournée terrain).
-      if (process.env.NODE_ENV !== 'production' && /localhost|127\.0\.0\.1|192\.168\.\d+\.\d+/.test(origin)) {
-        return callback(null, true);
-      }
-      return callback(new Error(`Origine non autorisée : ${origin}`));
+      // Le refus est déjà traité ci-dessus : ici on ne fait que POSER les en-têtes
+      // CORS pour les origines acceptées (jamais d'erreur -> jamais de 500).
+      return callback(null, origineAutorisee(origin));
     },
     credentials: true,
   })
 );
 
-app.use(
-  express.json({
-    limit: '12mb',
-    verify(req, res, buf) {
-      req.rawBody = buf?.length ? buf.toString('utf8') : '';
-    },
-  })
-);
+/** Conserve le corps brut : indispensable pour vérifier la signature du webhook CinetPay. */
+function conserverRawBody(req, res, buf) {
+  req.rawBody = buf?.length ? buf.toString('utf8') : '';
+}
+
+// ── Corps JSON : 3 Mo pour les routes à PHOTOS, 1 Mo partout ailleurs (bloc F) ──
+// Les photos d'établissement partent en data-URI base64 (tournée terrain, réseau
+// instable) : deux photos plafonnées à ~300 Ko pèsent ~800 Ko de JSON, d'où les 3 Mo.
+// Toutes les autres routes sont ramenées à 1 Mo : un corps énorme envoyé là où aucune
+// image n'est attendue est refusé en 413 par Express, avant tout code métier.
+// Express (body-parser) n'analyse qu'une fois : la seconde déclaration est ignorée
+// quand la première a déjà lu le corps (`req._body`), donc l'ordre compte.
+const ROUTES_PHOTOS = ['/api/users', '/api/establishments'];
+app.use(ROUTES_PHOTOS, express.json({ limit: '3mb', verify: conserverRawBody }));
+app.use(express.json({ limit: '1mb', verify: conserverRawBody }));
 
 // ── Journal de requêtes minimal (utile sur réseau instable : on voit ce qui part) ──
 //

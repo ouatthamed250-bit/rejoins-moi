@@ -63,6 +63,9 @@ depotSchema.methods.toJSON = function toJSON() {
     reference: this.reference,
     statut: this.statut,
     noteAdmin: this.noteAdmin,
+    // QUI a tranché (bloc F du 12/10) : la décision est irréversible, elle doit être
+    // attribuable. Le back-office la relit et affiche « validé par … ».
+    valideParUserId: this.valideParUserId,
     valideAt: this.valideAt,
     createdAt: this.createdAt,
   };

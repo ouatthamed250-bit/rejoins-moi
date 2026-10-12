@@ -2,9 +2,14 @@
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
+    <!-- Viewport accessible (bloc F du 12/10) : `maximum-scale=1.0` et
+         `user-scalable=no` empêchaient le pincement pour zoomer, ce qui est un
+         obstacle réel pour un utilisateur qui voit mal — et un critère d'échec
+         WCAG 1.4.4. On les retire : le zoom du navigateur reste possible.
+         `viewport-fit=cover` est conservé (encoches et barres système). -->
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
     <!-- Couleur de la barre d'état / du splash (PWA). v2 du 30/09 : la valeur est
          le MÉLANGE EXACT du haut du dégradé d'en-tête (--gradient-header, orange

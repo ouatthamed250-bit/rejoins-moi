@@ -1237,6 +1237,23 @@
   font-weight: 700;
 }
 
+/* Récapitulatif de la décision (bloc F) : montant, opérateur, numéro et référence sur
+   des lignes distinctes — l'administrateur doit pouvoir comparer avec son relevé
+   mobile money sans quitter l'écran, puisque la décision est irréversible. */
+.bo-bloc-action-recap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: #fff;
+  border: 1px solid #f0e2c8;
+}
+
+.bo-bloc-action-recap strong {
+  color: var(--bo-texte);
+}
+
 /* Deuxième ligne d'une cellule (numéro sous le nom, motif sous la pastille d'état). */
 .bo-sous-ligne {
   display: block;

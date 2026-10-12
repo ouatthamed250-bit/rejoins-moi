@@ -24,7 +24,7 @@ import Subscription from '../models/Subscription.js';
 import { signToken, protect, optionalAuth } from '../middleware/auth.js';
 import { requireDb } from '../config/db.js';
 import { asyncHandler, ApiError } from '../middleware/errorHandler.js';
-import { normalizePhone, escapeRegex } from '../utils/validators.js';
+import { normalizePhone, escapeRegex, validatePhoto } from '../utils/validators.js';
 import { getDistanceKm, parseCoords } from '../utils/geo.js';
 import { limiteurAuth } from '../middleware/rateLimit.js';
 
@@ -65,6 +65,10 @@ router.post(
     if (!motDePasse || String(motDePasse).length < 6) {
       throw new ApiError(400, 'Le mot de passe doit contenir au moins 6 caractères.');
     }
+    // Plafond photo (bloc F) : 300 Ko, comme les photos d'établissement. Une photo de
+    // profil en base64 non contrôlée pèserait plusieurs Mo par compte.
+    const controlePhoto = validatePhoto(photoProfil, 'La photo de profil');
+    if (!controlePhoto.ok) throw new ApiError(400, controlePhoto.error, { champPhoto: true });
 
     const existant = await User.findOne({ telephone });
     if (existant) {
@@ -166,6 +170,11 @@ router.patch(
   '/me',
   protect,
   asyncHandler(async (req, res) => {
+    // Plafond photo (bloc F) : contrôlé AVANT toute écriture, et seulement si le
+    // client envoie une photo (un simple changement de quartier n'est jamais bloqué).
+    const controlePhoto = validatePhoto(req.body?.photoProfil, 'La photo de profil');
+    if (!controlePhoto.ok) throw new ApiError(400, controlePhoto.error, { champPhoto: true });
+
     const champs = ['nom', 'prenom', 'photoProfil', 'metier', 'bio', 'quartier', 'commune'];
     for (const c of champs) {
       if (req.body?.[c] !== undefined) req.user[c] = String(req.body[c]).trim();

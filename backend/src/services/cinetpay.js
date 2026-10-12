@@ -185,21 +185,50 @@ export async function confirmPayment(transactionId) {
 }
 
 /**
- * Webhook CinetPay : CinetPay POST le résultat sur `notify_url`.
- * En production, on vérifie en plus la signature HMAC-SHA256 transmise dans
- * l'en-tête `x-token` avec CINETPAY_SECRET_KEY.
+ * Webhook CinetPay : CinetPay POST le résultat sur `notify_url`. On vérifie la
+ * signature HMAC-SHA256 transmise dans l'en-tête `x-token` avec CINETPAY_SECRET_KEY.
+ *
+ * FAIL-CLOSED EN PRODUCTION (bloc F du 12/10) : si la clé secrète n'est PAS
+ * configurée, on REFUSE la notification (false). C'est le choix honnête : n'importe
+ * qui peut appeler cette URL publique ; accepter une notification non signée
+ * reviendrait à laisser un inconnu débloquer des contacts payés. Un vrai paiement
+ * reçu malgré tout reste rattrapable à la main depuis le back-office (file des dépôts),
+ * alors qu'un faux paiement accepté ne l'est pas.
+ *
+ * Hors production, on continue d'accepter (aucune clé de test disponible localement).
+ *
+ * COMPARAISON EN TEMPS CONSTANT : `crypto.timingSafeEqual` évite de laisser fuiter,
+ * par la durée du `===`, combien de caractères de la signature sont corrects
+ * (attaque par mesure de temps, classique sur un HMAC).
  */
 export function verifyNotifySignature(rawBody, headerToken) {
-  if (!process.env.CINETPAY_SECRET_KEY) return true; // non configuré : on ne bloque pas en dev
+  const secret = process.env.CINETPAY_SECRET_KEY;
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production') {
+      console.warn('[cinetpay] CINETPAY_SECRET_KEY absente en production : notification REFUSÉE (fail-closed).');
+      return false;
+    }
+    return true; // développement : on ne bloque pas
+  }
+
+  const fournie = String(headerToken || '').trim();
+  if (!fournie) return false;
+
+  let attendue;
   try {
-    const hmac = crypto
-      .createHmac('sha256', process.env.CINETPAY_SECRET_KEY)
+    attendue = crypto
+      .createHmac('sha256', secret)
       .update(typeof rawBody === 'string' ? rawBody : JSON.stringify(rawBody))
       .digest('hex');
-    return hmac === headerToken;
   } catch {
     return false;
   }
+
+  const a = Buffer.from(attendue, 'utf8');
+  const b = Buffer.from(fournie, 'utf8');
+  // Des longueurs différentes : refus immédiat (timingSafeEqual lève sinon).
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
 }
 
 /** Normalise le nom de l'opérateur CinetPay vers nos valeurs de modèle. */

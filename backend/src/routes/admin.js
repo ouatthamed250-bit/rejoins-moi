@@ -34,7 +34,7 @@ import Job from '../models/Job.js';
 import Establishment from '../models/Establishment.js';
 import Subscription from '../models/Subscription.js';
 import Depot from '../models/Depot.js';
-import { protectAdmin, signToken } from '../middleware/auth.js';
+import { protectAdmin, signToken, DUREE_JETON_ADMIN } from '../middleware/auth.js';
 import { requireDb } from '../config/db.js';
 import { asyncHandler, ApiError } from '../middleware/errorHandler.js';
 import { limiteurAuth } from '../middleware/rateLimit.js';
@@ -82,7 +82,9 @@ router.post(
     await User.updateOne({ _id: user._id }, { $set: { dernierLoginAt: connexionAt } });
 
     res.json({
-      token: signToken(user),
+      // Jeton COURT (12 h, bloc F) : le back-office peut tout faire, une session
+      // d'une journée de travail suffit — voir DUREE_JETON_ADMIN dans middleware/auth.js.
+      token: signToken(user, { expiresIn: DUREE_JETON_ADMIN }),
       user: user.toPublicJSON(),
       admin: true,
     });
@@ -497,7 +499,9 @@ router.get(
       Depot.find({ userId: user._id })
         .sort({ createdAt: -1 })
         .limit(20)
-        .populate('jobId', 'metier intitule typeAnnonce'),
+        .populate('jobId', 'metier intitule typeAnnonce')
+        // Qui a tranché ce dépôt (bloc F) : affiché en « validé par » sur la fiche.
+        .populate('valideParUserId', 'nom prenom'),
       Depot.aggregate([
         { $match: { userId: user._id } },
         { $group: { _id: '$statut', nombre: { $sum: 1 }, montant: { $sum: '$montant' } } },
@@ -529,6 +533,12 @@ router.get(
       resume,
       depots: depots.map((d) => ({
         ...d.toJSON(),
+        validePar: d.valideParUserId
+          ? {
+              id: d.valideParUserId._id,
+              nom: [d.valideParUserId.prenom, d.valideParUserId.nom].filter(Boolean).join(' ') || 'Administrateur',
+            }
+          : null,
         job: d.jobId
           ? {
               id: d.jobId._id,
@@ -780,7 +790,10 @@ router.get(
       .sort({ createdAt: -1, _id: 1 })
       .limit(200)
       .populate('userId', 'nom prenom telephone metier')
-      .populate('jobId', 'metier intitule typeAnnonce telephoneContact');
+      .populate('jobId', 'metier intitule typeAnnonce telephoneContact')
+      // QUI a tranché : la décision (valider = révéler un contact payé) est
+      // irréversible, elle doit être attribuable à un administrateur nommé.
+      .populate('valideParUserId', 'nom prenom telephone');
 
     const items = docs.map((d) => ({
       ...d.toJSON(),
@@ -790,6 +803,14 @@ router.get(
             nom: [d.userId.prenom, d.userId.nom].filter(Boolean).join(' ') || 'Sans nom',
             telephone: d.userId.telephone,
             metier: d.userId.metier || '',
+          }
+        : null,
+      // « validé par » / « rejeté par » : null tant que la décision n'est pas prise.
+      validePar: d.valideParUserId
+        ? {
+            id: d.valideParUserId._id,
+            nom: [d.valideParUserId.prenom, d.valideParUserId.nom].filter(Boolean).join(' ') || 'Administrateur',
+            telephone: d.valideParUserId.telephone || '',
           }
         : null,
       job: d.jobId

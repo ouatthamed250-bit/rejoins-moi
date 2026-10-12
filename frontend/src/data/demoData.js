@@ -282,86 +282,11 @@ export const ETABLISSEMENTS_DEMO = [
  * AUCUNE note, AUCUN avis, AUCUN compteur de popularité : uniquement le statut de
  * garde auto-déclaré, la distance et les boutons Appeler / Itinéraire.
  */
-export const SANTE_DEMO = [
-  {
-    id: 'demo-pharmacie-paix',
-    nom: 'Pharmacie de la Paix',
-    type: 'pharmacie',
-    deGarde: true,
-    deGardeUpdatedAt: new Date().toISOString(),
-    localisation: { lat: 5.3242, lng: -4.0186 },
-    commune: 'Plateau',
-    quartier: 'Plateau',
-    horaires: '24h/24',
-    telephone: '+2250708990011',
-    verifie: true,
-  },
-  {
-    id: 'demo-pharmacie-sainte-marie',
-    nom: 'Pharmacie Sainte-Marie',
-    type: 'pharmacie',
-    deGarde: false,
-    deGardeUpdatedAt: new Date().toISOString(),
-    localisation: { lat: 5.3489, lng: -3.9885 },
-    commune: 'Cocody',
-    quartier: 'Cocody Centre',
-    horaires: '8h - 22h',
-    telephone: '+2250708112233',
-    verifie: false,
-  },
-  {
-    id: 'demo-pharmacie-bon-samaritain',
-    nom: 'Pharmacie du Bon Samaritain',
-    type: 'pharmacie',
-    deGarde: true,
-    deGardeUpdatedAt: new Date().toISOString(),
-    localisation: { lat: 5.3382, lng: -4.0754 },
-    commune: 'Yopougon',
-    quartier: 'Sicogi',
-    horaires: '8h - 20h',
-    telephone: '+2250708445566',
-    verifie: true,
-  },
-  {
-    id: 'demo-clinique-sainte-anne',
-    nom: 'Clinique Sainte-Anne',
-    type: 'clinique',
-    deGarde: true,
-    deGardeUpdatedAt: new Date().toISOString(),
-    localisation: { lat: 5.3031, lng: -3.9932 },
-    commune: 'Marcory',
-    quartier: 'Marcory Résidentiel',
-    horaires: 'Urgences 24h/24',
-    telephone: '+2250709223344',
-    verifie: true,
-  },
-  {
-    id: 'demo-clinique-plateau',
-    nom: 'Clinique Médicale du Plateau',
-    type: 'clinique',
-    deGarde: false,
-    deGardeUpdatedAt: new Date().toISOString(),
-    localisation: { lat: 5.3218, lng: -4.0231 },
-    commune: 'Plateau',
-    quartier: 'Plateau',
-    horaires: 'Lun - Sam 7h - 20h',
-    telephone: '+2250709556677',
-    verifie: false,
-  },
-  {
-    id: 'demo-clinique-koumassi',
-    nom: 'Clinique Espoir Koumassi',
-    type: 'clinique',
-    deGarde: true,
-    deGardeUpdatedAt: new Date().toISOString(),
-    localisation: { lat: 5.2964, lng: -3.9512 },
-    commune: 'Koumassi',
-    quartier: 'Koumassi Grand Marché',
-    horaires: 'Urgences 24h/24',
-    telephone: '+2250709334455',
-    verifie: true,
-  },
-];
+// SANTE_DEMO (pharmacies/cliniques de demonstration) a ete SUPPRIME le 12/10 (bloc H).
+// La production ne contient aucune fiche de sante : afficher des exemples inventes
+// faisait passer des donnees fictives pour un annuaire reel. Ne pas le reintroduire :
+// la page /pharmacies-cliniques affiche "Cette liste arrive bientot" quand la liste
+// est vide, et ne presente JAMAIS de fiche d'exemple.
 
 /** Bandeau d'avertissement obligatoire de la section santé (§6) — texte figé. */
 export const AVERTISSEMENT_GARDE =
@@ -713,20 +638,10 @@ export function filtrerArtisansDemo({ metier = 'tous', q = '', limite = 8 } = {}
     .slice(0, limite);
 }
 
-/** Pharmacies/cliniques : filtre type + statut de garde (§6). */
-export function filtrerSanteDemo({ type = 'tous', deGardeSeulement = false } = {}) {
-  return SANTE_DEMO.filter((s) => {
-    if (type !== 'tous' && s.type !== type) return false;
-    if (deGardeSeulement && !s.deGarde) return false;
-    return true;
-  });
-}
-
 export default {
   CATEGORIES,
   TAGS_PAR_CATEGORIE,
   ETABLISSEMENTS_DEMO,
-  SANTE_DEMO,
   BESOINS_DEMO,
   ARTISANS_DEMO,
   AVIS_DEMO,
@@ -736,6 +651,5 @@ export default {
   filtrerEtablissementsDemo,
   filtrerBesoinsDemo,
   filtrerArtisansDemo,
-  filtrerSanteDemo,
 };
 

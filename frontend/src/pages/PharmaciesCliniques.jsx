@@ -19,6 +19,12 @@
 //    l'ordre est « de garde d'abord », puis distance croissante (cf. backend).
 //  - Le statut de garde est auto-déclaré par l'établissement : d'où l'avertissement
 //    de responsabilité, obligatoire.
+//  - AUCUN JEU DE DÉMONSTRATION ICI (bloc H du 12/10) : la page a longtemps comblé une
+//    liste vide avec SANTE_DEMO. La production ne contient AUCUNE fiche (0 pharmacie,
+//    0 clinique) : afficher des exemples revenait à faire passer des données inventées
+//    pour un annuaire réel — inacceptable sur une page de santé. Désormais :
+//      • serveur injoignable -> on le dit, et on n'affiche rien ;
+//      • serveur joignable et 0 fiche -> « Cette liste arrive bientôt ».
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -29,7 +35,7 @@ import PromptLocalisation from '../components/PromptLocalisation.jsx';
 import { Icon } from '../components/Icons.jsx';
 import { api } from '../utils/api/client.js';
 import { urlItineraire, distanceDepuis } from '../utils/distance.js';
-import { AVERTISSEMENT_GARDE, filtrerSanteDemo } from '../data/demoData.js';
+import { AVERTISSEMENT_GARDE } from '../data/demoData.js';
 import { useGeolocation } from '../hooks/useGeolocation.js';
 
 const FILTRES_TYPE = [
@@ -61,7 +67,9 @@ export default function PharmaciesCliniques() {
       if (reponse.avertissement) setAvertissement(reponse.avertissement);
       setHorsLigne(false);
     } catch {
-      setBruts(filtrerSanteDemo({ type: 'tous' }));
+      // Serveur injoignable : on n'affiche AUCUN exemple (bloc H). Une liste vide et
+      // un message honnête valent mieux qu'un annuaire inventé sur une page de santé.
+      setBruts([]);
       setHorsLigne(true);
     } finally {
       setChargement(false);
@@ -175,7 +183,11 @@ export default function PharmaciesCliniques() {
         <p className="text-sm text-ink-muted">
           {chargement
             ? 'Recherche des établissements autour de vous…'
-            : `${liste.length} établissement${liste.length > 1 ? 's' : ''}, dont ${nombreDeGarde} de garde.`}
+            : horsLigne
+              ? 'Liste momentanément indisponible.'
+              : bruts.length === 0
+                ? 'Aucune pharmacie ni clinique enregistrée pour l’instant.'
+                : `${liste.length} établissement${liste.length > 1 ? 's' : ''}, dont ${nombreDeGarde} de garde.`}
         </p>
       </section>
 
@@ -228,8 +240,10 @@ export default function PharmaciesCliniques() {
       </div>
 
       {horsLigne && (
-        <InfoBanner variante="demo" titre="Données d’exemple" className="mb-3">
-          Serveur injoignable : les établissements affichés proviennent du jeu de démonstration.
+        <InfoBanner variante="alerte" titre="Liste momentanément indisponible" className="mb-3">
+          Le serveur Rejoins’Moi est injoignable : aucune pharmacie ni clinique ne peut être
+          affichée pour l’instant. Aucune liste d’exemple n’est présentée ici — vous ne verriez
+          pas de vrais établissements.
         </InfoBanner>
       )}
 
@@ -243,6 +257,22 @@ export default function PharmaciesCliniques() {
 
       {chargement && liste.length === 0 ? (
         <EmptyState chargement titre="Recherche des établissements de santé…" />
+      ) : horsLigne ? (
+        /* Serveur injoignable (bloc H) : AUCUNE fiche, exemples compris. */
+        <EmptyState
+          icone="pharmacy"
+          titre="Liste momentanément indisponible"
+          description="Le serveur ne répond pas pour le moment. Réessayez dans un instant : aucun établissement d’exemple n’est affiché ici."
+          action={{ libelle: 'Réessayer', onClick: charger }}
+        />
+      ) : bruts.length === 0 ? (
+        /* Serveur joignable, mais ZÉRO fiche enregistrée (état réel de la production
+           au 12/10) : on l'annonce honnêtement plutôt que de meubler. */
+        <EmptyState
+          icone="pharmacy"
+          titre="Cette liste arrive bientôt"
+          description="Aucune pharmacie ni clinique n’est encore enregistrée dans Rejoins’Moi. Les fiches seront ajoutées par les établissements eux-mêmes : cette page ne contiendra jamais de fiche d’exemple."
+        />
       ) : liste.length === 0 ? (
         <EmptyState
           icone="pharmacy"

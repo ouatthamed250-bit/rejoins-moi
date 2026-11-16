@@ -369,6 +369,20 @@ réels et aucun recouvrement.
 Premier chargement puis **second chargement servi par le cache `v11`** avec la même
 empreinte : la mise à jour atteint bien les appareils déjà équipés.
 
+**Liens profonds.** GitHub Pages répond **404** à une adresse directe
+(`/mentions-legales`, `/pharmacies-cliniques`, `/profil`, `/recherche`) mais sert le
+contenu de `404.html`, qui est une copie de `index.html` : c’est la limitation connue
+de Pages pour une application à routage client. Vérifié :
+
+```
+GET /rejoins-moi/mentions-legales -> 404 | #root présent : true | assets/index-CvRu7cTt.js
+```
+
+La page s’affiche donc normalement dans le navigateur (le parcours Chrome ci-dessus
+ouvre `/recherche?q=attiéké` en direct et rend 11 résultats). Seul le **statut HTTP**
+reste 404 — sans effet pour l’utilisateur, à corriger plus tard si un référencement
+fin des pages légales devient nécessaire.
+
 ---
 
 ## J. Anomalies restantes (aucune n’est causée par ce lot)
@@ -389,4 +403,6 @@ empreinte : la mise à jour atteint bien les appareils déjà équipés.
    déclenché, c’est volontaire).
 5. **Render** : le backend étant inchangé, le redéploiement automatique reconstruit la
    même version ; `/api/health` répond et la base est connectée (vérifié ci-dessus).
+6. **Statut HTTP des liens profonds sur Pages** : 404 (contenu servi correctement via
+   `404.html`, voir §I). Aucun impact utilisateur constaté.
 

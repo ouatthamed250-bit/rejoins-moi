@@ -15,6 +15,12 @@
  *     quelle. Le serveur reste seul juge du paiement (règle de sécurité du projet).
  */
 
+// v13 : barre « Retour / Suivant » de l'inscription et bouton « + » de la
+//       navigation : la barre tranchait le bouton surélevé (elles semblaient se
+//       superposer). Nouveau CSS + nouveau JS : l'app shell change, donc nouveau
+//       nom de cache — sinon un téléphone déjà équipé garderait l'ancien index.html
+//       et ne verrait jamais le correctif.
+//
 // v12 : allègement du bundle initial (lazy loading des 10 pages non-first-screen) :
 //       bundle principal 461 kB → 280 kB. ErrorBoundary global et page 404
 //       explicite (NotFound). L'app shell change (nouvelles empreintes JS/CSS) :
@@ -80,7 +86,7 @@
 //      bannière qui masque une carte, exactement le défaut corrigé.
 // Changer la version est indispensable dès que les fichiers « cache d'abord »
 // (icônes) ou l'app shell changent de façon visible.
-const VERSION = 'v12';
+const VERSION = 'v13';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

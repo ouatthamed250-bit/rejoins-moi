@@ -7,7 +7,9 @@
 //      en cours de saisie est perdue en route ;
 //   4. la fiche est publiée et s'ouvre ;
 //   5. elle apparaît dans l'ACCUEIL et dans la RECHERCHE, à proximité ;
-//   6. la bannière « Installer l'app » ne recouvre AUCUN bouton d'action.
+//   6. le bandeau « Installer l'app » (dans le flux depuis le 16/11) ne recouvre
+//      aucun bouton ni texte, et ses états réels sont vérifiés (affiché, fermé,
+//      réaffiché par ?pwa=1).
 //
 // Le test crée un VRAI compte et une VRAIE fiche (préfixe « ZZ TEST », numéro du bloc
 // d'essai 07000000xx) : c'est la seule façon de vérifier une publication réelle. Ils sont
@@ -222,22 +224,56 @@ function remplir(selecteur, valeur) {
  * LA bannière « Installer l'app » recouvre-t-elle un bouton ? On pose la question au
  * navigateur, bouton par bouton visible : si l'élément réellement sous son centre n'est ni
  * le bouton ni l'un de ses enfants, quelque chose le masque.
+ *
+ * `ignorer` : sélecteur des blocs fixes du bas (navigation, barre d'action). Leur
+ * géométrie est vérifiée séparément par `npm run verifier:barres` (hauteur mesurée,
+ * réserve de pied de page) ; ici on cherche ce qui recouvre SANS être prévu — la
+ * bannière d'installation, un tiroir resté ouvert, une superposition accidentelle.
  */
-const boutonsMasques = () =>
+const boutonsMasques = (ignorer = '') =>
   page.evaluer(`(() => {
     const boutons = [...document.querySelectorAll('button, a')].filter((b) => {
       const r = b.getBoundingClientRect();
       return r.width > 0 && r.height > 0 && r.top >= 0 && r.bottom <= window.innerHeight && !b.disabled && b.textContent.trim().length > 0;
     });
+    const blocs = ${JSON.stringify(ignorer)} ? [...document.querySelectorAll(${JSON.stringify(ignorer)})] : [];
     const masques = [];
     for (const b of boutons) {
       const r = b.getBoundingClientRect();
       const dessus = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
-      if (dessus && dessus !== b && !b.contains(dessus) && !dessus.contains(b)) {
-        masques.push({ bouton: b.textContent.trim().slice(0, 40), par: String(dessus.className || dessus.tagName).slice(0, 60) });
-      }
+      if (!dessus || dessus === b || b.contains(dessus) || dessus.contains(b)) continue;
+      if (blocs.some((bloc) => bloc.contains(dessus))) continue; // bloc fixe prévu : mesuré à part
+      masques.push({ bouton: b.textContent.trim().slice(0, 40), par: String(dessus.className || dessus.tagName).slice(0, 60) });
     }
     return { total: boutons.length, masques };
+  })()`);
+
+/**
+ * Le bandeau d'installation recouvre-t-il un bouton ou une ligne de texte ?
+ * Question posée sur les GÉOMÉTRIES (rectangles), pas au hasard : le bandeau doit
+ * vivre dans le flux de la page, donc ne jamais croiser un bouton ni un texte.
+ * Renvoie aussi sa position CSS : `fixed` serait la rechute du défaut du 16/11.
+ */
+const recouvrementBandeau = () =>
+  page.evaluer(`(() => {
+    const bandeau = document.querySelector('[data-banniere-installation]');
+    if (!bandeau) return { present: false, position: null, boutons: [], textes: [] };
+    const r = bandeau.getBoundingClientRect();
+    const touche = (q) =>
+      q.width > 0 && q.height > 0 && !(q.bottom <= r.top || q.top >= r.bottom || q.right <= r.left || q.left >= r.right);
+    const boutons = [...document.querySelectorAll('button, a')]
+      .filter((b) => !bandeau.contains(b) && touche(b.getBoundingClientRect()))
+      .map((b) => b.textContent.trim().slice(0, 30));
+    const textes = [...document.querySelectorAll('main *')]
+      .filter((el) => {
+        if (bandeau.contains(el)) return false;
+        if (![...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim().length > 3)) return false;
+        const cs = getComputedStyle(el);
+        if (cs.visibility === 'hidden' || cs.display === 'none' || Number(cs.opacity) === 0) return false;
+        return touche(el.getBoundingClientRect());
+      })
+      .map((el) => el.textContent.trim().slice(0, 30));
+    return { present: true, position: getComputedStyle(bandeau).position, boutons, textes };
   })()`);
 
 console.log('\n▶ Parcours d’un nouveau venu : de l’URL à la fiche visible');
@@ -295,6 +331,19 @@ await capture('inscription-compte-et-infos');
 // ── Publication : le compte est créé PUIS la fiche publiée ──────────────
 await cliquer('Publier ma fiche');
 const publiee = await jusqua('location.pathname.startsWith("/etablissement/")', { maxMs: 30000 });
+// CORRECTIF DU 16/11 — on attend le TITRE RÉEL, pas seulement le changement d'URL.
+// La fiche s'ouvre sur un écran « Ouverture de la fiche… » : le temps que la
+// requête revienne, `location.pathname` est déjà bon alors que le nom n'est pas
+// encore affiché. L'ancien test capturait donc cet écran d'attente et concluait à
+// la légère — sans jamais prouver que le titre était rendu. On attend ici que le
+// NOM saisi soit réellement dans la page (titre ou en-tête), avec un plafond large
+// pour un réseau lent ; si la fiche reste bloquée, le test ÉCHOUE (aucun masquage).
+const titreAffiche = publiee
+  ? await jusqua(`document.body.innerText.includes(${JSON.stringify(NOM_FICHE)})`, { maxMs: 20000 })
+  : null;
+const attenteOuverture = await page.evaluer(
+  `document.body.innerText.includes('Ouverture de la fiche')`
+);
 const contenuFiche = await texte();
 await capture('fiche-publiee');
 if (!publiee) {
@@ -302,11 +351,16 @@ if (!publiee) {
   console.log(`     [diagnostic] resté sur ${await chemin()} — écran : ${(await texte()).slice(0, 400).replace(/\s+/g, ' ')}`);
 }
 verifier('la fiche est publiée et s’ouvre (aucune redirection vers la connexion)', Boolean(publiee), await chemin());
+verifier(
+  'la fiche affiche son TITRE (et non l’écran « Ouverture de la fiche… »)',
+  Boolean(titreAffiche) && !attenteOuverture,
+  attenteOuverture ? 'écran d’ouverture encore affiché' : 'nom saisi présent dans la page'
+);
 verifier('la fiche porte bien le nom saisi', contenuFiche.includes(NOM_FICHE));
 
-const masquesFiche = await boutonsMasques();
+const masquesFiche = await boutonsMasques('.barre-action-fixe, .nav-basse');
 verifier(
-  'la bannière d’installation ne recouvre aucun bouton sur la fiche',
+  'aucun bouton de la fiche n’est recouvert (barre d’action prévue exclue, mesurée à part)',
   masquesFiche.masques.length === 0,
   `${masquesFiche.total} bouton(s) visible(s)${masquesFiche.masques.length ? ` — masqué(s) : ${JSON.stringify(masquesFiche.masques)}` : ''}`
 );
@@ -314,20 +368,72 @@ verifier(
 // ── La fiche doit apparaître dans l'accueil (proximité) ─────────────────
 await page.send('Page.navigate', { url: `${ORIGINE}/` });
 const dansAccueil = await jusqua(`document.body.innerText.includes(${JSON.stringify(NOM_FICHE)})`, { maxMs: 30000 });
+const bandeauAccueil = await recouvrementBandeau();
 await capture('accueil-nouvelle-fiche');
 verifier('la fiche apparaît dans l’accueil, à proximité', Boolean(dansAccueil));
+verifier(
+  'sur l’accueil, le bandeau d’installation ne recouvre ni bouton ni texte',
+  bandeauAccueil.present &&
+    bandeauAccueil.position !== 'fixed' &&
+    bandeauAccueil.boutons.length === 0 &&
+    bandeauAccueil.textes.length === 0,
+  `position=${bandeauAccueil.position} bouton(s)=${JSON.stringify(bandeauAccueil.boutons)} texte(s)=${JSON.stringify(bandeauAccueil.textes)}`
+);
 
 // ── … et dans la recherche ──────────────────────────────────────────────
 await page.send('Page.navigate', { url: `${ORIGINE}/recherche?q=${encodeURIComponent(NOM_FICHE)}` });
 const dansRecherche = await jusqua(`document.body.innerText.includes(${JSON.stringify(NOM_FICHE)})`, { maxMs: 30000 });
-const masquesRecherche = await boutonsMasques();
+const bandeauRecherche = await recouvrementBandeau();
+const masquesRecherche = await boutonsMasques('.nav-basse');
 await capture('recherche-nouvelle-fiche');
 verifier('la fiche apparaît dans la recherche', Boolean(dansRecherche));
 verifier(
-  'la bannière d’installation ne recouvre aucun bouton sur la recherche',
-  masquesRecherche.masques.length === 0,
-  `${masquesRecherche.total} bouton(s) visible(s)`
+  'sur la recherche, le bandeau d’installation est DANS LE FLUX (jamais superposé)',
+  bandeauRecherche.present && bandeauRecherche.position !== 'fixed',
+  `position=${bandeauRecherche.position}`
 );
+verifier(
+  'sur la recherche, le bandeau ne recouvre ni bouton ni texte',
+  bandeauRecherche.boutons.length === 0 && bandeauRecherche.textes.length === 0,
+  `bouton(s)=${JSON.stringify(bandeauRecherche.boutons)} texte(s)=${JSON.stringify(bandeauRecherche.textes)}`
+);
+verifier(
+  'aucun bouton de la recherche n’est recouvert par un élément imprévu',
+  masquesRecherche.masques.length === 0,
+  `${masquesRecherche.total} bouton(s) visible(s)${masquesRecherche.masques.length ? ` — masqué(s) : ${JSON.stringify(masquesRecherche.masques)}` : ''}`
+);
+
+// ── États du bandeau d'installation (correctif du 16/11) ────────────────
+// Le bandeau vit désormais DANS LE FLUX de la page : présent au premier écran,
+// sans jamais recouvrir quoi que ce soit. On vérifie les trois états réels :
+// affiché, fermé en un clic, puis réaffiché par le chemin de diagnostic `?pwa=1`.
+const bandeauAffiche = await page.evaluer(
+  'Boolean(document.querySelector("[data-banniere-installation]"))'
+);
+verifier('le bandeau d’installation est proposé au premier écran', Boolean(bandeauAffiche));
+
+await page.evaluer('document.querySelector("[data-fermer-invitation]")?.click()');
+const ferme = await jusqua('!document.querySelector("[data-banniere-installation]")', {
+  maxMs: 4000,
+});
+const compteurRefus = await page.evaluer(
+  'Number(localStorage.getItem("rejoinsmoi.installationIgnoree")) || 0'
+);
+verifier('le bandeau se ferme en un clic (compteur de refus enregistré)', Boolean(ferme) && compteurRefus === 1, `compteur=${compteurRefus}`);
+
+const masquesApresFermeture = await boutonsMasques('.nav-basse');
+verifier(
+  'après fermeture, aucun bouton n’est recouvert',
+  masquesApresFermeture.masques.length === 0,
+  `${masquesApresFermeture.total} bouton(s) visible(s)${masquesApresFermeture.masques.length ? ` — masqué(s) : ${JSON.stringify(masquesApresFermeture.masques)}` : ''}`
+);
+
+// `?pwa=1` : sortie de secours documentée (diagnostic + réaffichage forcé).
+await page.send('Page.navigate', { url: `${ORIGINE}/recherche?pwa=1` });
+const revient = await jusqua('Boolean(document.querySelector("[data-banniere-installation]"))', {
+  maxMs: 15000,
+});
+verifier('?pwa=1 réaffiche l’invitation (chemin de diagnostic)', Boolean(revient));
 
 // ── Rapport (et rappel de ce qu'il faut supprimer) ──────────────────────
 writeFileSync(

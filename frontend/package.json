@@ -9,6 +9,7 @@
     "build:pages": "vite build --base=/rejoins-moi/",
     "deploy:pages": "npm run build:pages && node scripts/publier-pages.mjs",
     "verifier:pwa": "node scripts/verifier-pwa.mjs",
+    "verifier:dessins": "node scripts/verifier-dessins.mjs",
     "verifier:demarrage": "node scripts/verifier-demarrage-froid.mjs",
     "verifier:demarrage:rapide": "node scripts/verifier-demarrage-froid.mjs --rapide",
     "verifier:permissions": "node scripts/verifier-permissions.mjs",

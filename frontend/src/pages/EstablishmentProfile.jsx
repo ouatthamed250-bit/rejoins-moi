@@ -31,6 +31,7 @@ import { Icon } from '../components/Icons.jsx';
 import { api } from '../utils/api/client.js';
 import { distanceDepuis, formatDistanceKm, urlItineraire } from '../utils/distance.js';
 import { formatDateRelative, formatNote, formatTelephone, initiales } from '../utils/format.js';
+import { partagerWhatsApp, textePartageFiche, urlPartageFiche } from '../utils/partage.js';
 import { AVIS_DEMO, ETABLISSEMENTS_DEMO, PROFIL_DEMO } from '../data/demoData.js';
 import { useGeolocation } from '../hooks/useGeolocation.js';
 import { useAuth } from '../hooks/useAuth.js';
@@ -62,7 +63,6 @@ export default function EstablishmentProfile() {
   const [note, setNote] = useState(0);
   const [commentaire, setCommentaire] = useState('');
   const [envoi, setEnvoi] = useState(false);
-  const [retourPartage, setRetourPartage] = useState('');
 
   // ── État de secours des PHOTOS (correctif du 16/11) ──
   // Une URL de photo morte (fichier effacé, ancien hébergement) affichait un cadre
@@ -158,7 +158,6 @@ export default function EstablishmentProfile() {
   const estFavori = favoris.includes(String(etablissement?.id));
   const texteBouton =
     etablissement?.texteBoutonAction || (etablissement ? `Aller chez ${etablissement.nom}` : '');
-  const lienFiche = typeof window !== 'undefined' ? window.location.href : '';
 
   /** Clic sur le gros bouton : +1 UTILISATEUR (§3) puis ouverture de l'itinéraire. */
   async function allerChez() {
@@ -195,22 +194,18 @@ export default function EstablishmentProfile() {
     window.open(url, '_blank', 'noopener,noreferrer');
   }
 
-  /** Partage (WhatsApp natif sur mobile, copie du lien sinon). */
-  async function partager() {
-    try {
-      if (navigator.share) {
-        await navigator.share({
-          title: etablissement?.nom,
-          text: `${etablissement?.nom} sur Rejoins’Moi`,
-          url: lienFiche,
-        });
-        return;
-      }
-      await navigator.clipboard.writeText(lienFiche);
-      setRetourPartage('Lien copié, prêt à envoyer sur WhatsApp.');
-    } catch {
-      setRetourPartage('Copiez le lien depuis la barre d’adresse pour le partager.');
-    }
+  /**
+   * Partage de la fiche : feuille de partage native sur mobile, WhatsApp Web sur
+   * desktop (voir utils/partage.js). L'ancienne version se contentait de copier le
+   * lien dans le presse-papiers : il fallait ensuite ouvrir WhatsApp et coller —
+   * un détour que personne ne fait. Le lien est désormais déjà rédigé dans WhatsApp.
+   */
+  function partager() {
+    if (!etablissement) return;
+    partagerWhatsApp({
+      texte: textePartageFiche(etablissement),
+      url: urlPartageFiche(etablissement.id || etablissement._id),
+    });
   }
 
   /** Publication d'un avis noté (§5). La note est obligatoire. */
@@ -447,16 +442,6 @@ export default function EstablishmentProfile() {
             action={{ libelle: 'OK', onClick: () => setMessage('') }}
           >
             {message}
-          </InfoBanner>
-        )}
-
-        {retourPartage && (
-          <InfoBanner
-            variante="succes"
-            className="mt-3"
-            action={{ libelle: 'OK', onClick: () => setRetourPartage('') }}
-          >
-            {retourPartage}
           </InfoBanner>
         )}
 

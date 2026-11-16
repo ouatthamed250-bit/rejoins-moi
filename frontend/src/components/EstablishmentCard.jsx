@@ -18,6 +18,7 @@ import StarRating from './StarRating.jsx';
 import TagBadge from './TagBadge.jsx';
 import { formatCompteur, formatTelephone } from '../utils/format.js';
 import { distanceDepuis, formatDistanceKm } from '../utils/distance.js';
+import { partagerWhatsApp, textePartageFiche, urlPartageFiche } from '../utils/partage.js';
 
 /** Libellés de catégories (miroir de CATEGORIES dans data/demoData.js). */
 const LIBELLES_CATEGORIES = {
@@ -123,6 +124,25 @@ export default function EstablishmentCard({
   const fichier = `/etablissement/${e.id}`;
   const libelleCategorie = LIBELLES_CATEGORIES[e.categorie] || e.categorie;
 
+  /**
+   * Partage WhatsApp de la fiche, SANS ouvrir la fiche.
+   * `preventDefault` + `stopPropagation` : la carte est entourée de liens
+   * (`<Link>` sur la photo et sur le nom) — sans cela, le clic remonterait
+   * jusqu'à eux et quitterait la liste au lieu de partager.
+   */
+  function partager(evt) {
+    evt.preventDefault();
+    evt.stopPropagation();
+    partagerWhatsApp({
+      texte: textePartageFiche({
+        nom: e.nom,
+        categorie: e.categorie,
+        commune: etablissement?.commune || '',
+      }),
+      url: urlPartageFiche(e.id),
+    });
+  }
+
   // ── État de secours PHOTO (correctif du 16/11) ──────────────────────────────
   // Une URL de photo peut être morte (fichier effacé, ancien hébergement) : l'image
   // cassée laissait alors un rectangle vide, ou l'icône « image brisée » du
@@ -175,9 +195,18 @@ export default function EstablishmentCard({
             )}
           </div>
 
-          {/* Les deux compteurs, séparés (§3) */}
-          <div className="mt-1">
+          {/* Les deux compteurs, séparés (§3) + partage WhatsApp (icône seule) */}
+          <div className="mt-1 flex items-center justify-between gap-2">
             <CompteursSepares visites={e.compteurVisites} utilisateurs={e.compteurUtilisateurs} taille="sm" />
+            <button
+              type="button"
+              aria-label={`Partager ${e.nom} sur WhatsApp`}
+              title="Partager sur WhatsApp"
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-soft text-primary transition active:scale-95"
+              onClick={partager}
+            >
+              <Icon name="whatsapp" size={15} />
+            </button>
           </div>
         </div>
       </article>
@@ -237,8 +266,19 @@ export default function EstablishmentCard({
               <StarRating note={e.noteMoyenne} nombreAvis={e.nombreAvis} taille={15} />
             </div>
           </div>
-          {/* Les deux compteurs, séparés (§3) */}
-          <CompteursSepares visites={e.compteurVisites} utilisateurs={e.compteurUtilisateurs} />
+          {/* Les deux compteurs, séparés (§3) + partage WhatsApp (icône seule) */}
+          <div className="flex shrink-0 items-center gap-2">
+            <CompteursSepares visites={e.compteurVisites} utilisateurs={e.compteurUtilisateurs} />
+            <button
+              type="button"
+              aria-label={`Partager ${e.nom} sur WhatsApp`}
+              title="Partager sur WhatsApp"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-soft text-primary transition active:scale-95"
+              onClick={partager}
+            >
+              <Icon name="whatsapp" size={16} />
+            </button>
+          </div>
         </div>
 
         {e.tags.length > 0 && (

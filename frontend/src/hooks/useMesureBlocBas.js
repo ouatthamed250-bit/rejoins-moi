@@ -26,8 +26,9 @@
 //                          cela, la barre lui tranchait le haut et « Suivant »
 //                          semblait appuyé dessus (bug du 16/11, étape Photos).
 //   --hauteur-bloc-bas     hauteur du bloc TEL QU'IL EST DESSINÉ :
-//                            · avec une barre d'action : nav + barre (la barre,
-//                              opaque, recouvre le bouton « + » surélevé) ;
+//                            · avec une barre d'action : nav (dégagée du bouton
+//                              « + » par theme.css, qui englobe donc le bouton) +
+//                              barre d'action posée au-dessus ;
 //                            · sans barre d'action : nav + bouton « + » surélevé.
 //                          C'est cette valeur (plus --marge-securite-bas) que le
 //                          corps réserve en bas de page : le dernier élément est

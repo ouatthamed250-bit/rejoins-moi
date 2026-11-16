@@ -5,7 +5,8 @@
 //   node scripts/marquer-tests.js --apply      -> marque réellement test: true
 //
 // Seuls les éléments DEJA identifiés dans auditer-tests.js (lot 1) et
-// auditer-tests-2.js (lot 2) sont concernés : 14 comptes (User) + 2 fiches.
+// auditer-tests-2.js (lot 2) sont concernés : 14 comptes (User) + 3 fiches
+// (Establishment) + 1 annonce (Job).
 //   - 8 comptes du lot 1 :
 //       6abecc5ff046f29f037e87d2
 //       6abecc6af046f29f037e87e4
@@ -22,9 +23,12 @@
 //       6afb3df5d23bfb4d546f12d1
 //       6afb3f31f40bc442965fe927
 //       6afb3f36f40bc442965fe938
-//   - 2 fiches (Establishment) :
+//   - 3 fiches (Establishment) :
 //       6abecc6af046f29f037e87e6
 //       6afb3f36f40bc442965fe93a
+//       6ac8aceb7b978da051e9e069
+//   - 1 annonce (Job) :
+//       6abeed6aa9261ac1101cdba2
 //
 // Aucun critère automatique : on ne marque que les IDs explicitement listés
 // ci-dessous. Si un ID n'existe pas en base, le script s'arrête avec une erreur.
@@ -34,6 +38,7 @@ import mongoose from 'mongoose';
 import { connectDB, getMongoDbName } from '../src/config/db.js';
 import User from '../src/models/User.js';
 import Establishment from '../src/models/Establishment.js';
+import Job from '../src/models/Job.js';
 
 const APPLY = process.argv.includes('--apply');
 if (!APPLY && process.argv.includes('--apply')) {
@@ -63,9 +68,12 @@ const USER_IDS = [
 const ESTABLISHMENT_IDS = [
   '6abecc6af046f29f037e87e6', // "ZZ-TEST-COMPTEURS-1790889066557" (fiche non importée)
   '6afb3f36f40bc442965fe93a', // "ZZ-TEST-COMPTEURS-1794850614357" (lot 2)
-  // NOTE : 6ac8aceb7b978da051e9e069 ("Hhhh") est EXPLCITEMENT exclu : on ne le
-  // touche pas pour l'instant (voir demande de l'utilisateur).
+  '6ac8aceb7b978da051e9e069', // "Hhhh" — test manuel du 09/10, confirmé par l'utilisateur
   // NOTE : 6abcdc9ad7bc403c51f6daf2 ("Sahore zogbo") est EXCLU : vrai utilisateur.
+];
+
+const JOB_IDS = [
+  '6abeed6aa9261ac1101cdba2', // "Mise aux normes d'un tableau électrique" — Suivi Admin076
 ];
 
 // ── Helpers ──
@@ -94,6 +102,11 @@ function afficherFiche(est) {
   console.log(`  - « ${est.nom || '(nom absent)'} » | id: ${est._id} | créé le ${est.createdAt ? new Date(est.createdAt).toISOString().slice(0, 19).replace('T', ' ') : '—'}`);
 }
 
+function afficherAnnonce(job) {
+  const titre = job.intitule || job.metier || '(titre absent)';
+  console.log(`  - « ${titre} » | id: ${job._id} | posteur : ${job.nomPosteur || '(non renseigné)'} | créée le ${job.createdAt ? new Date(job.createdAt).toISOString().slice(0, 19).replace('T', ' ') : '—'}`);
+}
+
 // ── Dry-run ──
 
 async function dryRun() {
@@ -118,6 +131,17 @@ async function dryRun() {
       return;
     }
     afficherFiche(est);
+  }
+  console.log('');
+  console.log('Annonces à marquer (', JOB_IDS.length, ') :');
+  for (const id of JOB_IDS) {
+    const job = await Job.findById(id).select('intitule metier nomPosteur createdAt');
+    if (!job) {
+      console.error(`  !! ID annonce introuvable : ${id}`);
+      process.exitCode = 1;
+      return;
+    }
+    afficherAnnonce(job);
   }
   console.log('');
   console.log('Pour appliquer : node scripts/marquer-tests.js --apply');
@@ -155,6 +179,22 @@ async function apply() {
     console.log(`OK : fiche ${id} marquée test=true (nom : ${est.nom})`);
   }
 
+  // Jobs (annonces) — le champ `test` n'est pas déclaré dans le schéma Job :
+  // Mongoose en mode strict l'ignorerait lors d'un save(). On écrit donc
+  // directement via le pilote natif, en respectant le filtre `test: { $ne: true }`
+  // déjà utilisé par routes/jobs.js:98.
+  for (const id of JOB_IDS) {
+    const job = await Job.findById(id).select('intitule metier nomPosteur');
+    if (!job) {
+      afficherErreur(id, 'JOB', 'introuvable');
+      ok = false;
+      continue;
+    }
+    await Job.collection.updateOne({ _id: job._id }, { $set: { test: true } });
+    const titre = job.intitule || job.metier || '(titre absent)';
+    console.log(`OK : annonce ${id} marquée test=true (titre : ${titre})`);
+  }
+
   if (!ok) {
     console.error('Marchage partiel : certains IDs introuvables.');
     process.exitCode = 1;
@@ -163,8 +203,9 @@ async function apply() {
 
   const users = await User.countDocuments({ test: true });
   const ests = await Establishment.countDocuments({ test: true });
+  const jobs = await Job.collection.countDocuments({ test: true });
   console.log('');
-  console.log(`Comptages finaux : ${users} utilisateur(s) test:true, ${ests} établissement(s) test:true`);
+  console.log(`Comptages finaux : ${users} utilisateur(s) test:true, ${ests} établissement(s) test:true, ${jobs} annonce(s) test:true`);
 }
 
 // ── Entrée ──

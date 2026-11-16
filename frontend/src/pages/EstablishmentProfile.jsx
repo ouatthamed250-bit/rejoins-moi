@@ -27,6 +27,7 @@ import InfoBanner from '../components/InfoBanner.jsx';
 import PhotoSecours from '../components/PhotoSecours.jsx';
 import PhotoUploadField from '../components/PhotoUploadField.jsx';
 import GaleriePhotos from '../components/GaleriePhotos.jsx';
+import EditeurHoraires from '../components/EditeurHoraires.jsx';
 import StarRating from '../components/StarRating.jsx';
 import TagBadge from '../components/TagBadge.jsx';
 import { CompteursSepares } from '../components/EstablishmentCard.jsx';
@@ -35,7 +36,7 @@ import { api } from '../utils/api/client.js';
 import { distanceDepuis, formatDistanceKm, urlItineraire } from '../utils/distance.js';
 import { formatDateRelative, formatNote, formatTelephone, initiales } from '../utils/format.js';
 import { partagerWhatsApp, textePartageFiche, urlPartageFiche } from '../utils/partage.js';
-import { estOuvertMaintenant } from '../utils/statutHoraire.js';
+import { estOuvertMaintenant, horairesParDefaut, resumerHoraires } from '../utils/statutHoraire.js';
 import { AVIS_DEMO, ETABLISSEMENTS_DEMO, PROFIL_DEMO } from '../data/demoData.js';
 import { useGeolocation } from '../hooks/useGeolocation.js';
 import { useAuth } from '../hooks/useAuth.js';
@@ -90,6 +91,28 @@ export default function EstablishmentProfile() {
   const [erreurGalerie, setErreurGalerie] = useState('');
   // Photo affichée en plein écran (index dans `photosGalerie`, null = fermé).
   const [photoOuverte, setPhotoOuverte] = useState(null);
+
+  // ── Panneau « Gérer mon établissement » (ajout du 16/11) ──
+  // Deux gestes du quotidien manquaient au gérant une fois sa fiche publiée :
+  //   1. FERMER EN UN CLIC (« rupture de stock », panne, maladie, deuil). Avant,
+  //      il n'y avait rien à faire dans l'app : le client se déplaçait pour rien.
+  //      La fermeture s'affiche immédiatement sur la fiche (pastille rouge), sans
+  //      attendre la nuit ni modifier la grille d'horaires — une fermeture
+  //      temporaire n'est pas un changement d'horaires d'ouverture.
+  //   2. CORRIGER SES HORAIRES (une heure mal saisie à l'inscription, une nouvelle
+  //      amplitude, la pause du midi). Le serveur le permettait déjà (PATCH
+  //      /establishments/:id) mais aucun écran ne l'exposait.
+  // `gestionOuverte` ouvre la feuille du bas ; `horairesEdition` est son brouillon :
+  // rien n'est écrit avant « Enregistrer ».
+  const [gestionOuverte, setGestionOuverte] = useState(false);
+  const [formulaireFermeture, setFormulaireFermeture] = useState(false);
+  const [raisonFermeture, setRaisonFermeture] = useState('');
+  const [enregistrementFermeture, setEnregistrementFermeture] = useState(false);
+  const [erreurFermeture, setErreurFermeture] = useState('');
+  const [horairesEdition, setHorairesEdition] = useState(null);
+  const [enregistrementHoraires, setEnregistrementHoraires] = useState(false);
+  const [erreurHoraires, setErreurHoraires] = useState('');
+  const [messageGestion, setMessageGestion] = useState('');
 
   // ── État de secours des PHOTOS (correctif du 16/11) ──
   // Une URL de photo morte (fichier effacé, ancien hébergement) affichait un cadre
@@ -221,6 +244,12 @@ export default function EstablishmentProfile() {
       profil?.etablissementId &&
       String(profil.etablissementId) === String(etablissement?.id)
   );
+  // Fermeture temporaire en cours : lue DANS la fiche, donc la pastille et le
+  // bouton basculent dès que le PATCH a répondu — sans recharger l'écran.
+  // (`fermetureTemporaire` est toujours publié par toCardJSON, même inactif.)
+  const fermetureTemporaire = etablissement?.fermetureTemporaire || { actif: false, raison: '' };
+  const fermetureActive = Boolean(fermetureTemporaire.actif);
+  const raisonFermetureActive = String(fermetureTemporaire.raison || '').trim();
   const texteBouton =
     etablissement?.texteBoutonAction || (etablissement ? `Aller chez ${etablissement.nom}` : '');
 
@@ -357,6 +386,121 @@ export default function EstablishmentProfile() {
       setErreurGalerie(err?.message || 'Enregistrement impossible pour le moment.');
     } finally {
       setEnregistrementGalerie(false);
+    }
+  }
+
+  /**
+   * Ouvre le panneau « Gérer mon établissement », pré-rempli avec la grille
+   * réellement publiée. Une fiche importée n'a AUCUNE grille : on part alors des
+   * horaires par défaut (08:00–18:00, dimanche fermé) — le gérant corrige une
+   * proposition au lieu de remplir sept lignes vides.
+   */
+  function ouvrirGestion() {
+    setHorairesEdition(etablissement?.horairesStructures || horairesParDefaut());
+    setFormulaireFermeture(false);
+    setRaisonFermeture('');
+    setErreurFermeture('');
+    setErreurHoraires('');
+    setMessageGestion('');
+    setGestionOuverte(true);
+  }
+
+  /**
+   * FERME la fiche temporairement (« rupture de stock », panne, maladie, deuil).
+   *
+   * Pourquoi ne pas toucher à la grille : demain matin la boutique rouvre à son
+   * heure habituelle. On n'écrit donc QUE `fermetureTemporaire`, qui prime sur les
+   * horaires dans `estOuvertMaintenant` — un clic pour fermer, un clic pour
+   * rouvrir, la grille d'ouverture reste intacte.
+   */
+  async function fermerTemporairement(evt) {
+    evt.preventDefault();
+    if (!etablissement || !estProprietaire) return;
+    setErreurFermeture('');
+    setEnregistrementFermeture(true);
+    // Raison facultative. Le serveur la borne à 160 caractères : on tronque ici
+    // pour que l'écran n'annonce jamais plus long que ce qui est réellement stocké.
+    const fermeture = { actif: true, raison: raisonFermeture.trim().slice(0, 160) };
+    try {
+      const reponse = await api.patch(`/establishments/${etablissement.id}`, {
+        fermetureTemporaire: fermeture,
+      });
+      if (reponse?.etablissement) {
+        setEtablissement((prec) => ({ ...(prec || {}), ...reponse.etablissement }));
+      } else {
+        setEtablissement((prec) => (prec ? { ...prec, fermetureTemporaire: fermeture } : prec));
+      }
+      setFormulaireFermeture(false);
+      setRaisonFermeture('');
+      setMessageGestion(
+        fermeture.raison
+          ? `Votre fiche affiche « Fermé (${fermeture.raison}) ».`
+          : 'Votre fiche affiche « Fermé (fermeture temporaire) ».'
+      );
+    } catch (err) {
+      setErreurFermeture(err?.message || 'Fermeture non enregistrée. Réessayez dans un instant.');
+    } finally {
+      setEnregistrementFermeture(false);
+    }
+  }
+
+  /** ROUVRE la fiche : la pastille repart des horaires, la raison est effacée. */
+  async function rouvrirEtablissement() {
+    if (!etablissement || !estProprietaire) return;
+    setErreurFermeture('');
+    setEnregistrementFermeture(true);
+    const fermeture = { actif: false, raison: '' };
+    try {
+      const reponse = await api.patch(`/establishments/${etablissement.id}`, {
+        fermetureTemporaire: fermeture,
+      });
+      if (reponse?.etablissement) {
+        setEtablissement((prec) => ({ ...(prec || {}), ...reponse.etablissement }));
+      } else {
+        setEtablissement((prec) => (prec ? { ...prec, fermetureTemporaire: fermeture } : prec));
+      }
+      setFormulaireFermeture(false);
+      setMessageGestion('Fiche réouverte : la pastille suit de nouveau vos horaires.');
+    } catch (err) {
+      setErreurFermeture(err?.message || 'Réouverture non enregistrée. Réessayez dans un instant.');
+    } finally {
+      setEnregistrementFermeture(false);
+    }
+  }
+
+  /**
+   * Enregistre la grille d'horaires corrigée (brouillon `horairesEdition`).
+   *
+   * On envoie AUSSI le texte historique `horaires`, régénéré depuis la grille :
+   * c'est lui qu'affichent la ligne d'horaires de la fiche et l'annuaire, et il
+   * ne doit pas contredire la grille que le gérant vient de corriger. Sur une
+   * fiche importée, ce PATCH est aussi ce qui fait apparaître la pastille : le
+   * serveur enregistre la grille ET son témoin de saisie ensemble.
+   */
+  async function enregistrerHorairesGestion(evt) {
+    evt.preventDefault();
+    if (!etablissement || !estProprietaire || !horairesEdition) return;
+    setErreurHoraires('');
+    setEnregistrementHoraires(true);
+    const grille = horairesEdition;
+    const resume = resumerHoraires(grille);
+    try {
+      const reponse = await api.patch(`/establishments/${etablissement.id}`, {
+        horairesStructures: grille,
+        horaires: resume,
+      });
+      if (reponse?.etablissement) {
+        setEtablissement((prec) => ({ ...(prec || {}), ...reponse.etablissement }));
+      } else {
+        setEtablissement((prec) =>
+          prec ? { ...prec, horairesStructures: grille, horaires: resume } : prec
+        );
+      }
+      setMessageGestion('Horaires enregistrés : la pastille « Ouvert / Fermé » les suit.');
+    } catch (err) {
+      setErreurHoraires(err?.message || 'Enregistrement impossible pour le moment.');
+    } finally {
+      setEnregistrementHoraires(false);
     }
   }
 
@@ -528,6 +672,23 @@ export default function EstablishmentProfile() {
             </span>
           )}
           <div className="mb-1 flex flex-wrap items-center justify-end gap-2">
+            {/* Panneau de gestion du gérant (16/11) : fermeture temporaire en un
+                clic et correction des horaires. Le bouton vire au rouge quand la
+                fiche est fermée — le gérant voit son état sans ouvrir le panneau. */}
+            {estProprietaire && (
+              <button
+                type="button"
+                className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-bold shadow-card ${
+                  fermetureActive
+                    ? 'border-danger bg-danger text-white'
+                    : 'border-line bg-white text-primary'
+                }`}
+                onClick={ouvrirGestion}
+              >
+                <Icon name={fermetureActive ? 'ban' : 'store'} size={12} />
+                {fermetureActive ? 'Fiche fermée — Gérer' : 'Gérer'}
+              </button>
+            )}
             {/* Réservé au gérant de CETTE fiche : aucun autre visiteur ne voit ce
                 bouton (le serveur refuserait de toute façon en 403). */}
             {estProprietaire && (
@@ -979,6 +1140,160 @@ export default function EstablishmentProfile() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* ── Panneau « Gérer mon établissement » (gérant uniquement, 16/11) ─────
+          Une seule feuille du bas, deux gestes du quotidien :
+            a) FERMER / ROUVRIR — « rupture de stock », panne, maladie. La raison
+               est facultative et s'affiche telle quelle sur la fiche
+               (« Fermé (Rupture de stock) »). La grille d'horaires n'est PAS
+               touchée : demain, la boutique rouvre à son heure habituelle.
+            b) HORAIRES — la grille de sept jours, corrigeable après publication.
+           Rien n'est écrit avant validation : le panneau travaille sur des
+           brouillons (`raisonFermeture`, `horairesEdition`), et un appui à côté
+           annule tout (sauf pendant un enregistrement). */}
+      {gestionOuverte && estProprietaire && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 p-3"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Gérer mon établissement"
+          onClick={() => {
+            if (!enregistrementFermeture && !enregistrementHoraires) setGestionOuverte(false);
+          }}
+        >
+          <div
+            className="carte max-h-[92vh] w-full max-w-[480px] overflow-y-auto p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-sm font-bold text-ink">Gérer mon établissement</p>
+              <button
+                type="button"
+                className="text-xs font-semibold text-ink-muted underline"
+                disabled={enregistrementFermeture || enregistrementHoraires}
+                onClick={() => setGestionOuverte(false)}
+              >
+                Fermer
+              </button>
+            </div>
+            <p className="mb-3 text-[11px] leading-snug text-ink-muted">
+              Ces deux réglages sont visibles immédiatement par tous les visiteurs de votre fiche.
+            </p>
+
+            {messageGestion && (
+              <p className="mb-3 rounded-md bg-health-light px-3 py-2 text-xs font-semibold text-health-dark">
+                {messageGestion}
+              </p>
+            )}
+
+            {/* ── a) FERMETURE TEMPORAIRE ─────────────────────────────────── */}
+            <section className="rounded-md border border-line p-3">
+              <p className="text-sm font-bold text-ink">Fermeture temporaire</p>
+              <p className="mb-2 mt-0.5 text-[11px] leading-snug text-ink-muted">
+                Pour aujourd’hui seulement : coupure, rupture de stock, maladie. Vos horaires
+                d’ouverture restent enregistrés — un seul clic suffit.
+              </p>
+
+              {fermetureActive ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Même texte que la pastille publique : ce que le gérant lit ici
+                      est exactement ce que lit son client. */}
+                  <span className="flex items-center gap-1 rounded-full bg-danger/10 px-2.5 py-1 text-[11px] font-bold text-danger">
+                    <span aria-hidden="true">🔴</span>
+                    {raisonFermetureActive
+                      ? `Fermé (${raisonFermetureActive})`
+                      : 'Fermé (fermeture temporaire)'}
+                  </span>
+                  <button
+                    type="button"
+                    className="ml-auto flex items-center gap-1 rounded-md bg-health px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
+                    disabled={enregistrementFermeture}
+                    onClick={rouvrirEtablissement}
+                  >
+                    <Icon name="unlock" size={14} />
+                    {enregistrementFermeture ? 'Réouverture…' : 'Réouvrir'}
+                  </button>
+                </div>
+              ) : formulaireFermeture ? (
+                <form onSubmit={fermerTemporairement} className="flex flex-col gap-2">
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-bold text-ink">
+                      Raison (facultatif)
+                    </span>
+                    <input
+                      value={raisonFermeture}
+                      onChange={(e) => setRaisonFermeture(e.target.value)}
+                      maxLength={160}
+                      placeholder="Ex. Rupture de stock, panne, maladie"
+                      className="w-full rounded-md border border-line px-3 py-2.5 text-sm outline-none focus:border-primary"
+                      autoFocus
+                    />
+                  </label>
+                  <p className="text-[11px] leading-snug text-ink-muted">
+                    Elle s’affichera sur votre fiche : « Fermé (Rupture de stock) ». Laissez vide
+                    pour afficher « Fermé (fermeture temporaire) ».
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className="btn-ghost flex-1"
+                      disabled={enregistrementFermeture}
+                      onClick={() => setFormulaireFermeture(false)}
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      type="submit"
+                      className="flex flex-[2] items-center justify-center gap-1 rounded-md bg-danger px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
+                      disabled={enregistrementFermeture}
+                    >
+                      <Icon name="lock" size={14} />
+                      {enregistrementFermeture ? 'Fermeture…' : 'Fermer ma fiche'}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-center gap-1 rounded-md bg-danger px-3 py-2.5 text-xs font-bold text-white"
+                  onClick={() => setFormulaireFermeture(true)}
+                >
+                  <Icon name="lock" size={14} />
+                  Fermer temporairement
+                </button>
+              )}
+
+              {erreurFermeture && (
+                <p className="mt-2 text-xs font-semibold text-danger">{erreurFermeture}</p>
+              )}
+            </section>
+
+            {/* ── b) HORAIRES D'OUVERTURE ─────────────────────────────────── */}
+            <form onSubmit={enregistrerHorairesGestion} className="mt-3">
+              <p className="text-sm font-bold text-ink">Horaires d’ouverture</p>
+              <p className="mb-2 mt-0.5 text-[11px] leading-snug text-ink-muted">
+                Toute correction est immédiate : la pastille « Ouvert / Fermé » de votre fiche suit
+                cette grille, heure par heure.
+              </p>
+              <EditeurHoraires
+                valeur={horairesEdition || horairesParDefaut()}
+                onChange={setHorairesEdition}
+                desactive={enregistrementHoraires}
+              />
+              {erreurHoraires && (
+                <p className="mt-2 text-xs font-semibold text-danger">{erreurHoraires}</p>
+              )}
+              <button
+                type="submit"
+                className="bouton-principal mt-3 w-full"
+                disabled={enregistrementHoraires}
+              >
+                {enregistrementHoraires ? 'Enregistrement…' : 'Enregistrer mes horaires'}
+              </button>
+            </form>
+          </div>
         </div>
       )}
 

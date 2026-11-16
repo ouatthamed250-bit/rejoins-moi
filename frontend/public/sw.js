@@ -15,6 +15,14 @@
  *     quelle. Le serveur reste seul juge du paiement (règle de sécurité du projet).
  */
 
+// v15 : tableau de bord du gérant (16/11) — « Gérer mon établissement » : fermer
+//       la fiche temporairement en un clic (avec une raison affichée au client :
+//       « Fermé (Rupture de stock) »), la rouvrir, et corriger ses horaires après
+//       publication (la grille de sept jours réapparaît dans un panneau).
+//       EstablishmentProfile.jsx change → nouvelle empreinte index-*.js : sans
+//       nouveau nom de cache, un téléphone déjà installé servirait l'ancien
+//       index.html en secours, donc l'ANCIENNE fiche, sans le bouton « Gérer ».
+//
 // v14 : horaires structurés (16/11) — la fiche porte une pastille « Ouvert /
 //       Fermé » calculée à l'heure présente, et l'inscription remplace le champ
 //       libre « Horaires » par un éditeur de sept jours. L'app shell change :
@@ -95,7 +103,7 @@
 //      bannière qui masque une carte, exactement le défaut corrigé.
 // Changer la version est indispensable dès que les fichiers « cache d'abord »
 // (icônes) ou l'app shell changent de façon visible.
-const VERSION = 'v14';
+const VERSION = 'v15';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

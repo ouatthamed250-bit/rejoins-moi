@@ -20,6 +20,11 @@
 //                          exactement (`bottom: var(--hauteur-nav)`) : aucun
 //                          interstice, quelle que soit la barre système.
 //   --hauteur-barre-action hauteur de la barre d'action posée sur la navigation.
+//   --debord-nav           remontée MESURÉE du bouton « + » au-dessus du contenu de
+//                          la navigation (voir debordBoutonPlus plus bas). Sert à
+//                          dégager le bouton quand une barre d'action se pose : sans
+//                          cela, la barre lui tranchait le haut et « Suivant »
+//                          semblait appuyé dessus (bug du 16/11, étape Photos).
 //   --hauteur-bloc-bas     hauteur du bloc TEL QU'IL EST DESSINÉ :
 //                            · avec une barre d'action : nav + barre (la barre,
 //                              opaque, recouvre le bouton « + » surélevé) ;
@@ -35,7 +40,7 @@
 import { useCallback, useLayoutEffect } from 'react';
 
 /** Mesures courantes, partagées par tous les écrans (une seule source de vérité). */
-const mesures = { navBoite: 0, navVisuelle: 0, barreAction: 0 };
+const mesures = { navBoite: 0, navVisuelle: 0, barreAction: 0, debordNav: 0 };
 
 /** Hauteur de la boîte d'un élément (bordures et remplissage compris).
  *  ARRONDI AU-DESSUS : une valeur arrondie au plus proche pourrait publier 1px de
@@ -62,15 +67,49 @@ function hauteurVisuelle(element) {
   return Math.max(0, Math.ceil(window.innerHeight - haut));
 }
 
+/**
+ * Débord du bouton « + » AU-DESSUS du haut du CONTENU de la navigation.
+ *
+ * Le bouton central est remonté de quelques dizaines de pixels (`-mt-6`) et
+ * flotte au-dessus de la boîte de la navigation. Tant qu'aucune barre d'action
+ * n'est là, c'est voulu : il ressort du bloc, sur le contenu. Dès qu'une barre
+ * d'action se pose, en revanche, elle se posait sur le haut de la BOÎTE et lui
+ * tranchait le haut — mesuré sur la capture du 16/11 (inscription, étape Photos) :
+ * le « + » était coupé net, juste sous le bouton « Suivant ». theme.css utilise
+ * donc cette valeur pour dégager la navigation sous la barre (padding-top) : sa
+ * boîte englobe le bouton, la barre se pose au-dessus de lui, rien n'est recouvert.
+ *
+ * POURQUOI DEPUIS LE CONTENU (et non depuis la boîte) : la navigation est ancrée
+ * en bas, donc un `padding-top` la fait grandir VERS LE HAUT sans déplacer son
+ * contenu. Mesurer depuis la boîte aurait créé une boucle — le remplissage
+ * agrandit la boîte, ce qui réduit le débord mesuré, ce qui réduit le remplissage
+ * — et la barre aurait oscillé d'une image à l'autre. Depuis le haut du contenu,
+ * la valeur est stable et le dégagement ne se mesure pas lui-même.
+ */
+function debordBoutonPlus(nav) {
+  const bouton = nav?.querySelector('[data-bouton-plus]');
+  if (!bouton) return 0;
+  const style = getComputedStyle(nav);
+  // getBoundingClientRect englobe bordures et remplissage : le haut du CONTENU est
+  // donc le haut de la boîte + bordure du haut + remplissage du haut.
+  const hautContenu =
+    nav.getBoundingClientRect().top +
+    (parseFloat(style.borderTopWidth) || 0) +
+    (parseFloat(style.paddingTop) || 0);
+  return Math.max(0, Math.ceil(hautContenu - bouton.getBoundingClientRect().top));
+}
+
 /** Publie les mesures dans les variables CSS lues par theme.css. */
 function publier() {
   const racine = document.documentElement;
   // Bloc « tel qu'il est dessiné » : dès qu'une barre d'action existe, elle est
-  // au-dessus de la navigation dans l'empilement (z-index 35 > 30) et masque donc
-  // le bouton « + » surélevé — le bloc est alors simplement nav + barre.
+  // au-dessus de la navigation dans l'empilement (z-index 35 > 30). La navigation
+  // a alors été dégagée du bouton « + » (padding-top, voir theme.css) : sa boîte
+  // contient donc déjà le bouton, et le bloc est simplement nav + barre.
   const bloc = mesures.barreAction > 0 ? mesures.navBoite + mesures.barreAction : mesures.navVisuelle;
   racine.style.setProperty('--hauteur-nav', `${mesures.navBoite}px`);
   racine.style.setProperty('--hauteur-barre-action', `${mesures.barreAction}px`);
+  racine.style.setProperty('--debord-nav', `${mesures.debordNav}px`);
   racine.style.setProperty('--hauteur-bloc-bas', `${bloc}px`);
 }
 
@@ -111,6 +150,7 @@ export function useMesureNavBas(ref) {
     if (!ref.current) return;
     mesures.navBoite = hauteurBoite(ref.current);
     mesures.navVisuelle = hauteurVisuelle(ref.current);
+    mesures.debordNav = debordBoutonPlus(ref.current);
     publier();
   }, [ref]);
 
@@ -125,6 +165,7 @@ export function useMesureNavBas(ref) {
       delete document.documentElement.dataset.navBasse;
       mesures.navBoite = 0;
       mesures.navVisuelle = 0;
+      mesures.debordNav = 0;
       publier();
     };
   }, []);

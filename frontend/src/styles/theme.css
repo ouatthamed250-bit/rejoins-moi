@@ -133,6 +133,11 @@
   --hauteur-nav: 0px;            /* boîte de la navigation basse */
   --hauteur-barre-action: 0px;   /* barre d'action posée dessus */
   --hauteur-bloc-bas: 0px;       /* nav + barre, ou nav + bouton « + » surélevé */
+  --debord-nav: 0px;             /* remontée MESURÉE du bouton « + » de la nav */
+  /* Respiration CHOISIE (design, pas une hauteur de plateforme) entre le haut du
+     bouton « + » et la barre d'action posée au-dessus de lui : voir « dégagement
+     du bouton + » dans la section du bloc fixe du bas. */
+  --respiration-plus: 8px;
   /* Respiration exigée entre le dernier élément de la page et le bloc : c'est la
      marge de sécurité lue par le `padding-bottom` du corps ci-dessous. */
   --marge-securite-bas: 16px;
@@ -458,7 +463,9 @@
 }
 
 /* La barre d'action : POSÉE sur le haut réel de la navigation — `bottom` vaut la
-   hauteur mesurée de la navigation, donc aucun interstice, sur tout téléphone. */
+   hauteur mesurée de la navigation, donc aucun interstice, sur tout téléphone.
+   Ce haut réel englobe le bouton « + » remonté : c'est le dégagement ci-dessous
+   qui fait grandir la boîte de la navigation jusqu'à le contenir. */
 .barre-action-fixe {
   position: fixed;
   left: 0;
@@ -469,6 +476,27 @@
   background-color: var(--color-surface);
   /* Bord SUPÉRIEUR du bloc : c'est le seul trait de séparation visible. */
   border-top: 1px solid var(--color-border);
+}
+
+/* DÉGAGEMENT DU BOUTON « + » (correctif du 16/11).
+   La barre d'action se pose sur le haut de la BOÎTE de la navigation, mais le
+   bouton central est remonté au-dessus de cette boîte (`-mt-6`) : la barre lui
+   tranchait donc le haut, et le bouton « Suivant » de l'inscription semblait
+   appuyé sur lui — la superposition signalée sur l'étape Photos, visible sur la
+   capture du banc d'essai (captures-barres/…-inscription-photos-….png).
+   La navigation reçoit ici un remplissage du haut égal au débord MESURÉ du bouton
+   (`--debord-nav`, publié par hooks/useMesureBlocBas.js) plus une respiration : sa
+   boîte englobe alors le bouton, la barre se pose AU-DESSUS de lui, et le « + »
+   reste entier. Aucune hauteur n'est écrite en dur (le débord dépend de `-mt-6`,
+   de l'alignement flex et de la police réellement chargée).
+   Le remplissage ne déplace rien : la navigation est ancrée en bas, elle grandit
+   donc vers le haut sans bouger ses onglets ni le « + » — ils restent exactement
+   là où ils étaient. Et il n'y a aucun interstice : la bande ainsi créée est le
+   fond opaque de la navigation, pas un trou sur le contenu de la page.
+   Sur les écrans SANS barre d'action (feed, recherche, messages, profil…), la
+   règle ne s'applique pas : le « + » continue de dépasser du bloc, comme avant. */
+html[data-barre-action='oui'] .nav-basse {
+  padding-top: calc(var(--debord-nav, 0px) + var(--respiration-plus));
 }
 
 /* Écran sans navigation basse (fiche partagée, plein écran) : la barre est au

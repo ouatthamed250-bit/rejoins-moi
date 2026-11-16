@@ -38,6 +38,13 @@
 //   B6 elle suit       en gonflant la navigation de 20px, la barre ET la réserve
 //                      suivent : preuve qu'aucune valeur n'est écrite en dur
 //                      (l'ancien `bottom-[68px]` n'aurait pas bougé d'un pixel).
+//   B7 le « + » entier (16/11) le bouton central surélevé de la navigation n'est
+//                      PLUS recouvert par la barre d'action : il était tranché net
+//                      à la hauteur de la barre, qui semblait appuyée sur le bouton
+//                      « Suivant » (captures avant/après du 16/11). B7b vérifie
+//                      qu'il est bien contenu dans la boîte de la navigation (donc
+//                      que le dégagement est mesuré, pas approximé), B7c que la
+//                      respiration entre le bouton et la barre est respectée.
 //   B0/B0b condition   la taille de texte du téléphone et la marge de la barre
 //                      système annoncées sont RÉELLEMENT appliquées au document
 //                      mesuré : sans elles, un « essai sous texte agrandi » ne
@@ -79,6 +86,13 @@ const retenu = (valeur, filtreTexte) => !filtreTexte || filtreTexte.split(',').i
 // L'exigence du correctif, telle qu'elle a été formulée : au moins 16px entre le
 // bord bas du dernier élément et le haut du bloc fixe.
 const MARGE_EXIGEE = 16;
+// La respiration entre le bouton « + » et la barre d'action est une valeur de
+// design (8px, voir --respiration-plus). Le débord mesuré et la hauteur de la
+// navigation sont arrondis AU-DESSUS (0 à 1px chacun, pour que rien ne soit jamais
+// recouvert) et, à 130 % de taille de texte, la mise en page fractionnaire ajoute
+// son propre écart : la respiration peut donc dépasser de quelques pixels, jamais
+// manquer. C'est ce que cette tolérance autorise — pas une respiration arbitraire.
+const TOLERANCE_RESPIRATION = 3;
 
 let echecs = 0;
 let reussis = 0;
@@ -146,6 +160,11 @@ verifier(
 verifier(
   'les deux classes du bloc sont produites dans le CSS livré',
   cssSerre.includes('.nav-basse{') && cssSerre.includes('.barre-action-fixe{')
+);
+verifier(
+  'la navigation se dégage du bouton « + » quand une barre d’action se pose',
+  cssSerre.includes('padding-top:calc(var(--debord-nav'),
+  'padding-top de la navigation = débord mesuré + respiration'
 );
 verifier(
   'la mesure est bien embarquée dans le JS livré',
@@ -395,6 +414,7 @@ function releverGeometrie() {
   };
   const nav = document.querySelector('.nav-basse');
   const barre = document.querySelector('.barre-action-fixe');
+  const boutonPlus = document.querySelector('.nav-basse [data-bouton-plus]');
   const blocFixe = [nav, barre].filter(Boolean);
   const dansLeBloc = (el) => blocFixe.some((b) => b === el || b.contains(el));
   const estFige = (el) => {
@@ -488,6 +508,7 @@ function releverGeometrie() {
     titre: titre ? titre.innerText.replace(/\s+/g, ' ').slice(0, 48) : null,
     nav: boite(nav),
     barre: boite(barre),
+    boutonPlus: boite(boutonPlus),
     navHautVisuel: hautVisuel,
     dernier: dernier,
     fondBarre: fond(barre),
@@ -496,6 +517,8 @@ function releverGeometrie() {
       nav: lireVar('--hauteur-nav'),
       barre: lireVar('--hauteur-barre-action'),
       bloc: lireVar('--hauteur-bloc-bas'),
+      debord: lireVar('--debord-nav'),
+      respiration: lireVar('--respiration-plus'),
       marge: lireVar('--marge-securite-bas'),
     },
     attributs: {
@@ -539,7 +562,10 @@ async function preuveDeMesure(nom) {
   await page.evaluer(`(() => {
     const style = document.createElement('style');
     style.id = 'essai-mesure';
-    style.textContent = '.nav-basse{padding-top:20px}';
+    // Le gonflage se fait par le BAS : le dégagement du bouton « + » (padding-top,
+    // calculé depuis une variable mesurée) reste intact, et la barre comme la
+    // réserve doivent suivre cette hauteur supplémentaire.
+    style.textContent = '.nav-basse{padding-bottom:calc(env(safe-area-inset-bottom) + 20px) !important}';
     document.head.appendChild(style);
   })()`);
   await pause(700);
@@ -618,7 +644,17 @@ async function allerFiche() {
     a.click();
     return a.getAttribute('href');
   })()`);
-  if (!lien) throw new Error('aucune fiche à ouvrir depuis le feed');
+  // Repli : sans API joignable, le fil n'affiche aucune fiche (l'application passe
+  // en mode démonstration) et l'écran ne serait jamais vérifié. Une fiche de
+  // démonstration existe alors (src/data/demoData.js) : l'écran à barre fixe SANS
+  // navigation — celui de la fiche partagée — reste donc couvert, API ou pas.
+  if (!lien) {
+    await page.charger('/etablissement/demo-chez-fatou', {
+      pret: "Boolean(document.querySelector('.barre-action-fixe'))",
+    });
+    await pause(700);
+    return '/etablissement/demo-chez-fatou';
+  }
   await attendreBarre('la fiche');
   await pause(700);
   return lien;
@@ -830,6 +866,39 @@ async function controler(nom, { avecBarre }) {
         ? `${intrus.length}/${r.points.length} points laissent voir la page (ex. ${intrus[0].element} à y=${intrus[0].y})`
         : `${r.points.length} points sondés, tous dans le bloc`
     );
+
+    // B7 — le bouton « + » surélevé de la navigation n'est PAS recouvert par la
+    // barre d'action (bug du 16/11 : il était tranché net à la hauteur de la barre,
+    // juste sous le bouton « Suivant » de l'inscription). La navigation reçoit un
+    // remplissage du haut égal au débord MESURÉ du bouton : sa boîte l'englobe et
+    // la barre se pose au-dessus de lui.
+    if (r.boutonPlus) {
+      const recouvert = arrondi(r.barre.bas - r.boutonPlus.haut);
+      const horsNav = arrondi(r.nav.haut - r.boutonPlus.haut);
+      const respiration = arrondi(r.boutonPlus.haut - r.barre.bas);
+      const respirationVoulue = enPx(r.variables.respiration);
+      verifier(
+        `${nom} · B7 le bouton « + » n'est plus recouvert par la barre d'action`,
+        recouvert <= 0.5,
+        `haut du « + » ${r.boutonPlus.haut} / bas de la barre ${r.barre.bas} → ${
+          recouvert > 0.5 ? `recouvert de ${recouvert}px` : 'aucun recouvrement'
+        }`
+      );
+      verifier(
+        `${nom} · B7b le « + » est contenu dans la navigation (dégagement mesuré)`,
+        horsNav <= 0.5,
+        `haut du « + » ${r.boutonPlus.haut} / haut de la nav ${r.nav.haut} → ${
+          horsNav > 0.5 ? `déborde de ${horsNav}px hors du bloc` : 'à l’intérieur'
+        } · --debord-nav ${r.variables.debord}`
+      );
+      verifier(
+        `${nom} · B7c la respiration « + » / barre est respectée`,
+        Number.isFinite(respirationVoulue) &&
+          respiration >= -0.5 &&
+          respiration <= respirationVoulue + TOLERANCE_RESPIRATION,
+        `écart ${respiration}px (voulu ${r.variables.respiration})`
+      );
+    }
   }
 
   // B3 — fonds opaques : rien du contenu ne transparaît dans le bloc.

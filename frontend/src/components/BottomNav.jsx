@@ -109,10 +109,13 @@ export default function BottomNav() {
             <Onglet key={onglet.to} {...onglet} />
           ))}
 
-          {/* Bouton central surélevé */}
+          {/* Bouton central surélevé. `data-bouton-plus` l'identifie pour la mesure
+              (hooks/useMesureBlocBas.js) : sa remontée au-dessus de la boîte de la
+              navigation est mesurée au pixel, jamais supposée. */}
           <button
             type="button"
             aria-label="Publier"
+            data-bouton-plus="oui"
             onClick={() => setFeuilleOuverte((v) => !v)}
             className="-mt-6 flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-primary text-white shadow-fab transition hover:bg-primary-dark active:scale-95"
           >

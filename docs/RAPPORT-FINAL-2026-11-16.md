@@ -107,12 +107,60 @@ liste, `h-20 w-20` pour le médaillon du gérant) : aucun décalage de mise en p
   `recouvrementBandeau()` (rectangles du bandeau vs boutons **et lignes de texte**) et
   `boutonsMasques(ignorer)` qui **ignore explicitement** les blocs fixes prévus
   (navigation, barre d’action) : leur géométrie est vérifiée à part par
-  `verifier:barres` (257 contrôles), et les exclure évite de déclarer « défaut » ce qui
+  `verifier:barres` (294 contrôles), et les exclure évite de déclarer « défaut » ce qui
   est le comportement normal d’une barre de navigation.
 - **États du bandeau** vérifiés en conditions réelles : affiché → fermé (compteur) →
   réaffiché par `?pwa=1`.
 
 Résultat : **18/18** (10 auparavant, dont 2 faux échecs).
+
+### B.5 — Barre « Retour / Suivant » et bouton « + » (`theme.css`, `useMesureBlocBas.js`, `BottomNav.jsx`)
+
+**Symptôme (16/11, inscription) :** sur l’étape « Photos », la barre d’action et la
+navigation du bas se chevauchaient : le bouton central surélevé « + » était **tranché
+net** à la hauteur de la barre, et le bouton « Suivant » semblait appuyé dessus
+(capture `captures-barres/apres-inscription-photos-telephone-standard.png` du lot
+précédent, avant correction).
+
+**Cause racine — mesurée, pas supposée :** la barre se pose sur le haut de la **boîte**
+de la navigation (`bottom: var(--hauteur-nav)`), mais le bouton « + » est remonté
+**au-dessus** de cette boîte (`-mt-6`) et flottait donc dans la bande de la barre, qui
+le recouvre (z-index 35 > 30). La géométrie du bloc était par ailleurs correcte
+(écart barre/nav 0 px, aucun interstice) : le défaut était **visuel**, pas un trou.
+
+**Correctif :** la navigation reçoit, **uniquement quand une barre d’action est
+présente** (`html[data-barre-action='oui']`), un `padding-top` égal au **débord mesuré**
+du bouton (`--debord-nav`, publié par `hooks/useMesureBlocBas.js`) plus une respiration
+de 8 px (`--respiration-plus`, valeur de design). Sa boîte englobe alors le bouton : la
+barre se pose **au-dessus de lui**, le « + » reste entier et rien n’est recouvert. Le
+remplissage ne déplace pas le contenu (la navigation est ancrée en bas : elle grandit
+vers le haut), donc les onglets et le « + » restent au pixel où ils étaient, et la bande
+créée est le **fond opaque de la navigation** — aucun interstice, aucun contenu visible
+(c’est le contrôle B2 du banc d’essai). Le débord est mesuré **depuis le haut du
+contenu** : mesuré depuis la boîte, le remplissage serait entré dans sa propre mesure et
+la barre aurait oscillé d’une image à l’autre.
+
+**Preuves (`npm run verifier:barres`, Chrome réel, 9 écrans × 3 conditions) :**
+
+| Mesure | Avant | Après |
+| --- | --- | --- |
+| Haut du « + » / bas de la barre | recouvert de 12 px | **9 px au-dessus** (aucun recouvrement) |
+| « + » dans la boîte de la navigation | non (débord de 12 px hors de la boîte) | **oui** (`--debord-nav` = 12 px mesuré) |
+| Navigation / barre / bloc / réserve | 91 / 77 / 168 / 184 px | 111 / 77 / 188 / 204 px |
+| Écart barre ↔ navigation (B1) | 0 px | **0 px** (toujours un seul bloc) |
+| Contenu visible dans la jointure (B2) | 0 point | **0 point** |
+
+Trois contrôles ajoutés au banc d’essai (B7, B7b, B7c) verrouillent ce cas : le « + »
+n’est jamais recouvert, il est bien contenu dans la navigation, et la respiration entre
+le bouton et la barre est respectée (tolérance de 3 px pour les arrondis au zoom 130 %).
+Le gonflage de navigation de B6 se fait désormais **par le bas** (le dégagement du haut
+est verrouillé), et l’écran « fiche établissement » a reçu un repli sur la fiche de
+démonstration : il reste vérifié même sans API joignable.
+
+**Résultat : 294/294 contrôles réussis.** Aucune autre page n’est concernée : la fiche
+établissement est en plein écran (**sans** navigation basse : barre 107 px, réserve
+123 px, `--debord-nav` = 0, règle inapplicable), et les pages sans barre d’action gardent
+le « + » qui dépasse du bloc, comme avant.
 
 ---
 
@@ -158,16 +206,19 @@ carte de résultat et bouton « Chercher une pharmacie » entièrement visibles)
  frontend/src/components/EmptyState.jsx                      |  dessins d’état vide
  frontend/src/components/AbonnementArtisan.jsx               |  dessin d’offre
  frontend/src/components/MenuPrincipal.jsx                   |  commentaire (bandeau)
+ frontend/src/components/BottomNav.jsx                       |  repère data-bouton-plus (mesure)
+ frontend/src/hooks/useMesureBlocBas.js                       |  --debord-nav : débord mesuré du « + »
  frontend/src/components/illustrations/tracesEsquisse.jsx    |  +13 dessins
  frontend/src/components/illustrations/dessinsContexte.js    |  (nouveau)
  frontend/src/data/demoData.js                               |  tags des fiches de démo
  frontend/src/hooks/useInstallation.js                       |  textes courts, commentaires
- frontend/src/styles/theme.css                               |  --reserve-banniere = 0
+ frontend/src/styles/theme.css                               |  --reserve-banniere = 0 ; dégagement du « + »
  frontend/src/pages/EstablishmentProfile.jsx                 |  secours photo + dessins
  frontend/src/pages/{Feed,Search,Jobs,JobBoard,Messages,Profile,
                      PharmaciesCliniques,RegisterEstablishment}.jsx | dessins
  frontend/scripts/verifier-dessins.mjs                       |  (nouveau) 73 contrôles
  frontend/scripts/verifier-parcours-nouveau.mjs              |  titre réel + recouvrement
+ frontend/scripts/verifier-barres-basses.mjs                 |  contrôles B7 + repli fiche démo
  frontend/package.json                                       |  script verifier:dessins
  docs/RAPPORT-AUDIT-2026-11-16.md                            |  audit du lot illustré
  docs/RAPPORT-FINAL-2026-11-16.md                            |  ce document
@@ -190,7 +241,7 @@ Total du lot : **30 fichiers, 1 829 insertions, 424 suppressions**.
 | `npm run verifier:phrase` | **14/14** |
 | `npm run verifier:pwa` | **conforme** (8 OK, SW `/sw.js`) |
 | `npm run verifier:permissions` | **69/69**, 0 échec |
-| `npm run verifier:barres` | **257/257** (bloc du bas posé, uni, opaque, mesuré) |
+| `npm run verifier:barres` | **294/294** (bloc du bas posé, uni, opaque, mesuré) |
 | `npm run verifier:demarrage:rapide` | **37/37**, 0 échec |
 | `node backend/scripts/verifier-securite.js` | **47/47** |
 | `npm run verifier:parcours` | **18/18**, 0 échec |
@@ -396,7 +447,7 @@ fin des pages légales devient nécessaire.
    « 0 (0 avis) ». Cosmétique, antérieur au lot.
 3. **Barre de navigation fixe** : elle peut passer devant un contenu en cours de
    défilement — comportement normal d’une barre fixe, dont la hauteur est **réservée**
-   en fin de document (257 contrôles `verifier:barres`). Le bandeau d’installation,
+   en fin de document (294 contrôles `verifier:barres`). Le bandeau d’installation,
    lui, ne recouvre plus rien (mesuré : 0 bouton, 0 texte).
 4. **Non testé** : Safari/iOS, lecteur d’écran (NVDA/TalkBack), charge (100 utilisateurs
    simultanés), et le paiement réel (passerelle non configurée — aucun paiement n’a été

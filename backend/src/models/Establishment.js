@@ -2,6 +2,8 @@
 // Champs attendus (voir cahier-des-charges §5) :
 //   nom, categorie, photoDevanture, photoVendeur, tags[], localisation {lat, lng},
 //   texteBoutonAction (ex: "Aller chez Chez Fatou"), telephone,
+//   horaires (texte libre, historique) + horairesStructures (grille 7 jours, 16/11)
+//   + fermetureTemporaire,
 //   noteMoyenne, avis[], compteurVisites, compteurUtilisateurs,
 //   createdAt, updatedAt
 //
@@ -157,6 +159,46 @@ const establishmentSchema = new mongoose.Schema(
 
     horaires: { type: String, trim: true, default: '' }, // texte libre : "Lun-Sam 7h-21h"
 
+    // ── HORAIRES STRUCTURÉS (16/11) ────────────────────────────────────────────
+    // Le texte libre ci-dessus est CONSERVÉ : les 6 700 fiches importées de la base
+    // publique n'ont que lui, et l'application doit continuer à l'afficher tel quel.
+    // On AJOUTE une grille de sept jours que seul un gérant renseigne (éditeur
+    // d'horaires de l'inscription), pour pouvoir répondre à « c'est ouvert, là ? ».
+    //
+    // `ouvert: false` = jour de fermeture (dimanche par défaut) ; `debut` et `fin`
+    // restent renseignés pour ne pas perdre la saisie si le gérant rouvre le jour.
+    // Une fermeture APRÈS MINUIT (20:00 → 02:00) est légale : c'est le calcul du
+    // badge (frontend/src/utils/statutHoraire.js) qui lit la plage à cheval.
+    //
+    // ORDRE D'AFFICHAGE = ordre des clés : lundi → dimanche.
+    horairesStructures: {
+      lundi: { ouvert: { type: Boolean, default: true }, debut: { type: String, default: '08:00' }, fin: { type: String, default: '18:00' } },
+      mardi: { ouvert: { type: Boolean, default: true }, debut: { type: String, default: '08:00' }, fin: { type: String, default: '18:00' } },
+      mercredi: { ouvert: { type: Boolean, default: true }, debut: { type: String, default: '08:00' }, fin: { type: String, default: '18:00' } },
+      jeudi: { ouvert: { type: Boolean, default: true }, debut: { type: String, default: '08:00' }, fin: { type: String, default: '18:00' } },
+      vendredi: { ouvert: { type: Boolean, default: true }, debut: { type: String, default: '08:00' }, fin: { type: String, default: '18:00' } },
+      samedi: { ouvert: { type: Boolean, default: true }, debut: { type: String, default: '08:00' }, fin: { type: String, default: '18:00' } },
+      dimanche: { ouvert: { type: Boolean, default: false }, debut: { type: String, default: '08:00' }, fin: { type: String, default: '18:00' } },
+    },
+
+    // DATE DE LA DERNIÈRE SAISIE RÉELLE des horaires structurés — et NON un champ
+    // décoratif. Mongoose applique les valeurs par défaut d'une grille à TOUT
+    // document hydraté depuis la base : sans ce témoin, les 6 700 fiches importées
+    // arriveraient avec « lundi-samedi 08:00-18:00 » alors que personne ne l'a
+    // jamais saisi, et l'application annoncerait « Ouvert jusqu'à 18:00 » sur des
+    // commerces dont les horaires sont inconnus. `toCardJSON` ne publie donc la
+    // grille que si ce témoin existe (voir plus bas).
+    horairesStructuresMisAJourLe: { type: Date, default: null },
+
+    // FERMETURE TEMPORAIRE (rupture de stock, décès, travaux, panne…) : elle PRIME
+    // sur la grille le temps qu'elle dure. Le gérant l'active/désactive depuis la
+    // fiche (PATCH /api/establishments/:id) ; le badge affiche alors la raison au
+    // lieu de « Ouvert ».
+    fermetureTemporaire: {
+      actif: { type: Boolean, default: false },
+      raison: { type: String, default: '' },
+    },
+
     noteMoyenne: { type: Number, default: 0, min: 0, max: 5, index: true },
     nombreAvis: { type: Number, default: 0, min: 0 },
     avis: [avisSchema],
@@ -293,6 +335,19 @@ establishmentSchema.methods.toCardJSON = function toCardJSON({ distanceKm, base 
     quartier: this.quartier,
     adresse: this.adresse,
     horaires: this.horaires,
+    // Horaires structurés : publiés SEULEMENT si un gérant les a réellement
+    // enregistrés (`horairesStructuresMisAJourLe`). Voir le commentaire du champ :
+    // Mongoose remplit la grille par défaut sur TOUTE fiche hydratée, donc publier
+    // `this.horairesStructures` sans ce garde-fou ferait dire à l'application
+    // « Ouvert jusqu'à 18:00 » sur les 6 700 fiches importées, dont les horaires
+    // sont inconnus. Une fiche non renseignée renvoie `null` → aucun badge.
+    horairesStructures: this.horairesStructuresMisAJourLe ? this.horairesStructures : null,
+    // Fermeture temporaire : toujours publiée sous sa forme complète (deux champs
+    // seulement), pour que l'application n'ait jamais à deviner un `undefined`.
+    fermetureTemporaire: {
+      actif: Boolean(this.fermetureTemporaire?.actif),
+      raison: this.fermetureTemporaire?.raison || '',
+    },
     telephone: this.telephone,
     whatsapp: this.whatsapp,
     texteBoutonAction: this.texteBoutonAction || `Aller chez ${this.nom}`,

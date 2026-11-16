@@ -2,6 +2,8 @@
 // GET    /api/establishments               -> liste + filtres (catégorie, proximité)
 // GET    /api/establishments/:id           -> détail complet
 // POST   /api/establishments               -> création (inscription, 2 photos + tags, voir modèle)
+// PATCH  /api/establishments/:id           -> modification par le gérant (dont les
+//                                             horaires structurés et la fermeture temporaire)
 // POST   /api/establishments/:id/visit     -> incrémente le compteur de VISITES
 // POST   /api/establishments/:id/action    -> incrémente le compteur d'UTILISATEURS
 //                                              (clic sur le bouton "Aller chez...")
@@ -77,6 +79,103 @@ function validerPhotos(photos) {
     if (!s || !/^https:\/\//i.test(s)) return { ok: false, error: 'Chaque photo doit être une URL https valide.' };
   }
   return { ok: true };
+}
+
+/**
+ * ── HORAIRES STRUCTURÉS (16/11) ──────────────────────────────────────────────
+ * Les sept jours, dans l'ordre d'affichage français (lundi → dimanche). Toute clé
+ * absente de cette liste est ignorée : un client ne peut pas inventer un huitième
+ * jour, ni écrire un champ arbitraire dans la fiche.
+ */
+const JOURS_HORAIRES = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
+
+/** Grille par défaut : lundi → samedi ouverts 08:00-18:00, dimanche fermé. */
+function grilleParDefaut() {
+  const grille = {};
+  for (const jour of JOURS_HORAIRES) {
+    grille[jour] = { ouvert: jour !== 'dimanche', debut: '08:00', fin: '18:00' };
+  }
+  return grille;
+}
+
+/**
+ * « 8:00 », « 08:00 » → « 08:00 » (24 h, deux chiffres). `null` si l'heure est
+ * illisible ou hors bornes (« 25:00 », « 08:75 »).
+ *
+ * On accepte la saisie sans zéro initial parce qu'un gérant tape « 8:00 » ; on
+ * refuse tout le reste plutôt que de stocker une chaîne que le badge ne saurait
+ * pas comparer.
+ */
+function heurePropre(valeur) {
+  const trouve = /^(\d{1,2}):(\d{2})$/.exec(String(valeur ?? '').trim());
+  if (!trouve) return null;
+  const heures = Number(trouve[1]);
+  const minutes = Number(trouve[2]);
+  if (heures > 23 || minutes > 59) return null;
+  return `${String(heures).padStart(2, '0')}:${trouve[2]}`;
+}
+
+/**
+ * Valide et COMPLÈTE une grille d'horaires reçue du client.
+ *
+ * Toujours sept jours en sortie : un jour absent de l'envoi reprend la valeur
+ * déjà en base (`base`) ou, à défaut, la valeur par défaut. C'est ce qui permet à
+ * un PATCH de ne toucher qu'un seul jour sans effacer les autres — et à un POST
+ * d'accepter une grille partielle sans casser l'affichage.
+ *
+ * @param {unknown} valeur  payload `horairesStructures`
+ * @param {object|null} base  grille actuelle du document (PATCH)
+ * @returns {{ ok: true, valeur: object } | { ok: false, error: string }}
+ */
+function horairesNormalises(valeur, base = null) {
+  if (valeur == null) return { ok: true, valeur: grilleParDefaut() };
+  if (typeof valeur !== 'object' || Array.isArray(valeur)) {
+    return { ok: false, error: 'horairesStructures doit être un objet de sept jours.' };
+  }
+
+  const defaut = grilleParDefaut();
+  const grille = {};
+  for (const jour of JOURS_HORAIRES) {
+    const recu = valeur[jour];
+    if (recu != null && (typeof recu !== 'object' || Array.isArray(recu))) {
+      return { ok: false, error: `Horaires de « ${jour} » : un objet { ouvert, debut, fin } est attendu.` };
+    }
+    const source = recu && typeof recu === 'object' ? { ...(base?.[jour] || {}), ...recu } : base?.[jour] || defaut[jour];
+
+    // `ouvert` doit être un vrai booléen JSON : `Boolean('false')` vaudrait true,
+    // on préfère ignorer une valeur d'un autre type que fermer un commerce à tort.
+    const ouvert = typeof source.ouvert === 'boolean' ? source.ouvert : defaut[jour].ouvert;
+    const debut = heurePropre(source.debut ?? defaut[jour].debut);
+    const fin = heurePropre(source.fin ?? defaut[jour].fin);
+    if (debut == null || fin == null) {
+      return { ok: false, error: `Horaires de « ${jour} » : l’heure doit être au format HH:MM (ex. 08:00).` };
+    }
+    grille[jour] = { ouvert, debut, fin };
+  }
+  return { ok: true, valeur: grille };
+}
+
+/**
+ * Fermeture temporaire (« Rupture de stock », panne, travaux…).
+ * `undefined` = champ non transmis (on ne touche à rien) ; `null` = remise à zéro.
+ *
+ * @param {unknown} valeur
+ * @returns {{ ok: true, valeur: { actif: boolean, raison: string } | null } | { ok: false, error: string }}
+ */
+function fermetureTemporaireNormalisee(valeur) {
+  if (valeur === undefined) return { ok: true, valeur: null };
+  if (valeur === null) return { ok: true, valeur: { actif: false, raison: '' } };
+  if (typeof valeur !== 'object' || Array.isArray(valeur)) {
+    return { ok: false, error: 'fermetureTemporaire doit être un objet { actif, raison }.' };
+  }
+  return {
+    ok: true,
+    valeur: {
+      actif: valeur.actif === true,
+      // 160 caractères : la raison s'affiche dans une pastille, jamais dans un pavé.
+      raison: String(valeur.raison ?? '').trim().slice(0, 160),
+    },
+  };
 }
 
 /**
@@ -553,6 +652,11 @@ router.post(
       telephone,
       whatsapp = '',
       horaires = '',
+      // Horaires structurés (16/11) : grille facultative. Une fiche peut encore se
+      // créer sans (compatibilité avec l'ancien formulaire), elle n'aura alors pas
+      // de badge « Ouvert / Fermé ».
+      horairesStructures = null,
+      fermetureTemporaire = undefined,
     } = req.body || {};
 
     if (!nom || !String(nom).trim()) throw new ApiError(400, 'Le nom de l’établissement est obligatoire.');
@@ -586,6 +690,19 @@ router.post(
     if (!telephone || String(telephone).trim().length < 8) {
       throw new ApiError(400, 'Numéro de téléphone / WhatsApp obligatoire pour être joignable.');
     }
+
+    // ── Horaires structurés (16/11) : on valide AVANT de créer la fiche, pour que
+    //    l'inscription ne s'arrête pas après les photos (tout est renvoyé en une
+    //    fois) et pour qu'aucune heure illisible n'entre en base.
+    //    `grilleFournie` distingue « le formulaire a envoyé ses horaires » de « le
+    //    champ n'a pas été transmis » (ancienne version de l'app) : dans le second
+    //    cas on n'écrit rien, donc la fiche reste sans badge plutôt que d'annoncer
+    //    des horaires 08:00-18:00 que personne n'a saisis.
+    const grilleFournie = horairesStructures != null;
+    const controleHoraires = horairesNormalises(horairesStructures);
+    if (!controleHoraires.ok) throw new ApiError(400, controleHoraires.error, { champHoraires: true });
+    const controleFermeture = fermetureTemporaireNormalisee(fermetureTemporaire);
+    if (!controleFermeture.ok) throw new ApiError(400, controleFermeture.error);
 
     // ── Bloc D : DOUBLON EXACT refusé. Un nom identique (normalisé) à moins de 50 m, c'est
     //    le même établissement : on oriente vers la reprise de la fiche existante plutôt
@@ -622,6 +739,14 @@ router.post(
       horaires,
       createdByUserId: req.user?._id,
     });
+
+    // Horaires : la grille et son témoin de saisie sont écrits ENSEMBLE (voir le
+    // commentaire du champ `horairesStructuresMisAJourLe` dans le modèle).
+    if (grilleFournie) {
+      doc.horairesStructures = controleHoraires.valeur;
+      doc.horairesStructuresMisAJourLe = new Date();
+    }
+    if (controleFermeture.valeur) doc.fermetureTemporaire = controleFermeture.valeur;
 
     await doc.save();
 
@@ -996,6 +1121,27 @@ router.patch(
     if (req.body?.texteBoutonAction !== undefined) {
       // Le libellé reste dynamique : par défaut « Aller chez {nom} » (§5)
       doc.texteBoutonAction = buildActionLabel(doc.nom, req.body.texteBoutonAction);
+    }
+
+    // ── Horaires structurés (16/11) ──────────────────────────────────────────
+    // `null` = le gérant efface la grille (retour à « horaires inconnus », donc plus
+    // de badge). Sinon on fusionne avec la grille en base : un PATCH qui ne parle
+    // que du dimanche ne doit pas remettre les six autres jours à 08:00-18:00.
+    if (req.body?.horairesStructures === null) {
+      doc.horairesStructures = null;
+      doc.horairesStructuresMisAJourLe = null;
+    } else if (req.body?.horairesStructures !== undefined) {
+      const controle = horairesNormalises(req.body.horairesStructures, doc.horairesStructures);
+      if (!controle.ok) throw new ApiError(400, controle.error, { champHoraires: true });
+      doc.horairesStructures = controle.valeur;
+      doc.horairesStructuresMisAJourLe = new Date();
+    }
+
+    // Fermeture temporaire : elle prime sur la grille le temps qu'elle dure.
+    if (req.body?.fermetureTemporaire !== undefined) {
+      const controle = fermetureTemporaireNormalisee(req.body.fermetureTemporaire);
+      if (!controle.ok) throw new ApiError(400, controle.error);
+      if (controle.valeur) doc.fermetureTemporaire = controle.valeur;
     }
 
     await doc.save();

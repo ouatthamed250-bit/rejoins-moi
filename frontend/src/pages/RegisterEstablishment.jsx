@@ -9,8 +9,9 @@
 //          Étape 2 : catégorie + tags produits/services façon TikTok
 //                    - bulles cliquables, sélection multiple, MINIMUM 3 tags (§5)
 //                    - la liste s'adapte à la catégorie (TAGS_PAR_CATEGORIE)
-//          Étape 3 : nom, description, localisation (géoloc ou saisie), texte du
-//                    bouton d'action personnalisé, téléphone/WhatsApp
+//          Étape 3 : nom, description, localisation (géoloc ou saisie), horaires
+//                    (grille sept jours, 16/11), texte du bouton d'action
+//                    personnalisé, téléphone/WhatsApp
 //     • NON  → profil simple (chercheur d'emploi / employeur) : une seule étape,
 //              sans jamais montrer les photos d'établissement. C'est le compte
 //              unifié du §10 : les capacités (chercheTravail / estArtisan) sont
@@ -39,11 +40,13 @@ import { useNavigate } from 'react-router-dom';
 
 import PhotoUploadField from '../components/PhotoUploadField.jsx';
 import GaleriePhotos from '../components/GaleriePhotos.jsx';
+import EditeurHoraires from '../components/EditeurHoraires.jsx';
 import InfoBanner from '../components/InfoBanner.jsx';
 import BarreActionFixe from '../components/BarreActionFixe.jsx';
 import { Icon } from '../components/Icons.jsx';
 import TagBadge from '../components/TagBadge.jsx';
 import { api } from '../utils/api/client.js';
+import { horairesParDefaut, resumerHoraires } from '../utils/statutHoraire.js';
 import { CATEGORIES, METIERS, TAGS_PAR_CATEGORIE } from '../data/demoData.js';
 import { useAuth } from '../hooks/useAuth.js';
 import { useGeolocation } from '../hooks/useGeolocation.js';
@@ -110,7 +113,12 @@ export default function RegisterEstablishment() {
   const [reclamationInfo, setReclamationInfo] = useState('');
   const [telephone, setTelephone] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
-  const [horaires, setHoraires] = useState('');
+  // Horaires (16/11) : la grille de sept jours est la source de vérité de la
+  // saisie. Le champ texte historique `horaires` est DÉRIVÉ d'elle : il reste ce
+  // qu'affichent la fiche, l'annuaire et les 6 700 fiches importées, donc on
+  // continue de l'envoyer — mais plus personne ne le tape à la main.
+  const [horairesStructures, setHorairesStructures] = useState(() => horairesParDefaut());
+  const horaires = useMemo(() => resumerHoraires(horairesStructures), [horairesStructures]);
   const [texteBoutonAction, setTexteBoutonAction] = useState('');
   // ── Parcours « Non » : profil simple, jamais de photo d'établissement ──
   const [roleSimple, setRoleSimple] = useState('chercheur');
@@ -351,7 +359,10 @@ export default function RegisterEstablishment() {
         commune,
         telephone: telephone.trim() || whatsapp.trim(),
         whatsapp: whatsapp.trim() || telephone.trim(),
+        // Les deux ensemble : la grille pour le badge « Ouvert / Fermé », le texte
+        // pour l'affichage historique (et pour les fiches qui n'ont que lui).
         horaires,
+        horairesStructures,
         texteBoutonAction: texteBoutonAction.trim() || `Aller chez ${nom.trim()}`,
       });
       const id = reponse?.etablissement?.id;
@@ -581,15 +592,11 @@ export default function RegisterEstablishment() {
         </label>
       </div>
 
-      <label className="block">
-        <span className="mb-1 block text-sm font-bold text-ink">Horaires</span>
-        <input
-          value={horaires}
-          onChange={(e) => setHoraires(e.target.value)}
-          placeholder="Ex. Lun - Sam 7h - 21h"
-          className="w-full rounded-md border border-line px-3 py-3 text-sm outline-none focus:border-primary"
-        />
-      </label>
+      {/* Éditeur d'horaires (16/11) : sept jours, bascule Ouvert / Fermé, deux
+          heures par jour ouvert. Le texte « Lun - Sam … » n'est plus saisi : il est
+          déduit de cette grille (voir `horaires` plus haut) et reste ce qu'affiche
+          la fiche. */}
+      <EditeurHoraires valeur={horairesStructures} onChange={setHorairesStructures} />
 
       <label className="block">
         <span className="mb-1 block text-sm font-bold text-ink">Texte du bouton d’action</span>

@@ -1,10 +1,11 @@
 // EstablishmentProfile.jsx — Fiche profil complet (voir maquette "3. Fiche profil complet")
 //
 // Contenu : grande photo de devanture, médaillon de la photo du vendeur/gérant,
-// nom, badge « Vérifié », étoiles + nombre d'avis, catégorie, localisation +
-// distance, pastilles produits/services, DEUX compteurs séparés (visites œil /
-// utilisateurs personnes, §3), horaires, contact direct, avis clients et gros
-// bouton d'action dynamique « Aller chez <nom> » en bas (§5).
+// nom, pastille « Ouvert / Fermé » calculée en direct (16/11), badge « Vérifié »,
+// étoiles + nombre d'avis, catégorie, localisation + distance, pastilles
+// produits/services, DEUX compteurs séparés (visites œil / utilisateurs personnes,
+// §3), horaires, contact direct, avis clients et gros bouton d'action dynamique
+// « Aller chez <nom> » en bas (§5).
 //
 // Décisions :
 //  - La fiche est en PLEIN ÉCRAN (voir App.jsx) : elle porte donc son propre
@@ -34,6 +35,7 @@ import { api } from '../utils/api/client.js';
 import { distanceDepuis, formatDistanceKm, urlItineraire } from '../utils/distance.js';
 import { formatDateRelative, formatNote, formatTelephone, initiales } from '../utils/format.js';
 import { partagerWhatsApp, textePartageFiche, urlPartageFiche } from '../utils/partage.js';
+import { estOuvertMaintenant } from '../utils/statutHoraire.js';
 import { AVIS_DEMO, ETABLISSEMENTS_DEMO, PROFIL_DEMO } from '../data/demoData.js';
 import { useGeolocation } from '../hooks/useGeolocation.js';
 import { useAuth } from '../hooks/useAuth.js';
@@ -109,6 +111,27 @@ export default function EstablishmentProfile() {
   useEffect(() => {
     setVendeurCassee(false);
   }, [urlVendeur]);
+
+  // ── Pastille « Ouvert / Fermé » (16/11) ──
+  // Le statut est recalculé à l'instant présent, sans requête : `maintenant` change
+  // toutes les 30 s et au retour sur l'onglet (le téléphone a pu dormir une heure,
+  // un `setInterval` seul ne se réveille pas toujours). Le calcul lui-même est dans
+  // utils/statutHoraire.js — il gère la fermeture après minuit et la fermeture
+  // temporaire, et renvoie `connu: false` quand la fiche n'a pas de grille.
+  const [maintenant, setMaintenant] = useState(() => new Date());
+  useEffect(() => {
+    const battement = setInterval(() => setMaintenant(new Date()), 30000);
+    const auReveil = () => setMaintenant(new Date());
+    document.addEventListener('visibilitychange', auReveil);
+    return () => {
+      clearInterval(battement);
+      document.removeEventListener('visibilitychange', auReveil);
+    };
+  }, []);
+  const statutHoraire = useMemo(
+    () => estOuvertMaintenant(etablissement, maintenant),
+    [etablissement, maintenant]
+  );
 
   // Garde-fou : on ne compte qu'UNE visite par fiche et par montage (§3).
   const visiteFaite = useRef(null);
@@ -536,7 +559,27 @@ export default function EstablishmentProfile() {
           </div>
         </div>
 
-        <h1 className="mt-2 text-2xl font-bold leading-tight text-ink">{etablissement.nom}</h1>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <h1 className="text-2xl font-bold leading-tight text-ink">{etablissement.nom}</h1>
+          {/* Pastille Ouvert / Fermé, calculée à l'instant présent (16/11).
+              `connu: false` = la fiche n'a aucune grille d'horaires (les 6 700 fiches
+              importées, ou une fiche créée avant cette version) : on n'affiche RIEN
+              plutôt que d'annoncer « Fermé » sur un commerce dont on ne sait rien.
+              Le vert est ici une COULEUR DE STATUT (ouvert), pas la palette de la
+              section « Pharmacies & Cliniques » du §6. */}
+          {statutHoraire.connu && (
+            <span
+              className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                statutHoraire.ouvert
+                  ? 'bg-health-light text-health-dark'
+                  : 'bg-danger/10 text-danger'
+              }`}
+            >
+              <span aria-hidden="true">{statutHoraire.ouvert ? '🟢' : '🔴'}</span>
+              {statutHoraire.texte}
+            </span>
+          )}
+        </div>
 
         <div className="mt-1">
           {estSante ? (

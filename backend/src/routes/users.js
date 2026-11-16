@@ -259,7 +259,7 @@ router.get(
     const { q, metier, limit = 40 } = req.query;
     const coords = parseCoords(req.query);
 
-    const filtre = { estArtisan: true };
+    const filtre = { estArtisan: true, test: { $ne: true } };
     if (metier && metier !== 'tous') filtre.metier = new RegExp(`^${escapeRegex(String(metier))}$`, 'i');
     if (q) {
       const rx = new RegExp(escapeRegex(String(q).trim()), 'i');

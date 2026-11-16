@@ -4,8 +4,9 @@
 //   node scripts/marquer-tests.js              -> mode DRY-RUN (affiche uniquement)
 //   node scripts/marquer-tests.js --apply      -> marque réellement test: true
 //
-// Seuls les éléments DEJA identifiés dans auditer-tests.js sont concernés :
-//   - 8 comptes (User) :
+// Seuls les éléments DEJA identifiés dans auditer-tests.js (lot 1) et
+// auditer-tests-2.js (lot 2) sont concernés : 14 comptes (User) + 2 fiches.
+//   - 8 comptes du lot 1 :
 //       6abecc5ff046f29f037e87d2
 //       6abecc6af046f29f037e87e4
 //       6abee5fccd81c2d898ef30ff
@@ -14,8 +15,16 @@
 //       6abee63603ff0334157141cd
 //       6abeed5ca9261ac1101cdb56
 //       6abeed5fa9261ac1101cdb59
-//   - 1 fiche (Establishment) :
+//   - 6 comptes du lot 2 :
+//       6afb3d9a8e1dc35bc3e805d8
+//       6afb3db49b4470861bc9a227
+//       6afb3dda72cefa461e6afa81
+//       6afb3df5d23bfb4d546f12d1
+//       6afb3f31f40bc442965fe927
+//       6afb3f36f40bc442965fe938
+//   - 2 fiches (Establishment) :
 //       6abecc6af046f29f037e87e6
+//       6afb3f36f40bc442965fe93a
 //
 // Aucun critère automatique : on ne marque que les IDs explicitement listés
 // ci-dessous. Si un ID n'existe pas en base, le script s'arrête avec une erreur.
@@ -31,7 +40,7 @@ if (!APPLY && process.argv.includes('--apply')) {
   // Désactivé volontairement : on exécute toujours --dry-run par défaut.
 }
 
-// ── IDs FACTUELS (extraits de auditer-tests.js) ──
+// ── IDs FACTUELS (extraits de auditer-tests.js + auditer-tests-2.js) ──
 
 const USER_IDS = [
   '6abecc5ff046f29f037e87d2', // TestCompteur1
@@ -42,12 +51,21 @@ const USER_IDS = [
   '6abee63603ff0334157141cd', // ZOGBO Vérification
   '6abeed5ca9261ac1101cdb56', // Suivi Admin076
   '6abeed5fa9261ac1101cdb59', // Suivi Admin286
+  // ── Lot 2 (audit complémentaire du 16/11, liste validée) ──
+  '6afb3d9a8e1dc35bc3e805d8', // ZOGBO Vérification
+  '6afb3db49b4470861bc9a227', // ZOGBO Vérification
+  '6afb3dda72cefa461e6afa81', // ZOGBO Vérification
+  '6afb3df5d23bfb4d546f12d1', // ZOGBO Vérification
+  '6afb3f31f40bc442965fe927', // TestCompteur1
+  '6afb3f36f40bc442965fe938', // TestCompteur2
 ];
 
 const ESTABLISHMENT_IDS = [
   '6abecc6af046f29f037e87e6', // "ZZ-TEST-COMPTEURS-1790889066557" (fiche non importée)
+  '6afb3f36f40bc442965fe93a', // "ZZ-TEST-COMPTEURS-1794850614357" (lot 2)
   // NOTE : 6ac8aceb7b978da051e9e069 ("Hhhh") est EXPLCITEMENT exclu : on ne le
   // touche pas pour l'instant (voir demande de l'utilisateur).
+  // NOTE : 6abcdc9ad7bc403c51f6daf2 ("Sahore zogbo") est EXCLU : vrai utilisateur.
 ];
 
 // ── Helpers ──

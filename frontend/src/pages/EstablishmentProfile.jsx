@@ -25,6 +25,7 @@ import BarreActionFixe from '../components/BarreActionFixe.jsx';
 import InfoBanner from '../components/InfoBanner.jsx';
 import PhotoSecours from '../components/PhotoSecours.jsx';
 import PhotoUploadField from '../components/PhotoUploadField.jsx';
+import GaleriePhotos from '../components/GaleriePhotos.jsx';
 import StarRating from '../components/StarRating.jsx';
 import TagBadge from '../components/TagBadge.jsx';
 import { CompteursSepares } from '../components/EstablishmentCard.jsx';
@@ -76,6 +77,18 @@ export default function EstablishmentProfile() {
   const [enregistrementPhotos, setEnregistrementPhotos] = useState(false);
   const [erreurPhotos, setErreurPhotos] = useState('');
 
+  // ── Galerie multi-photos (ajout du 16/11) ──
+  // Huit photos maximum, EN PLUS de la devanture et du vendeur. Les images sont
+  // hébergées chez Cloudinary : la fiche ne transporte que des URL.
+  // `galerieEdition` est le brouillon du panneau « Modifier la galerie » : on ne
+  // modifie la fiche qu'à l'enregistrement (un ajout annulé ne laisse rien).
+  const [editionGalerie, setEditionGalerie] = useState(false);
+  const [galerieEdition, setGalerieEdition] = useState([]);
+  const [enregistrementGalerie, setEnregistrementGalerie] = useState(false);
+  const [erreurGalerie, setErreurGalerie] = useState('');
+  // Photo affichée en plein écran (index dans `photosGalerie`, null = fermé).
+  const [photoOuverte, setPhotoOuverte] = useState(null);
+
   // ── État de secours des PHOTOS (correctif du 16/11) ──
   // Une URL de photo morte (fichier effacé, ancien hébergement) affichait un cadre
   // vide ou l'icône « image brisée » du navigateur, alors que la fiche sait très
@@ -87,6 +100,9 @@ export default function EstablishmentProfile() {
   const urlDevanture =
     etablissement?.photoDevantureUrl || etablissement?.photoDevanture || '';
   const urlVendeur = etablissement?.photoVendeurUrl || etablissement?.photoVendeur || '';
+  // Galerie : URL https Cloudinary, dans l'ordre d'ajout choisi par le gérant.
+  // Une fiche ancienne (ou de démonstration) n'a pas ce champ : tableau vide.
+  const photosGalerie = Array.isArray(etablissement?.photos) ? etablissement.photos : [];
   useEffect(() => {
     setDevantureCassee(false);
   }, [urlDevanture]);
@@ -286,6 +302,41 @@ export default function EstablishmentProfile() {
     }
   }
 
+  /** Ouvre le panneau « Modifier la galerie », pré-rempli avec la galerie actuelle. */
+  function ouvrirEditionGalerie() {
+    setGalerieEdition(photosGalerie);
+    setErreurGalerie('');
+    setEditionGalerie(true);
+  }
+
+  /**
+   * Enregistre la galerie (gérant propriétaire uniquement).
+   *
+   * On envoie le TABLEAU COMPLET : c'est ce qui permet la suppression et le
+   * réordonnancement (le serveur remplace `doc.photos`). Les photos déjà en ligne
+   * gardent leur URL Cloudinary — rien n'est re-téléversé.
+   */
+  async function enregistrerGalerie(evt) {
+    evt.preventDefault();
+    if (!etablissement || !estProprietaire) return;
+    setErreurGalerie('');
+    setEnregistrementGalerie(true);
+    try {
+      const reponse = await api.patch(`/establishments/${etablissement.id}`, { photos: galerieEdition });
+      if (reponse?.etablissement) {
+        setEtablissement((prec) => ({ ...(prec || {}), ...reponse.etablissement }));
+      } else {
+        setEtablissement((prec) => (prec ? { ...prec, photos: galerieEdition } : prec));
+      }
+      setEditionGalerie(false);
+      setMessage('Galerie mise à jour.');
+    } catch (err) {
+      setErreurGalerie(err?.message || 'Enregistrement impossible pour le moment.');
+    } finally {
+      setEnregistrementGalerie(false);
+    }
+  }
+
   /** Publication d'un avis noté (§5). La note est obligatoire. */
   async function publierAvis(evt) {
     evt.preventDefault();
@@ -466,6 +517,16 @@ export default function EstablishmentProfile() {
                 Modifier les photos
               </button>
             )}
+            {estProprietaire && (
+              <button
+                type="button"
+                className="flex items-center gap-1 rounded-full border border-line bg-white px-2.5 py-1 text-[10px] font-bold text-primary shadow-card"
+                onClick={ouvrirEditionGalerie}
+              >
+                <Icon name="image" size={12} />
+                Modifier la galerie
+              </button>
+            )}
             {etablissement.verifie && (
               <span className="flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[10px] font-bold text-white">
                 <Icon name="verified" size={12} />
@@ -539,6 +600,56 @@ export default function EstablishmentProfile() {
 
         {etablissement.description && (
           <p className="mt-3 text-sm leading-snug text-ink">{etablissement.description}</p>
+        )}
+
+        {/* ── Galerie multi-photos (16/11) ────────────────────────────────────
+            Grille de 2 colonnes, cases carrées : lisible d'un coup d'œil sur un
+            téléphone, dans l'ORDRE D'AJOUT décidé par le gérant. Un toucher ouvre
+            la photo en plein écran (sur un terrain, on montre l'écran au client). */}
+        {photosGalerie.length > 0 && (
+          <section className="mt-4">
+            <div className="mb-2 flex items-baseline justify-between gap-2">
+              <h2 className="text-sm font-bold text-ink">En images</h2>
+              <span className="text-[11px] font-semibold text-ink-muted">
+                {photosGalerie.length} photo{photosGalerie.length > 1 ? 's' : ''}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {photosGalerie.map((src, index) => (
+                <button
+                  key={`${src}-${index}`}
+                  type="button"
+                  className="relative aspect-square overflow-hidden rounded-md border border-line bg-soft"
+                  aria-label={`Agrandir la photo ${index + 1} de ${etablissement.nom}`}
+                  onClick={() => setPhotoOuverte(index)}
+                >
+                  <img
+                    src={src}
+                    alt={`Photo ${index + 1} de ${etablissement.nom}`}
+                    loading="lazy"
+                    className="h-full w-full object-cover"
+                  />
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Gérant sans aucune photo de galerie : une invitation visible plutôt
+            qu'une section vide (c'est là qu'il découvre la fonction). */}
+        {estProprietaire && photosGalerie.length === 0 && (
+          <section className="mt-4">
+            <button
+              type="button"
+              className="flex w-full flex-col items-center gap-1 rounded-md border-2 border-dashed border-line px-3 py-4 text-center text-ink-muted"
+              onClick={ouvrirEditionGalerie}
+            >
+              <Icon name="image" size={26} className="text-primary" />
+              <span className="text-xs">
+                Ajoutez jusqu’à 8 photos : produits, intérieur, atelier…
+              </span>
+            </button>
+          </section>
         )}
 
         {/* ── Pastilles produits/services (§5) : cliquer relance une recherche ── */}
@@ -764,6 +875,126 @@ export default function EstablishmentProfile() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* ── Panneau « Modifier la galerie » (gérant uniquement) ────────────────
+          Même feuille du bas que l'édition des deux photos. Les nouveaux envois
+          partent directement chez Cloudinary ; « Enregistrer » envoie le tableau
+          complet, ce qui applique aussi les suppressions. */}
+      {editionGalerie && estProprietaire && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 p-3"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Modifier la galerie de la fiche"
+          onClick={() => {
+            if (!enregistrementGalerie) setEditionGalerie(false);
+          }}
+        >
+          <form
+            onSubmit={enregistrerGalerie}
+            className="carte max-h-[90vh] w-full max-w-[480px] overflow-y-auto p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-sm font-bold text-ink">Galerie de la fiche</p>
+              <button
+                type="button"
+                className="text-xs font-semibold text-ink-muted underline"
+                disabled={enregistrementGalerie}
+                onClick={() => setEditionGalerie(false)}
+              >
+                Fermer
+              </button>
+            </div>
+            <p className="mb-3 text-[11px] leading-snug text-ink-muted">
+              8 photos maximum, en plus de la devanture et du vendeur. Elles s’affichent dans l’ordre où vous les
+              ajoutez ; la croix supprime une photo.
+            </p>
+
+            <GaleriePhotos
+              photos={galerieEdition}
+              onChange={setGalerieEdition}
+              max={8}
+              desactive={enregistrementGalerie}
+            />
+
+            {erreurGalerie && <p className="mt-2 text-xs font-semibold text-danger">{erreurGalerie}</p>}
+
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                className="btn-ghost flex-1"
+                disabled={enregistrementGalerie}
+                onClick={() => setEditionGalerie(false)}
+              >
+                Annuler
+              </button>
+              <button type="submit" className="bouton-principal flex-[2]" disabled={enregistrementGalerie}>
+                {enregistrementGalerie ? 'Enregistrement…' : 'Enregistrer'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* ── Photo en plein écran (lecture seule) ───────────────────────────────
+          Sur le terrain, on montre l'écran au client : la photo occupe tout, et
+          les flèches font défiler la galerie sans fermer. */}
+      {photoOuverte != null && photosGalerie[photoOuverte] && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col bg-black/90 p-3"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Photo en plein écran"
+          onClick={() => setPhotoOuverte(null)}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-white">
+              {photoOuverte + 1} / {photosGalerie.length}
+            </span>
+            <button
+              type="button"
+              aria-label="Fermer la photo"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-white"
+              onClick={(e) => {
+                e.stopPropagation();
+                setPhotoOuverte(null);
+              }}
+            >
+              <Icon name="close" size={18} />
+            </button>
+          </div>
+
+          <div className="flex flex-1 items-center justify-center py-2" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={photosGalerie[photoOuverte]}
+              alt={`Photo ${photoOuverte + 1} de ${etablissement?.nom || 'l’établissement'}`}
+              className="max-h-full max-w-full rounded-md object-contain"
+            />
+          </div>
+
+          <div className="flex items-center justify-between" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              aria-label="Photo précédente"
+              disabled={photoOuverte === 0}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white disabled:opacity-30"
+              onClick={() => setPhotoOuverte((i) => Math.max(0, Number(i) - 1))}
+            >
+              <Icon name="chevronLeft" size={20} />
+            </button>
+            <button
+              type="button"
+              aria-label="Photo suivante"
+              disabled={photoOuverte >= photosGalerie.length - 1}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white disabled:opacity-30"
+              onClick={() => setPhotoOuverte((i) => Math.min(photosGalerie.length - 1, Number(i) + 1))}
+            >
+              <Icon name="chevronRight" size={20} />
+            </button>
+          </div>
         </div>
       )}
     </div>

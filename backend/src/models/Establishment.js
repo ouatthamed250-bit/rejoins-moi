@@ -63,6 +63,24 @@ const establishmentSchema = new mongoose.Schema(
     photoDevanture: { type: String, trim: true, default: '' },
     photoVendeur: { type: String, trim: true, default: '' },
 
+    // Galerie multi-photos (ajout du 16/11) : HUIT photos maximum, EN PLUS de la
+    // devanture et du vendeur/gérant ci-dessus. Ce sont des URL https hébergées
+    // chez Cloudinary (`rejoinsmoi/photos`) : le serveur ne stocke jamais l'image,
+    // donc la fiche reste légère même avec 8 photos.
+    //
+    // L'ORDRE DU TABLEAU EST L'ORDRE D'AFFICHAGE (on ajoute à la fin, on ne trie
+    // jamais). La règle des 8 est tenue ici ET dans les routes POST/PATCH
+    // (validerPhotos) : le modèle refuse un tableau trop long même si un appel
+    // interne contournait la validation HTTP.
+    photos: {
+      type: [String],
+      default: [],
+      validate: {
+        validator: (v) => Array.isArray(v) && v.length <= 8,
+        message: 'Maximum 8 photos par établissement.',
+      },
+    },
+
     // CE QUE L'ON TESTE EN AMBIENTE D'ÉVALUATION (bloc d'audit préventif).
     // Un compte ou une fiche marquée `test: true` est automatiquement exclue
     // des réponses aux requêtes publiques (routes GET des routes ci-dessous) :
@@ -265,6 +283,9 @@ establishmentSchema.methods.toCardJSON = function toCardJSON({ distanceKm, base 
     photoVendeur: vendeur.valeur,
     photoDevantureUrl: devanture.url,
     photoVendeurUrl: vendeur.url,
+    // Galerie : uniquement des URL https Cloudinary (jamais de base64), dans
+    // l'ordre d'ajout choisi par le gérant.
+    photos: this.photos || [],
 
     tags: this.tags || [],
     localisation: this.localisation,

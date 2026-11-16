@@ -38,6 +38,7 @@ import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import PhotoUploadField from '../components/PhotoUploadField.jsx';
+import GaleriePhotos from '../components/GaleriePhotos.jsx';
 import InfoBanner from '../components/InfoBanner.jsx';
 import BarreActionFixe from '../components/BarreActionFixe.jsx';
 import { Icon } from '../components/Icons.jsx';
@@ -89,6 +90,9 @@ export default function RegisterEstablishment() {
   const [etape, setEtape] = useState(0);
   const [photoDevanture, setPhotoDevanture] = useState('');
   const [photoVendeur, setPhotoVendeur] = useState('');
+  // Galerie multi-photos (16/11) : URL https Cloudinary, 8 maximum, dans l'ordre
+  // d'ajout. Vide au départ : la galerie reste facultative.
+  const [photos, setPhotos] = useState([]);
   const [nom, setNom] = useState('');
   const [categorie, setCategorie] = useState('alimentation');
   const [tags, setTags] = useState([]);
@@ -339,6 +343,8 @@ export default function RegisterEstablishment() {
         description: description.trim(),
         photoDevanture,
         photoVendeur,
+        // Galerie : URL https Cloudinary déjà téléversées depuis le téléphone.
+        photos,
         tags,
         localisation: coords,
         quartier,
@@ -386,6 +392,18 @@ export default function RegisterEstablishment() {
         libellePlusTard="Ajouter plus tard"
         erreur={photoDevanture && photoVendeur && photoDevanture === photoVendeur ? 'Les deux photos doivent être différentes.' : ''}
       />
+
+      {/* Galerie multi-photos (16/11) : EN PLUS de la devanture et du vendeur.
+          Les photos partent directement chez Cloudinary ; la fiche ne garde que
+          les URL. L'ordre d'ajout est l'ordre d'affichage, 8 maximum. */}
+      <div className="rounded-md border border-line p-3">
+        <p className="text-sm font-bold text-ink">Photos de l’intérieur &amp; des produits (facultatif)</p>
+        <p className="mb-2 text-[11px] leading-snug text-ink-muted">
+          Jusqu’à 8 photos : la vitrine vue de près, les produits, l’atelier… Elles s’affichent dans l’ordre où
+          vous les ajoutez et peuvent être retirées à tout moment depuis votre fiche.
+        </p>
+        <GaleriePhotos photos={photos} onChange={setPhotos} max={8} />
+      </div>
     </div>
   );
 

@@ -56,6 +56,30 @@ function cleIncrement(req) {
 }
 
 /**
+ * Contrôle de la GALERIE multi-photos (champ `photos`, ajout du 16/11).
+ *
+ * Les images sont hébergées chez Cloudinary et envoyées par l'application : le
+ * serveur ne reçoit donc que des URL. On refuse tout ce qui n'est pas une URL
+ * https absolue — en particulier les data-URI base64, qu'on ne veut plus voir
+ * grossir la base ni les réponses de liste — et plus de 8 photos.
+ *
+ * L'ordre du tableau n'est jamais modifié ici : c'est l'ordre d'affichage choisi
+ * par le gérant.
+ *
+ * @param {unknown} photos
+ * @returns {{ ok: true } | { ok: false, error: string }}
+ */
+function validerPhotos(photos) {
+  if (!Array.isArray(photos)) return { ok: false, error: 'photos doit être un tableau.' };
+  if (photos.length > 8) return { ok: false, error: 'Maximum 8 photos.' };
+  for (const p of photos) {
+    const s = String(p || '').trim();
+    if (!s || !/^https:\/\//i.test(s)) return { ok: false, error: 'Chaque photo doit être une URL https valide.' };
+  }
+  return { ok: true };
+}
+
+/**
  * Fiches situées dans `rayonMetres` d'un point, dont le NOM est proche (bloc D).
  *
  * Le travail géographique est fait par l'index 2dsphere (`$geoNear`) : on ne compare des
@@ -519,6 +543,7 @@ router.post(
       description = '',
       photoDevanture,
       photoVendeur,
+      photos = [],
       tags,
       localisation,
       commune = '',
@@ -534,8 +559,16 @@ router.post(
 
     // ── §5 assoupli (30/09) : photos recommandées, jamais bloquantes. On refuse
     //    seulement une image invalide ou deux photos identiques. ──
-    const photos = validateEstablishmentPhotos(photoDevanture, photoVendeur);
-    if (!photos.ok) throw new ApiError(400, photos.error, { champPhotos: true });
+    const controlePhotos = validateEstablishmentPhotos(photoDevanture, photoVendeur);
+    if (!controlePhotos.ok) throw new ApiError(400, controlePhotos.error, { champPhotos: true });
+
+    // ── Galerie multi-photos (16/11) : 8 URL https maximum, ordre conservé.
+    //    `photos` est ici la galerie, d'où le nom `controlePhotos` ci-dessus.
+    const controleGalerie = validerPhotos(photos);
+    if (!controleGalerie.ok) {
+      throw new ApiError(400, controleGalerie.error, { champPhotos: true });
+    }
+    const galerie = photos.map((p) => String(p).trim());
 
     // ── §5 : tags en bulles cliquables, minimum 3 ──
     const tagsPropres = sanitizeTags(tags);
@@ -575,6 +608,8 @@ router.post(
       // espace qui ferait croire à une photo fournie.
       photoDevanture: String(photoDevanture || '').trim(),
       photoVendeur: String(photoVendeur || '').trim(),
+      // Galerie : URL https Cloudinary, dans l'ordre choisi par le gérant.
+      photos: galerie,
       tags: tagsPropres,
       localisation: { lat, lng },
       commune,
@@ -938,6 +973,15 @@ router.patch(
       if (!controle.ok) throw new ApiError(400, controle.error);
       doc.photoDevanture = String(nouvelleDevanture || '').trim();
       doc.photoVendeur = String(nouveauVendeur || '').trim();
+    }
+    // Galerie multi-photos (16/11) : ajout, retrait et réordonnancement par le
+    // propriétaire. Le tableau envoyé REMPLACE l'ancien — c'est ce qui permet la
+    // suppression et le réordonnancement depuis l'application. `undefined` = on
+    // ne touche pas à la galerie (PATCH des autres champs).
+    if (req.body?.photos !== undefined) {
+      const controle = validerPhotos(req.body.photos);
+      if (!controle.ok) throw new ApiError(400, controle.error);
+      doc.photos = req.body.photos.map((p) => String(p).trim());
     }
     if (req.body?.tags !== undefined) {
       const tags = sanitizeTags(req.body.tags);

@@ -117,9 +117,11 @@
   --shadow-button-active: 0 4px 10px rgba(255, 122, 24, 0.16);
 
   /* Espace réservé sous le contenu pour les éléments FIXES du bas d'écran.
-     Mis à jour dynamiquement par InstallAppButton : quand la bannière
-     d'installation est visible, elle flotte au-dessus du bloc du bas et
-     masquerait sinon les derniers boutons de la page. */
+     Depuis le 16/11, la bannière d'installation PWA vit DANS LE FLUX de la page
+     (en tête du contenu) : elle ne recouvre plus rien, donc plus rien à réserver.
+     La variable reste déclarée à 0px — le calcul du `padding-bottom` du corps la
+     lit toujours, et les contrôles automatiques (verifier-barres-basses) la
+     publient dans leur rapport. */
   --reserve-banniere: 0px;
 
   /* ── Bloc fixe du bas : hauteurs MESURÉES, jamais devinées (08/10) ──────────

@@ -30,6 +30,8 @@ import StarRating from '../components/StarRating.jsx';
 import TagBadge from '../components/TagBadge.jsx';
 import BlocDepot from '../components/BlocDepot.jsx';
 import { Icon } from '../components/Icons.jsx';
+import Illustration from '../components/illustrations/Illustration.jsx';
+import { dessinDeContexte } from '../components/illustrations/dessinsContexte.js';
 import { api } from '../utils/api/client.js';
 import { paiementDisponible, FRAIS_DEBLOCAGE } from '../utils/payment.js';
 import { CENTRE_ABIDJAN, distanceDepuis, formatDistanceKm } from '../utils/distance.js';
@@ -184,14 +186,14 @@ export default function JobBoard() {
       </InfoBanner>
 
       {horsLigne && (
-        <InfoBanner variante="demo" titre="Besoins d’exemple" className="mb-3">
+        <InfoBanner variante="demo" titre="Besoins d’exemple" className="mb-3" illustration="horsLigne">
           Serveur injoignable : les besoins ci-dessous viennent du jeu de démonstration et leurs
           contacts ne peuvent pas être débloqués.
         </InfoBanner>
       )}
 
       {paiementInfo.configure === false && !horsLigne && (
-        <InfoBanner variante="info" titre="Payer par dépôt mobile money" className="mb-3">
+        <InfoBanner variante="info" titre="Payer par dépôt mobile money" className="mb-3" illustration="mobileMoney">
           La passerelle automatique n’est pas encore branchée : envoyez les{' '}
           {formatFcfa(paiementInfo.frais)} au numéro Wave / Orange Money / MTN MoMo affiché sur le
           besoin, puis déclarez votre paiement. Notre équipe le vérifie et le numéro s’affiche
@@ -394,13 +396,19 @@ function CarteBesoin({
   const b = besoin || {};
   const premierContactOffert = b.segment === 'journalier' && b.premierContactGratuit;
   const nombreDeblocages = Number(b.nombreDeblocages) || 0;
+  // Dessin du métier dans la pastille (même règle que Jobs.jsx) : repli sur l'icône.
+  const dessinMetier = dessinDeContexte({ metier: b.metier });
 
   return (
     <article className="carte animate-fade-up p-3">
       <div className="flex items-start justify-between gap-2">
         <h3 className="flex min-w-0 items-center gap-2 text-sm font-bold text-ink">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-            <Icon name={(b.typeAnnonce || 'demande') === 'offre' ? 'briefcase' : 'tools'} size={16} />
+            {dessinMetier ? (
+              <Illustration nom={dessinMetier} taille={26} trait={1.2} className="opacity-90" />
+            ) : (
+              <Icon name={(b.typeAnnonce || 'demande') === 'offre' ? 'briefcase' : 'tools'} size={16} />
+            )}
           </span>
           <span className="truncate">
             {b.titre || b.metier || 'Main-d’œuvre'}

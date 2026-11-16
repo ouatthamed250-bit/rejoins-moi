@@ -99,7 +99,14 @@ function Structure() {
       {!pleinEcran && <TopBar />}
 
       <main className="pb-4">
+        {/* Invitation d'installation (PWA) : DANS LE FLUX, en tête du contenu.
+            Elle était auparavant flottante au-dessus de la navigation basse, où
+            elle recouvrait une carte de résultat sur /recherche (correctif du
+            16/11). Ici elle pousse le contenu au lieu de le masquer, et reste
+            visible dès le premier écran. */}
+        {!pleinEcran && <InstallAppButton />}
         <Routes>
+
           <Route path="/" element={<Feed />} />
           <Route path="/recherche" element={<Search />} />
           <Route path="/etablissement/:id" element={<EstablishmentProfile />} />
@@ -122,10 +129,6 @@ function Structure() {
       </main>
 
       {!pleinEcran && <BottomNav />}
-
-      {/* Invitation d'installation (PWA) : au-dessus de la bottom nav, visible sur
-          tous les écrans sauf les fiches plein écran partagées par lien. */}
-      {!pleinEcran && <InstallAppButton />}
     </div>
   );
 }

@@ -100,6 +100,8 @@ export default function Profile() {
           titre="Votre profil Rejoins’Moi"
           description="Connectez-vous avec votre numéro de téléphone pour enregistrer vos favoris, publier un besoin ou inscrire votre établissement."
           action={{ libelle: 'Se connecter', onClick: () => navigate('/connexion', { state: { depuis: '/profil' } }) }}
+          // Le profil, c'est « chez soi » : la maison en filigrane, pas un cadenas.
+          illustration="maison"
         />
         <div className="mt-4 flex flex-col gap-2">
           <button type="button" className="btn-ghost w-full text-sm" onClick={() => navigate('/main-doeuvre')}>

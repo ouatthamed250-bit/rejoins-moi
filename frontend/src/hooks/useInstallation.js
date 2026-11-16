@@ -1,8 +1,8 @@
 // useInstallation.js — État d'installation de l'app (PWA), logique PARTAGÉE.
 //
 // Pourquoi un hook ? Deux endroits proposent désormais l'installation :
-//   - la bannière flottante (InstallAppButton), qui n'apparaît QUE tant que l'app
-//     n'est pas installée ;
+//   - le bandeau d'installation (InstallAppButton), qui n'apparaît QUE tant que
+//     l'app n'est pas installée ;
 //   - le menu hamburger (MenuPrincipal), qui affiche l'action d'installation — ou
 //     un simple repère « Rejoins'Moi est installée » — une fois l'app installée.
 // La règle (ce que le navigateur propose, ce que l'utilisateur doit lire, ce qui
@@ -36,25 +36,28 @@ export const CONTENUS_INSTALLATION = {
   disponible: {
     icone: 'download',
     titre: 'Installer Rejoins’Moi',
-    texte: 'Un raccourci sur votre écran d’accueil : plus rapide, et ça s’ouvre même sans réseau.',
+    // Texte court À DESSEIN : le bandeau est un ruban d'une ligne + deux lignes de
+    // texte maximum sur un écran Android de 360 px (voir InstallAppButton). Au-delà,
+    // la phrase se fait couper — une promesse tronquée est pire que pas de promesse.
+    texte: 'Un raccourci sur l’accueil, même sans réseau.',
     action: 'Installer',
   },
   ios: {
     icone: 'share',
-    titre: 'Ajouter à l’écran d’accueil',
-    texte: 'Appuyez sur Partager puis « Sur l’écran d’accueil ». Rejoins’Moi s’ouvrira en plein écran.',
+    titre: 'Ajouter à l’accueil',
+    texte: 'Partager → « Sur l’écran d’accueil ».',
     action: null,
   },
   manuel: {
     icone: 'download',
     titre: 'Installer Rejoins’Moi',
-    texte: 'Menu du navigateur (⋮) → « Installer l’application » ou « Ajouter à l’écran d’accueil ».',
+    texte: 'Menu du navigateur → « Installer l’application ».',
     action: null,
   },
   installee: {
     icone: 'check',
     titre: 'Rejoins’Moi est installée',
-    texte: 'Ouvrez-la depuis votre écran d’accueil : elle s’affiche en plein écran, sans barre d’adresse.',
+    texte: 'Ouvrez-la depuis votre écran d’accueil.',
     action: null,
   },
 };

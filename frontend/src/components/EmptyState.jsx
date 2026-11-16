@@ -15,10 +15,12 @@ import Illustration from './illustrations/Illustration.jsx';
 /**
  * @param {{ icone?: string, titre: string, description?: string,
  *   action?: { libelle: string, onClick: () => void }, chargement?: boolean,
- *   illustration?: string|null }} props
+ *   illustration?: string|null, classeIllustration?: string }} props
  *   illustration : clé de tracesEsquisse.jsx (ex. « maison ») posée en filigrane.
  *     Prévu pour l'accueil ; à ne pas employer quand un dessin ne dit rien de plus
  *     que le texte (un titre suffit alors).
+ *   classeIllustration : teinte du filigrane (ex. « text-health » sur l'écran
+ *     Pharmacies & Cliniques, où le vert est la seule couleur autorisée).
  */
 export default function EmptyState({
   icone = 'search',
@@ -27,6 +29,7 @@ export default function EmptyState({
   action,
   chargement = false,
   illustration = null,
+  classeIllustration = '',
 }) {
   return (
     <div className="relative isolate flex flex-col items-center justify-center gap-2 px-6 py-12 text-center animate-fade-up">
@@ -47,7 +50,7 @@ export default function EmptyState({
       {/* Filigrane (dernier enfant : il ne pousse rien, il ne recouvre rien) */}
       {illustration && (
         <span aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 flex items-center justify-center">
-          <Illustration nom={illustration} taille={140} className="opacity-[0.16]" />
+          <Illustration nom={illustration} taille={140} className={`opacity-[0.16] ${classeIllustration}`} />
         </span>
       )}
     </div>

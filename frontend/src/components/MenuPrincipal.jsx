@@ -59,7 +59,7 @@ const SECTIONS = [
 export default function MenuPrincipal({ ouvert, onFermer }) {
   const navigate = useNavigate();
   const { profil, connecte, estDemo, deconnexion } = useAuth();
-  // État d'installation PARTAGÉ avec la bannière flottante (InstallAppButton).
+  // État d'installation PARTAGÉ avec le bandeau d'installation (InstallAppButton).
   const { contenu, installee, installer, enCours, note, diagnostic } = useInstallation();
 
   // Échap ferme le tiroir : réflexe attendu par les utilisateurs au clavier.

@@ -56,6 +56,7 @@ export default function Messages() {
           titre="Connectez-vous pour retrouver vos contacts"
           description="Vos mises en relation débloquées apparaîtront ici, sur tous vos appareils."
           action={{ libelle: 'Se connecter', onClick: () => navigate('/connexion', { state: { depuis: '/messages' } }) }}
+          illustration="enveloppe"
         />
       ) : misesEnRelation.length === 0 ? (
         <EmptyState
@@ -63,6 +64,7 @@ export default function Messages() {
           titre="Aucune mise en relation pour le moment"
           description="Débloquez le contact d’un besoin de main-d’œuvre : il apparaîtra ici pour être recontacté facilement."
           action={{ libelle: 'Voir les besoins', onClick: () => navigate('/main-doeuvre') }}
+          illustration="enveloppe"
         />
       ) : (
         <ul className="flex flex-col gap-2">

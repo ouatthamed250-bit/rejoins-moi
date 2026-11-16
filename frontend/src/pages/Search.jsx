@@ -164,7 +164,7 @@ export default function Search() {
       )}
 
       {horsLigne && (
-        <InfoBanner variante="demo" titre="Résultats d’exemple" className="mb-3">
+        <InfoBanner variante="demo" titre="Résultats d’exemple" className="mb-3" illustration="horsLigne">
           Serveur injoignable : ces résultats proviennent du jeu de données de démonstration.
         </InfoBanner>
       )}
@@ -187,6 +187,7 @@ export default function Search() {
           icone="search"
           titre="Aucun résultat"
           description="Essayez un autre mot (« attiéké », « tresses », « vidange ») ou changez de catégorie."
+          illustration="repere"
         />
       ) : (
         <div className="flex flex-col gap-2">

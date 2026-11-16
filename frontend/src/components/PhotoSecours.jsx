@@ -26,50 +26,40 @@
 
 import { Icon } from './Icons.jsx';
 import Illustration from './illustrations/Illustration.jsx';
+import { DESSIN_PAR_CATEGORIE, dessinDeContexte } from './illustrations/dessinsContexte.js';
 
 /**
  * Dessin « crayon » du cas « fiche sans photo », par catégorie.
  *
- * Pourquoi la table est ici : le dessin de remplacement fait partie du
- * remplacement. Les clés sont celles de tracesEsquisse.jsx (aucune trace n'est
- * inventée) et le choix suit la destination écrite dans le kit —
- *   « maison »      → « le quartier (accueil, états vides) » ;
- *   « marmite »     → l'alimentation (la marmite du garba) ;
- *   « etalMarche »  → le commerce (l'étal, l'auvent rayé) ;
- *   « motifWax »    → la beauté (le wax des salons et des ateliers) ;
- *   « boiteOutils » → « le travail (main-d'œuvre, artisanat, services) » ;
- *   « croixSante »  → la santé, EN TEINTE DE CRAYON : le vert reste réservé à
- *                     l'écran Pharmacies & Cliniques (§6), on ne l'importe pas ici ;
- *   « paillote »    → la spiritualité (l'abri où l'on se rassemble).
- * `autre` et toute catégorie inconnue retombent sur « maison » : la maison du
- * quartier, celle du kit, plutôt qu'un dessin qui n'existe pas.
+ * Depuis le 16/11, la table vit dans `illustrations/dessinsContexte.js` : elle est
+ * désormais partagée avec les pastilles d'annonces (main-d'œuvre) et les bandeaux,
+ * et complétée par des règles MOT-CLÉ (pharmacie, kiosque, coiffure, plomberie…).
+ * On la ré-exporte ici pour ne pas casser les appelants historiques.
  */
-export const DESSIN_SECOURS_PAR_CATEGORIE = {
-  alimentation: 'marmite',
-  beaute: 'motifWax',
-  services: 'boiteOutils',
-  artisanat: 'boiteOutils',
-  commerce: 'etalMarche',
-  sante: 'croixSante',
-  spiritualite: 'paillote',
-  autre: 'maison',
-};
-
-/** Repli : la maison du quartier (trace prévue par le kit pour l'accueil). */
-const DESSIN_PAR_DEFAUT = 'maison';
+export const DESSIN_SECOURS_PAR_CATEGORIE = DESSIN_PAR_CATEGORIE;
 
 /**
- * @param {{ nom?: string, className?: string, compact?: boolean, categorie?: string|null }} props
- *   nom       : nom de l'établissement (affiché sur les grands formats)
- *   className : dimensions et arrondis, imposés par l'appelant (h-44 w-full…)
- *   compact   : true pour une petite vignette (86×86 des résultats de recherche) :
- *               pastille seule, le nom n'y tiendrait pas lisiblement
- *   categorie : slug de catégorie → pose le dessin de secours derrière la pastille.
- *               `null` (défaut) = AUCUN dessin : les appelants qui ne le demandent
- *               pas (fiche profil, résultats de recherche) gardent le rendu v2.
+ * @param {{ nom?: string, className?: string, compact?: boolean, categorie?: string|null,
+ *   tags?: string[], sousCategorie?: string }} props
+ *   nom          : nom de l'établissement (affiché sur les grands formats)
+ *   className    : dimensions et arrondis, imposés par l'appelant (h-44 w-full…)
+ *   compact      : true pour une petite vignette (86×86 des résultats de recherche) :
+ *                  pastille seule, le nom n'y tiendrait pas lisiblement
+ *   categorie    : slug de catégorie → pose le dessin de secours derrière la pastille.
+ *                  `null` (défaut) = AUCUN dessin : les appelants qui ne le demandent
+ *                  pas (fiche profil, résultats de recherche) gardent le rendu v2.
+ *   tags / sousCategorie : affinent le dessin quand la catégorie est trop large
+ *                  (« Transfert d'argent » → mobileMoney plutôt que boiteOutils).
  */
-export default function PhotoSecours({ nom = '', className = '', compact = false, categorie = null }) {
-  const dessin = categorie ? DESSIN_SECOURS_PAR_CATEGORIE[categorie] || DESSIN_PAR_DEFAUT : null;
+export default function PhotoSecours({
+  nom = '',
+  className = '',
+  compact = false,
+  categorie = null,
+  tags = [],
+  sousCategorie = '',
+}) {
+  const dessin = categorie ? dessinDeContexte({ categorie, tags, sousCategorie }) : null;
 
   return (
     <div

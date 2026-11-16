@@ -29,6 +29,7 @@ import InfoBanner from '../components/InfoBanner.jsx';
 import PromptLocalisation from '../components/PromptLocalisation.jsx';
 import { Icon } from '../components/Icons.jsx';
 import Ornement from '../components/illustrations/Ornement.jsx';
+import { DESSIN_PAR_CATEGORIE } from '../components/illustrations/dessinsContexte.js';
 import { api, apiProbablementEndormie } from '../utils/api/client.js';
 import { lireCacheAnnuaire, ecrireCacheAnnuaire } from '../utils/cacheAnnuaire.js';
 import { urlItineraire } from '../utils/distance.js';
@@ -336,6 +337,7 @@ export default function Feed() {
           variante="alerte"
           titre="Liste de votre dernière visite"
           className="mb-3"
+          illustration="horsLigne"
           action={{ libelle: 'Réessayer', onClick: () => charger(1) }}
         >
           Le serveur Rejoins’Moi est injoignable. Les établissements ci-dessous viennent de votre dernière
@@ -348,6 +350,7 @@ export default function Feed() {
           variante="demo"
           titre="Données d’exemple"
           className="mb-3"
+          illustration="horsLigne"
           action={{ libelle: 'Réessayer', onClick: () => charger(1) }}
         >
           Le serveur Rejoins’Moi est injoignable pour le moment. Les profils ci-dessous servent à tester
@@ -395,7 +398,11 @@ export default function Feed() {
           titre="Aucun établissement dans cette catégorie"
           description="Essayez une autre catégorie : de nouveaux commerces s’inscrivent chaque semaine."
           action={{ libelle: 'Voir tout', onClick: () => setCategorie('tous') }}
-          illustration="maison"
+          illustration={
+            // Le dessin suit la catégorie choisie (kiosque pour Commerce, croixSante
+            // pour Santé…) : un état vide qui parle de la catégorie qu'il vide.
+            categorie === 'tous' ? 'maison' : DESSIN_PAR_CATEGORIE[categorie] || 'maison'
+          }
         />
       ) : (
         <div className="flex flex-col gap-3">

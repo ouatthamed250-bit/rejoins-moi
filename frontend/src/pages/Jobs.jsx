@@ -26,6 +26,8 @@ import EmptyState from '../components/EmptyState.jsx';
 import TagBadge from '../components/TagBadge.jsx';
 import BlocDepot from '../components/BlocDepot.jsx';
 import { Icon } from '../components/Icons.jsx';
+import Illustration from '../components/illustrations/Illustration.jsx';
+import { dessinDeContexte } from '../components/illustrations/dessinsContexte.js';
 import { api } from '../utils/api/client.js';
 import { paiementDisponible, FRAIS_DEBLOCAGE } from '../utils/payment.js';
 import { chargerFormules, libellePrix, abonnementLocalActif, lireAbonnementLocal } from '../utils/abonnement.js';
@@ -249,14 +251,14 @@ export default function Jobs() {
       )}
 
       {horsLigne && (
-        <InfoBanner variante="demo" titre="Annonces d’exemple" className="mb-3">
+        <InfoBanner variante="demo" titre="Annonces d’exemple" className="mb-3" illustration="horsLigne">
           Serveur injoignable : les annonces ci-dessous viennent du jeu de démonstration et leurs
           contacts ne peuvent pas être débloqués.
         </InfoBanner>
       )}
 
       {paiementInfo.configure === false && !horsLigne && !abonnement.actif && (
-        <InfoBanner variante="info" titre="Payer par dépôt mobile money" className="mb-3">
+        <InfoBanner variante="info" titre="Payer par dépôt mobile money" className="mb-3" illustration="mobileMoney">
           La passerelle automatique n’est pas encore branchée : envoyez les{' '}
           {formatFcfa(paiementInfo.frais)} au numéro Wave / Orange Money / MTN MoMo affiché sur
           l’annonce, puis déclarez votre paiement. Notre équipe le vérifie et le numéro de contact
@@ -424,6 +426,10 @@ function CarteAnnonce({
 }) {
   const offre = (annonce.typeAnnonce || 'demande') === 'offre';
   const titre = annonce.titre || annonce.metier || 'Annonce';
+  // Pastille de l'annonce : le dessin du MÉTIER (« Plombier » → plomberie,
+  // « Coiffeur » → salonBeaute…) plutôt qu'une icône générique. Repli sur l'icône
+  // quand le métier n'a pas de trace dédiée : aucun trou, aucun cadre vide.
+  const dessinMetier = dessinDeContexte({ metier: annonce.metier });
   const montant = Number(annonce.budgetFcfa) > 0 ? formatFcfa(annonce.budgetFcfa) : '';
 
   return (
@@ -434,7 +440,11 @@ function CarteAnnonce({
             offre ? 'bg-primary/10 text-primary' : 'bg-health-light text-health-dark'
           }`}
         >
-          <Icon name={offre ? 'briefcase' : 'tools'} size={17} />
+          {dessinMetier ? (
+            <Illustration nom={dessinMetier} taille={26} trait={1.2} className="opacity-90" />
+          ) : (
+            <Icon name={offre ? 'briefcase' : 'tools'} size={17} />
+          )}
         </span>
         <div className="min-w-0 flex-1">
           <p className="flex flex-wrap items-center gap-1.5">

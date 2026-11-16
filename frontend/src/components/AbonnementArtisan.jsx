@@ -23,6 +23,7 @@ import { useCallback, useEffect, useState } from 'react';
 import EmptyState from './EmptyState.jsx';
 import InfoBanner from './InfoBanner.jsx';
 import { Icon } from './Icons.jsx';
+import Illustration from './illustrations/Illustration.jsx';
 import {
   ABONNEMENT as MIROIR,
   CATALOGUE,
@@ -202,7 +203,10 @@ export default function AbonnementArtisan({ onChangement, compact = false }) {
     <section id="abonnement" className={`carte ${compact ? 'p-3' : 'p-4'}`}>
       <div className="flex items-start gap-2">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-          <Icon name="wallet" size={18} />
+          {/* Le dessin du paiement mobile (téléphone + billet) plutôt que l'icône
+              « portefeuille » : c'est bien Wave / Orange Money / MTN que l'artisan
+              va utiliser, et le dessin le dit sans une ligne de texte. */}
+          <Illustration nom="mobileMoney" taille={26} trait={1.2} className="opacity-90" />
         </span>
         <div className="min-w-0 flex-1">
           <h2 className="text-sm font-bold text-ink">{CATALOGUE.titre}</h2>

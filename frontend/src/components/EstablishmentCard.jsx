@@ -10,6 +10,7 @@
 // Le composant accepte soit un objet `etablissement` complet (ce que renvoie l'API),
 // soit les props à plat (utile pour les tests et les données de démo).
 
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Icon } from './Icons.jsx';
 import PhotoSecours from './PhotoSecours.jsx';
@@ -102,6 +103,7 @@ export default function EstablishmentCard({
     noteMoyenne: Number(etablissement?.noteMoyenne ?? note) || 0,
     nombreAvis: Number(etablissement?.nombreAvis ?? nbAvis) || 0,
     tags: etablissement?.tags ?? tags ?? [],
+    sousCategorie: etablissement?.sousCategorie || '',
     compteurVisites: Number(etablissement?.compteurVisites ?? nbVisites) || 0,
     compteurUtilisateurs: Number(etablissement?.compteurUtilisateurs ?? nbUtilisateurs) || 0,
     texteBoutonAction: etablissement?.texteBoutonAction || texteBoutonAction || `Aller chez ${nom}`,
@@ -121,18 +123,33 @@ export default function EstablishmentCard({
   const fichier = `/etablissement/${e.id}`;
   const libelleCategorie = LIBELLES_CATEGORIES[e.categorie] || e.categorie;
 
+  // ── État de secours PHOTO (correctif du 16/11) ──────────────────────────────
+  // Une URL de photo peut être morte (fichier effacé, ancien hébergement) : l'image
+  // cassée laissait alors un rectangle vide, ou l'icône « image brisée » du
+  // navigateur. On bascule dans ce cas sur le MÊME visuel que l'absence de photo
+  // (PhotoSecours, dessin crayon compris) — sans changer une seule dimension, donc
+  // sans décaler la carte ni la liste. `photoCassee` repart à zéro si l'URL change
+  // (rechargement du feed après mise à jour d'une fiche).
+  const [photoCassee, setPhotoCassee] = useState(false);
+  useEffect(() => {
+    setPhotoCassee(false);
+  }, [e.photoDevanture]);
+  const photoAffichee = e.photoDevanture && !photoCassee ? e.photoDevanture : '';
+
+
   // ── Variante compacte (résultats de recherche, §4) ──
   if (variant === 'list') {
     return (
       <article className="carte flex items-stretch gap-3 p-2 animate-fade-up">
         <Link to={fichier} className="shrink-0" aria-label={`Ouvrir ${e.nom}`}>
-          {e.photoDevanture ? (
+          {photoAffichee ? (
             <img
-              src={e.photoDevanture}
+              src={photoAffichee}
               alt={e.nom}
               loading="lazy"
               decoding="async"
-              className="h-[86px] w-[86px] rounded-md object-cover"
+              className="h-[86px] w-[86px] rounded-md bg-soft object-cover"
+              onError={() => setPhotoCassee(true)}
             />
           ) : (
             <PhotoSecours nom={e.nom} compact className="h-[86px] w-[86px] rounded-md" />
@@ -171,20 +188,24 @@ export default function EstablishmentCard({
   return (
     <article className="carte animate-fade-up">
       <Link to={fichier} className="relative block">
-        {e.photoDevanture ? (
+        {photoAffichee ? (
           <img
-            src={e.photoDevanture}
+            src={photoAffichee}
             alt={`Devanture de ${e.nom}`}
             loading="lazy"
             decoding="async"
-            className="h-44 w-full object-cover"
+            className="h-44 w-full bg-soft object-cover"
+            onError={() => setPhotoCassee(true)}
           />
         ) : (
           // `illustrationSecours` (accueil) : le dessin de la catégorie remplace le
           // fond muet. Mêmes dimensions (`h-44 w-full`) : la carte ne bouge pas.
+          // Ce chemin sert AUSSI quand la photo existe mais ne se charge pas.
           <PhotoSecours
             nom={e.nom}
             categorie={illustrationSecours ? e.categorie : null}
+            tags={e.tags}
+            sousCategorie={e.sousCategorie}
             className="h-44 w-full"
           />
         )}

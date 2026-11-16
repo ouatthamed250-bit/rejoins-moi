@@ -816,7 +816,7 @@ export default function RegisterEstablishment() {
           propose AVANT la création, pour que le quartier n'affiche pas deux fois le même
           lieu (avis, photos et compteurs séparés). */}
       {reclamationInfo ? (
-        <InfoBanner variante="succes" titre="Demande envoyée" className="mb-3">
+        <InfoBanner variante="succes" titre="Demande envoyée" className="mb-3" illustration="kiosque">
           {reclamationInfo}
         </InfoBanner>
       ) : null}

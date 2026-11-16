@@ -240,7 +240,12 @@ export default function PharmaciesCliniques() {
       </div>
 
       {horsLigne && (
-        <InfoBanner variante="alerte" titre="Liste momentanément indisponible" className="mb-3">
+        <InfoBanner
+          variante="alerte"
+          titre="Liste momentanément indisponible"
+          className="mb-3"
+          illustration="horsLigne"
+        >
           Le serveur Rejoins’Moi est injoignable : aucune pharmacie ni clinique ne peut être
           affichée pour l’instant. Aucune liste d’exemple n’est présentée ici — vous ne verriez
           pas de vrais établissements.
@@ -264,6 +269,7 @@ export default function PharmaciesCliniques() {
           titre="Liste momentanément indisponible"
           description="Le serveur ne répond pas pour le moment. Réessayez dans un instant : aucun établissement d’exemple n’est affiché ici."
           action={{ libelle: 'Réessayer', onClick: charger }}
+          illustration="horsLigne"
         />
       ) : bruts.length === 0 ? (
         /* Serveur joignable, mais ZÉRO fiche enregistrée (état réel de la production
@@ -272,12 +278,16 @@ export default function PharmaciesCliniques() {
           icone="pharmacy"
           titre="Cette liste arrive bientôt"
           description="Aucune pharmacie ni clinique n’est encore enregistrée dans Rejoins’Moi. Les fiches seront ajoutées par les établissements eux-mêmes : cette page ne contiendra jamais de fiche d’exemple."
+          illustration="pharmacie"
+          classeIllustration="text-health"
         />
       ) : liste.length === 0 ? (
         <EmptyState
           icone="pharmacy"
           titre="Aucun établissement trouvé"
           description="Essayez de désactiver le filtre « De garde uniquement » ou changez de type."
+          illustration="pharmacie"
+          classeIllustration="text-health"
         />
       ) : affichage === 'carte' ? (
         <CarteSchematique />

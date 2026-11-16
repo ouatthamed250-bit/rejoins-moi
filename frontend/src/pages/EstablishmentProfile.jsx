@@ -64,6 +64,24 @@ export default function EstablishmentProfile() {
   const [envoi, setEnvoi] = useState(false);
   const [retourPartage, setRetourPartage] = useState('');
 
+  // ── État de secours des PHOTOS (correctif du 16/11) ──
+  // Une URL de photo morte (fichier effacé, ancien hébergement) affichait un cadre
+  // vide ou l'icône « image brisée » du navigateur, alors que la fiche sait très
+  // bien produire un visuel de remplacement (PhotoSecours + dessin de catégorie).
+  // On bascule donc sur ce visuel dès que le chargement échoue, sans changer les
+  // dimensions (`h-56 w-full` / médaillon `h-20 w-20`) : la mise en page ne bouge pas.
+  const [devantureCassee, setDevantureCassee] = useState(false);
+  const [vendeurCassee, setVendeurCassee] = useState(false);
+  const urlDevanture =
+    etablissement?.photoDevantureUrl || etablissement?.photoDevanture || '';
+  const urlVendeur = etablissement?.photoVendeurUrl || etablissement?.photoVendeur || '';
+  useEffect(() => {
+    setDevantureCassee(false);
+  }, [urlDevanture]);
+  useEffect(() => {
+    setVendeurCassee(false);
+  }, [urlVendeur]);
+
   // Garde-fou : on ne compte qu'UNE visite par fiche et par montage (§3).
   const visiteFaite = useRef(null);
 
@@ -280,16 +298,27 @@ export default function EstablishmentProfile() {
         {/* PHOTO : on préfère l'URL servie par l'API (`photoDevantureUrl`), valable
             quelle que soit la façon dont l'image est stockée (base64 ou URL
             distante). `photoDevanture` reste utilisé en repli. */}
-        {etablissement.photoDevantureUrl || etablissement.photoDevanture ? (
+        {urlDevanture && !devantureCassee ? (
           <img
-            src={etablissement.photoDevantureUrl || etablissement.photoDevanture}
+            src={urlDevanture}
             alt={`Devanture de ${etablissement.nom}`}
-            className="h-56 w-full object-cover"
+            className="h-56 w-full bg-soft object-cover"
+            onError={() => setDevantureCassee(true)}
           />
         ) : (
           /* v2 : même correctif que la carte du feed — plus de pavé orange plein
-             sur l'en-tête d'une fiche sans photo, le fond reste ivoire. */
-          <PhotoSecours nom={etablissement.nom} className="h-56 w-full" />
+             sur l'en-tête d'une fiche sans photo, le fond reste ivoire.
+             16/11 : le dessin de la catégorie (affiné par les tags : « Pharmacie »,
+             « Coiffeurs(ses) », « Transfert d'argent »…) vient en filigrane, comme
+             sur la carte du feed — l'en-tête d'une fiche et sa carte disent
+             désormais la même chose. */
+          <PhotoSecours
+            nom={etablissement.nom}
+            categorie={etablissement.categorie}
+            tags={etablissement.tags}
+            sousCategorie={etablissement.sousCategorie}
+            className="h-56 w-full"
+          />
         )}
 
         {/* Barre d'actions flottante : retour, partage, favori */}
@@ -339,11 +368,12 @@ export default function EstablishmentProfile() {
       <div className="ecran">
         {/* Médaillon de la photo du vendeur, chevauchant la devanture */}
         <div className="-mt-10 flex items-end justify-between gap-3">
-          {etablissement.photoVendeurUrl || etablissement.photoVendeur ? (
+          {urlVendeur && !vendeurCassee ? (
             <img
-              src={etablissement.photoVendeurUrl || etablissement.photoVendeur}
+              src={urlVendeur}
               alt={`Vendeur / gérant de ${etablissement.nom}`}
-              className="h-20 w-20 rounded-full border-4 border-white object-cover shadow-card"
+              className="h-20 w-20 rounded-full border-4 border-white bg-soft object-cover shadow-card"
+              onError={() => setVendeurCassee(true)}
             />
           ) : (
             <span className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-white bg-primary text-xl font-bold text-white shadow-card">

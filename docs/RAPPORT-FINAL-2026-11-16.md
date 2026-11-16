@@ -173,8 +173,10 @@ carte de résultat et bouton « Chercher une pharmacie » entièrement visibles)
  docs/RAPPORT-FINAL-2026-11-16.md                            |  ce document
 ```
 
-`git diff --stat` : **24 fichiers modifiés, ~930 insertions, ~420 suppressions** (dont
-la réécriture de deux composants).
+`git diff --stat 0b6a8aa..HEAD` : **27 fichiers côté `frontend/`** — 1 225 insertions,
+424 suppressions (dont la réécriture de `InstallAppButton.jsx` et
+`ArtisansMisEnAvant.jsx`) — plus 3 fichiers de documentation (604 lignes).
+Total du lot : **30 fichiers, 1 829 insertions, 424 suppressions**.
 
 ---
 
@@ -278,7 +280,9 @@ eeb6004  Recette : controle des 31 dessins et parcours nouveau venu durci
 f95b8a7  Illustrations et bandeau PWA : 13 dessins, plus aucun recouvrement
 ```
 
-`git push origin main` : **aucun force**, avance simple (`0b6a8aa → 64c0a41`).
+`git push origin main` : **aucun force**, avance simple (`0b6a8aa → c4d479e`).
+Un cinquième commit ferme le lot : les deux commits de rapport
+(`0d3d958`, `c4d479e`) ne touchent que `docs/`.
 Aucun fichier sensible poussé : `.env`, `backend/.env`, `dist/`, les dossiers de
 captures restent ignorés (`.gitignore`), et aucun secret n’apparaît dans le diff
 (recherche `mongodb+srv|JWT_SECRET|CINETPAY|api_key|password` : 0 résultat).

@@ -64,3 +64,7 @@ frontend/*.out
 frontend/*.err
 frontend/*.pid
 
+# Vérifications du site PUBLIÉ (GitHub Pages) : captures d'écran de l'accueil et de
+# la recherche prises sur le domaine public, régénérables en rejouant le contrôle.
+frontend/captures-en-ligne/
+

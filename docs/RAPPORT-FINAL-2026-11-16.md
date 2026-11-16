@@ -263,3 +263,126 @@ Aucune dépendance ajoutée. Les illustrations sont du SVG inline (aucune requê
 bandeau dans le flux **supprime** une opération de mise en page (plus de mesure
 `offsetHeight` + écriture de variable CSS à chaque rendu).
 
+
+---
+
+## H. Publication
+
+### H.1 — Commits (branche `main`)
+
+```
+64c0a41  Service worker v11 : le nouveau bandeau et les 13 dessins atteignent
+         les telephones deja equipes
+0d3d958  Rapports du 16/11 : audit des illustrations et finalisation
+eeb6004  Recette : controle des 31 dessins et parcours nouveau venu durci
+f95b8a7  Illustrations et bandeau PWA : 13 dessins, plus aucun recouvrement
+```
+
+`git push origin main` : **aucun force**, avance simple (`0b6a8aa → 64c0a41`).
+Aucun fichier sensible poussé : `.env`, `backend/.env`, `dist/`, les dossiers de
+captures restent ignorés (`.gitignore`), et aucun secret n’apparaît dans le diff
+(recherche `mongodb+srv|JWT_SECRET|CINETPAY|api_key|password` : 0 résultat).
+
+### H.2 — Service worker
+
+`sw.js` passe de **v10 à v11** — obligatoire : l’app shell change (nouvelles
+empreintes JS/CSS). Sans ce changement de nom de cache, un téléphone déjà installé
+aurait servi l’**ancien** `index.html` en secours, donc l’ancienne app **avec la
+bannière qui masque une carte**.
+
+### H.3 — GitHub Pages
+
+`npm run deploy:pages` (depuis `frontend/`) :
+
+```
+To https://github.com/ouatthamed250-bit/rejoins-moi.git
++ a6086f4...fd195bc  gh-pages -> gh-pages (forced update)
+✓ Publié. La mise à jour est visible dans une à deux minutes sur :
+  https://ouatthamed250-bit.github.io/rejoins-moi/
+```
+
+Le `--force` est celui prévu par `scripts/publier-pages.mjs` sur la branche
+**`gh-pages`** (branche de build, séparée de `main`). `main` n’est jamais forcée.
+
+### H.4 — API Render
+
+Aucun changement de code backend dans ce lot ; les variables Render n’ont pas été
+touchées. État au 16/11/2026 13:24 UTC :
+
+```json
+{"ok":true,"baseDonnees":"connectée","baseDetails":{"connectee":true,"tentatives":0,
+ "cause":null},"paiement":{"configure":false,"fraisDeblocageFcfa":500,
+ "passerelle":"CinetPay (Wave, Orange Money, MTN MoMo, Moov Money)"},
+ "horodatage":"2026-11-16T13:24:55.048Z"}
+```
+
+**Appels croisés vérifiés depuis le domaine public** (le point qui casse le plus
+souvent un déploiement Pages) :
+
+```
+GET https://rejoins-moi-api.onrender.com/api/establishments?limit=1
+  Origin: https://ouatthamed250-bit.github.io
+  → 200  |  access-control-allow-origin: https://ouatthamed250-bit.github.io  |  1 fiche
+```
+
+`VITE_API_URL=https://rejoins-moi-api.onrender.com` est **présente dans le bundle
+publié** (chaîne retrouvée dans `assets/index-CvRu7cTt.js`) : le site n’est pas en
+mode démonstration.
+
+---
+
+## I. Vérifications du site PUBLIÉ (mesures, pas suppositions)
+
+```
+GET /rejoins-moi/                 → 200
+   <script src="/rejoins-moi/assets/index-CvRu7cTt.js">
+GET /rejoins-moi/sw.js            → 200   const VERSION = 'v11'
+```
+
+Chrome piloté sur `https://ouatthamed250-bit.github.io/rejoins-moi/` :
+
+```
+=== ACCUEIL PUBLIÉ (chargé)
+ scripts        : /rejoins-moi/assets/index-CvRu7cTt.js
+ cartes         : 37            illustrations : 37
+ dessins vus    : palmier, electricite, marmite, maison, mobileMoney
+ bannière       : position=static, haut 60 → bas 111, boutons recouverts : 0
+ modeDemo       : false         injoignable : false
+ service worker : https://ouatthamed250-bit.github.io/rejoins-moi/sw.js
+ caches         : ["rejoinsmoi-app-v11", "rejoinsmoi-entretien"]
+=== ACCUEIL APRÈS RECHARGEMENT (servi par le cache)
+ scripts : index-CvRu7cTt.js    illustrations : 37    modeDemo : false
+=== RECHERCHE PUBLIÉE  (recherche?q=attiéké)
+ cartes : 11            bannière : position=static, 0 bouton recouvert
+ modeDemo : false       injoignable : false
+```
+
+Captures (régénérables) : `frontend/captures-en-ligne/accueil.png` et
+`frontend/captures-en-ligne/recherche.png` — accueil avec les 6 721 établissements
+annoncés, bandeau en haut, dessins visibles ; recherche « attiéké » avec 11 résultats
+réels et aucun recouvrement.
+
+Premier chargement puis **second chargement servi par le cache `v11`** avec la même
+empreinte : la mise à jour atteint bien les appareils déjà équipés.
+
+---
+
+## J. Anomalies restantes (aucune n’est causée par ce lot)
+
+1. **Comptes d’essai visibles dans l’annuaire public.** `backend/scripts/auditer-tests.js`
+   (lecture seule) signale **8 comptes suspects** et **2 fiches non importées** ; deux
+   d’entre eux apparaissent dans « Artisans mis en avant » (« Vérification ZOGBO »).
+   Le script n’a **rien supprimé** : décision produit nécessaire, élément par élément.
+   Les 2 dépôts réels (`REF-ADMIN-1`, un dépôt en attente) n’ont pas été touchés.
+2. **Fiches sans avis** : `StarRating` affiche cinq étoiles vides suivies de
+   « 0 (0 avis) ». Cosmétique, antérieur au lot.
+3. **Barre de navigation fixe** : elle peut passer devant un contenu en cours de
+   défilement — comportement normal d’une barre fixe, dont la hauteur est **réservée**
+   en fin de document (257 contrôles `verifier:barres`). Le bandeau d’installation,
+   lui, ne recouvre plus rien (mesuré : 0 bouton, 0 texte).
+4. **Non testé** : Safari/iOS, lecteur d’écran (NVDA/TalkBack), charge (100 utilisateurs
+   simultanés), et le paiement réel (passerelle non configurée — aucun paiement n’a été
+   déclenché, c’est volontaire).
+5. **Render** : le backend étant inchangé, le redéploiement automatique reconstruit la
+   même version ; `/api/health` répond et la base est connectée (vérifié ci-dessus).
+

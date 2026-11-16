@@ -20,10 +20,18 @@
 // « Autoriser », la position est obtenue SANS qu'il ait à retoucher l'écran
 // (`surChangementPermission` + retour au premier plan).
 //
-// Décisions de terrain conservées :
-//  - `enableHighAccuracy: false` : le GPS haute précision met 20-30 s à accrocher et
-//    vide la batterie ; pour trier des commerces de quartier, la précision réseau suffit.
-//  - `timeout: 8000` : au-delà, `position` reste inchangée.
+// Décisions de terrain :
+//  - `enableHighAccuracy: true` (correctif GPS) : la précision réseau donnait des
+//    points à plusieurs centaines de mètres, voire au-delà du kilomètre, ce qui
+//    n'a aucun sens pour « le commerce le plus proche ». On accepte donc l'accroche
+//    plus lente du vrai GPS (10-30 s) — c'est le prix d'une distance utile.
+//  - `timeout: 15000` : allongé d'autant, sinon la haute précision n'aurait pas le
+//    temps d'accrocher et échouerait plus souvent qu'avant.
+//  - `maximumAge: 60 s` : une mesure de moins d'une minute est réutilisée telle
+//    quelle (le téléphone la renvoie instantanément) ; au-delà, on re-mesure.
+//  - `coords.accuracy` est désormais LU : au-delà de 500 m, la position est
+//    conservée mais l'utilisateur est averti (« position approximative ») — voir
+//    le callback de succès. Une mauvaise mesure n'est jamais présentée comme sûre.
 //  - AUCUN point inventé : on ne fabrique jamais une position « au cas où » (des
 //    distances fausses, ex. « 236 m » pour un lieu à 22 km, sont pires qu'aucune
 //    distance).
@@ -90,8 +98,8 @@ export function useGeolocation({ auto = true } = {}) {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         if (!monte.current) return;
-        const { latitude, longitude } = pos.coords;
-        const memorisee = enregistrerPosition(latitude, longitude, 'gps');
+        const { latitude, longitude, accuracy } = pos.coords;
+        const memorisee = enregistrerPosition(latitude, longitude, 'gps', accuracy);
         setPosition({ lat: latitude, lng: longitude });
         setSource('gps');
         setAgeMinutes(memorisee?.ageMinutes ?? 0);
@@ -101,6 +109,16 @@ export function useGeolocation({ auto = true } = {}) {
         setPermission('granted');
         setDemandeRequise(false);
         setLoading(false);
+        // Contrôle de précision, APRÈS le succès : la position est conservée (mieux
+        // vaut une distance annoncée comme approximative qu'aucune distance), mais on
+        // dit à l'utilisateur à quel point elle est incertaine, et comment faire mieux.
+        // `accuracy` est le rayon d'incertitude en mètres annoncé par le téléphone.
+        if (accuracy && accuracy > 500) {
+          setError(
+            `Position approximative (±${Math.round(accuracy)} m). ` +
+              `Pour plus de précision, essayez à l'extérieur ou choisissez votre position sur la carte.`
+          );
+        }
       },
       async (err) => {
         if (!monte.current) return;
@@ -134,7 +152,10 @@ export function useGeolocation({ auto = true } = {}) {
         );
         setDemandeRequise(true);
       },
-      { enableHighAccuracy: false, timeout: 8000, maximumAge: 5 * 60 * 1000 }
+      // Haute précision + délai allongé : voir l'en-tête du module. Un `maximumAge`
+      // d'une minute laisse le téléphone réutiliser une mesure fraîche au lieu de
+      // relancer une accroche GPS à chaque écran.
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60 * 1000 }
     );
   }, []);
 

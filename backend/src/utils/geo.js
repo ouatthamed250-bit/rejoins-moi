@@ -47,6 +47,9 @@ export function parseCoords(source = {}) {
   const lng = Number(source.lng);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  // (0, 0) est en plein Golfe de Guinée, aucune fiche ivoirienne n'y est :
+  // c'est la valeur renvoyée par un GPS défaillant. On la rejette.
+  if (lat === 0 && lng === 0) return null;
   return { lat, lng };
 }
 

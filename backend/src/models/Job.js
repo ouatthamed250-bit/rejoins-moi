@@ -45,9 +45,15 @@ const jobSchema = new mongoose.Schema(
 
     description: { type: String, required: [true, 'La description est obligatoire'], trim: true, maxlength: 1200 },
 
+    // OPTIONNELLE depuis le fix GPS : le formulaire de dépôt envoyait auparavant le
+    // centre d'Abidjan quand la position manquait — une position INVENTÉE, stockée
+    // comme si l'auteur s'y trouvait, donc des distances fausses pour tout le monde.
+    // Une annonce sans position n'affiche simplement aucune distance (les cartes et
+    // le tri par proximité la placent en fin de liste), comme les fiches sans
+    // coordonnées. Aucune position n'est jamais fabriquée.
     localisation: {
-      lat: { type: Number, required: true, min: -90, max: 90 },
-      lng: { type: Number, required: true, min: -180, max: 180 },
+      lat: { type: Number, default: null, min: -90, max: 90 },
+      lng: { type: Number, default: null, min: -180, max: 180 },
     },
     commune: { type: String, trim: true, default: '' },
     quartier: { type: String, trim: true, default: '' },

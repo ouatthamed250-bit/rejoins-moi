@@ -85,7 +85,11 @@ export function coordsValides(lat, lng) {
     Number(lat) >= -90 &&
     Number(lat) <= 90 &&
     Number(lng) >= -180 &&
-    Number(lng) <= 180
+    Number(lng) <= 180 &&
+    // (0, 0) est en plein Golfe de Guinée, aucune fiche ivoirienne n'y est :
+    // c'est la valeur renvoyée par un GPS défaillant. On la rejette, comme
+    // parseCoords côté serveur (symétrie des deux calculs).
+    !(Number(lat) === 0 && Number(lng) === 0)
   );
 }
 

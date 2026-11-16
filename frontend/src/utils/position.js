@@ -83,7 +83,7 @@ function stockageDisponible() {
  * périmée — jamais un point approximatif « au cas où ».
  *
  * @returns {{ lat: number, lng: number, source: 'gps'|'manuel', at: number,
- *   ageMinutes: number }|null}
+ *   accuracy: number|null, ageMinutes: number }|null}
  */
 export function lirePositionMemorisee() {
   if (!stockageDisponible()) return null;
@@ -101,7 +101,16 @@ export function lirePositionMemorisee() {
     if (!Number.isFinite(at)) return null;
     const age = Date.now() - at;
     if (age > dureeValidite(source)) return null;
-    return { lat, lng, source, at, ageMinutes: Math.max(0, Math.round(age / 60000)) };
+    // `accuracy` (rayon d'incertitude en mètres, fourni par le téléphone) est relu
+    // tel quel : absent des positions enregistrées avant le fix GPS -> `null`.
+    return {
+      lat,
+      lng,
+      source,
+      at,
+      accuracy: donnees.accuracy != null ? Number(donnees.accuracy) : null,
+      ageMinutes: Math.max(0, Math.round(age / 60000)),
+    };
   } catch {
     return null;
   }
@@ -113,14 +122,21 @@ export function lirePositionMemorisee() {
  * @param {number} lat
  * @param {number} lng
  * @param {'gps'|'manuel'} [source]
- * @returns {{ lat: number, lng: number, source: 'gps'|'manuel', at: number, ageMinutes: 0 }|null}
+ * @param {number|null} [accuracy] rayon d'incertitude en mètres, tel que fourni par
+ *   `coords.accuracy` (null pour un point choisi sur la carte : ce n'est pas une mesure).
+ * @returns {{ lat: number, lng: number, source: 'gps'|'manuel', at: number,
+ *   accuracy: number|null, ageMinutes: 0 }|null}
  */
-export function enregistrerPosition(lat, lng, source = 'gps') {
+export function enregistrerPosition(lat, lng, source = 'gps', accuracy = null) {
   const propre = {
     lat: Number(lat),
     lng: Number(lng),
     source: source === 'manuel' ? 'manuel' : 'gps',
     at: Date.now(),
+    // On mémorise l'incertitude annoncée par le téléphone : c'est la seule façon de
+    // savoir plus tard si le point affiché vaut « 20 m » ou « 2 km ». `null` = non
+    // mesurée (point manuel, ou position enregistrée avant ce correctif).
+    accuracy: accuracy != null ? Number(accuracy) : null,
   };
   if (!Number.isFinite(propre.lat) || !Number.isFinite(propre.lng)) return null;
   if (stockageDisponible()) {

@@ -93,9 +93,12 @@ const userSchema = new mongoose.Schema(
     // Localisation approximative du compte (quartier / commune d'Abidjan)
     quartier: { type: String, trim: true, default: '' },
     commune: { type: String, trim: true, default: '' },
+    // Bornes obligatoires : sans elles, un client pouvait enregistrer `lat: 999`
+    // (aucun `min`/`max` n'était déclaré) et fausser ensuite toutes les distances
+    // calculées depuis ce compte — la Haversine accepte n'importe quel nombre fini.
     localisation: {
-      lat: { type: Number, default: null },
-      lng: { type: Number, default: null },
+      lat: { type: Number, default: null, min: -90, max: 90 },
+      lng: { type: Number, default: null, min: -180, max: 180 },
     },
 
     // Compte de recharge mobile money (500 FCFA par déblocage de contact, §2)

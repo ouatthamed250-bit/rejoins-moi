@@ -34,7 +34,7 @@ import Illustration from '../components/illustrations/Illustration.jsx';
 import { dessinDeContexte } from '../components/illustrations/dessinsContexte.js';
 import { api } from '../utils/api/client.js';
 import { paiementDisponible, FRAIS_DEBLOCAGE } from '../utils/payment.js';
-import { CENTRE_ABIDJAN, distanceDepuis, formatDistanceKm } from '../utils/distance.js';
+import { distanceDepuis, formatDistanceKm } from '../utils/distance.js';
 import { formatDateRelative, formatFcfa, formatTelephone, initiales } from '../utils/format.js';
 import { METIERS, filtrerBesoinsDemo } from '../data/demoData.js';
 import { useGeolocation } from '../hooks/useGeolocation.js';
@@ -538,9 +538,15 @@ function CarteBesoin({
 
 /**
  * Formulaire de publication d'une annonce. GRATUIT (§2) : aucun paiement ici.
- * La position GPS est obligatoire côté serveur (tri par proximité) : si la
- * géolocalisation est refusée, on publie depuis le centre d'Abidjan en le disant
- * clairement, pour que l'utilisateur corrige le quartier à la main.
+ * AUCUNE POSITION INVENTÉE (correctif GPS) : quand la géolocalisation n'est pas
+ * disponible, on n'envoie plus le centre d'Abidjan à sa place. Ce repli n'était pas
+ * seulement faux géographiquement : il était TOUJOURS appliqué — le code lisait
+ * `position.position` alors que `position` (la prop) est déjà `{lat, lng}`, donc
+ * `undefined`, donc toute annonce publiée ici partait au Plateau, même avec un GPS
+ * valide. On envoie désormais `localisation: null` : le serveur refuse alors la
+ * publication en l'expliquant (« Localisation obligatoire pour trier les besoins par
+ * proximité ») et l'alerte plus bas invite à activer la localisation. Mieux vaut un
+ * refus explicite qu'une position inventée qui fausse toutes les distances.
  *
  * `typeAnnonceInitial` ('offre' | 'demande') vient de l'URL : la page Jobs renvoie
  * ici avec le bon type déjà choisi — offrir un emploi et chercher un artisan ne
@@ -601,13 +607,15 @@ function FormulaireBesoin({
     setEnvoi(true);
     setRetour({ type: '', texte: '' });
     try {
-      const coords = position.position || CENTRE_ABIDJAN;
+      // `position` est DÉJÀ l'objet `{lat, lng}` (voir `position={position.position}`
+      // dans la page Jobs) : pas de second `.position`, et aucun point de repli.
+      const coords = position || null;
       await api.post('/jobs', {
         typeAnnonce,
         metier: form.metier,
         intitule: form.intitule.trim(),
         description: form.description.trim(),
-        localisation: { lat: coords.lat, lng: coords.lng },
+        localisation: coords ? { lat: coords.lat, lng: coords.lng } : null,
         urgence: Boolean(form.urgence),
         budgetFcfa: Number(form.budgetFcfa) || 0,
         duree: form.duree,
@@ -689,8 +697,9 @@ function FormulaireBesoin({
 
       {!position && (
         <InfoBanner variante="alerte" titre="Position GPS indisponible">
-          Votre position n’a pas pu être lue : le besoin sera publié depuis le Plateau. Indiquez la
-          commune et le quartier pour que les artisans vous situent correctement.
+          Votre position n’a pas pu être lue : la localisation est nécessaire pour publier (les
+          artisans sont triés par proximité). Autorisez la localisation puis réessayez — indiquez
+          aussi la commune et le quartier pour qu’ils vous situent correctement.
         </InfoBanner>
       )}
 

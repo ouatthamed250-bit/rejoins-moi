@@ -64,9 +64,17 @@
 //           cache, jamais indéfiniment (voir entretenirCaches) ;
 //        c) le cache de DONNÉES d'une version passée, lui, reste supprimé sans
 //           délai : aucune réponse d'API d'une ancienne version ne resservira.
+// v11 : publication du build du 16/11 — 13 illustrations crayon (kiosque, église,
+//      mosquée, pharmacie, salon de beauté, atelier de couture, chantier, électricité,
+//      plomberie, taxi-moto, mobile money, enveloppe, hors ligne), bandeau
+//      d'installation PWA déplacé DANS LE FLUX (il recouvrait une carte de résultat
+//      sur /recherche) et état de secours des photos. L'app shell change (nouvelles
+//      empreintes JS/CSS) : sans nouveau nom de cache, un téléphone déjà installé
+//      servirait l'ancien index.html en secours, donc l'ANCIENNE app — avec la
+//      bannière qui masque une carte, exactement le défaut corrigé.
 // Changer la version est indispensable dès que les fichiers « cache d'abord »
 // (icônes) ou l'app shell changent de façon visible.
-const VERSION = 'v10';
+const VERSION = 'v11';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

@@ -244,19 +244,28 @@ export default function PhotoUploadField({
         <div className="flex flex-col gap-2">
           {value ? (
             /* Aperçu : la photo actuelle (data-URI fraîchement compressée, ou URL
-               servie par l'API quand on complète une fiche existante). */
-            <div className="overflow-hidden rounded-md border-2 border-primary/40">
+               servie par l'API quand on complète une fiche existante). Un toucher
+               sur l'aperçu rouvre la galerie pour la remplacer. */
+            <button
+              type="button"
+              onClick={() => ouvrirSelecteur('galerie')}
+              className="block w-full overflow-hidden rounded-md border-2 border-primary/40"
+            >
               <img src={value} alt={label} className="h-44 w-full bg-soft object-cover" />
-            </div>
+            </button>
           ) : (
-            <div
-              className={`flex flex-col items-center gap-1 rounded-md border-2 border-dashed px-3 py-4 text-center text-ink-muted ${
+            /* La zone elle-même reste cliquable : elle ouvre la GALERIE par défaut
+               (les deux boutons en dessous servent à choisir l'appareil photo). */
+            <button
+              type="button"
+              onClick={() => ouvrirSelecteur('galerie')}
+              className={`flex w-full flex-col items-center gap-1 rounded-md border-2 border-dashed px-3 py-4 text-center text-ink-muted ${
                 message ? 'border-danger' : 'border-line'
               }`}
             >
               <Icon name="camera" size={26} className="text-primary" />
               <span className="text-xs">JPEG/PNG — compressée automatiquement sous 300 Ko</span>
-            </div>
+            </button>
           )}
 
           {/* Deux chemins EXPLICITES : la galerie (aucun `capture`) et l'appareil

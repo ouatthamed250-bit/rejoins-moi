@@ -39,7 +39,7 @@ router.get(
     const { type, deGarde, q, limit = 50 } = req.query;
     const coords = parseCoords(req.query);
 
-    const filtre = {};
+    const filtre = { test: { $ne: true } };
     if (type === 'pharmacie' || type === 'clinique') filtre.type = type;
     if (deGarde === 'true') filtre.deGarde = true;
     if (deGarde === 'false') filtre.deGarde = false;

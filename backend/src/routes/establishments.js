@@ -393,7 +393,7 @@ router.get(
 
     // 2) Filtre réellement compté. Le rayon n'est plus appliqué en JS après coup :
     //    il devient une contrainte géographique traitée par l'index 2dsphere.
-    const filtreCompte = { ...filtre };
+    const filtreCompte = { ...filtre, test: { $ne: true } };
     if (coords && radiusKm) {
       filtreCompte.position = {
         $geoWithin: { $centerSphere: [[coords.lng, coords.lat], radiusKm / RAYON_TERRE_KM] },

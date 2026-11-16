@@ -63,6 +63,13 @@ const establishmentSchema = new mongoose.Schema(
     photoDevanture: { type: String, trim: true, default: '' },
     photoVendeur: { type: String, trim: true, default: '' },
 
+    // CE QUE L'ON TESTE EN AMBIENTE D'ÉVALUATION (bloc d'audit préventif).
+    // Un compte ou une fiche marquée `test: true` est automatiquement exclue
+    // des réponses aux requêtes publiques (routes GET des routes ci-dessous) :
+    // elle ne sera visible QUE dans l'espace d'administration (back-office).
+    // Valeur par défaut false : aucun changement pour les documents existants.
+    test: { type: Boolean, default: false, index: true },
+
     // Tags produits/services choisis en bulles cliquables, minimum 3 (§5).
     //
     // EXCEPTION (30/09) — fiches importées de la base publique (data.gouv.ci/OSM) :

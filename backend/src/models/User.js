@@ -79,6 +79,13 @@ const userSchema = new mongoose.Schema(
     // attribuable via les routes publiques d'inscription.
     estAdmin: { type: Boolean, default: false, index: true },
 
+    // CE QUE L'ON TESTE EN AMBIENTE D'ÉVALUATION (bloc d'audit préventif).
+    // Un compte ou une fiche marquée `test: true` est automatiquement exclue
+    // des réponses aux requêtes publiques (routes GET des routes ci-dessous) :
+    // elle ne sera visible QUE dans l'espace d'administration (back-office).
+    // Valeur par défaut false : aucun changement pour les documents existants.
+    test: { type: Boolean, default: false, index: true },
+
     // Volet main-d'œuvre : métier déclaré par l'ouvrier/artisan
     metier: { type: String, trim: true, default: '' },
     bio: { type: String, trim: true, maxlength: 400, default: '' },

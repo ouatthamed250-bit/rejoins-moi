@@ -95,7 +95,7 @@ router.get(
     const { metier, q, urgence, segment, statut = 'ouvert', limit = 40, typeAnnonce } = req.query;
     const coords = parseCoords(req.query);
 
-    const filtre = {};
+    const filtre = { test: { $ne: true } };
     if (statut && statut !== 'tous') filtre.statut = statut;
     if (metier && metier !== 'tous') filtre.metier = new RegExp(`^${escapeRegex(String(metier))}$`, 'i');
     if (segment === 'journalier' || segment === 'specialise') filtre.segment = segment;

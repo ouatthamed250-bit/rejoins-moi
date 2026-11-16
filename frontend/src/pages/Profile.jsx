@@ -17,6 +17,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import EmptyState from '../components/EmptyState.jsx';
 import InfoBanner from '../components/InfoBanner.jsx';
 import AbonnementArtisan from '../components/AbonnementArtisan.jsx';
+import PhotoUploadField from '../components/PhotoUploadField.jsx';
 import { Icon } from '../components/Icons.jsx';
 import { api } from '../utils/api/client.js';
 import { useAuth } from '../hooks/useAuth.js';
@@ -25,6 +26,10 @@ import { METIERS, ETABLISSEMENTS_DEMO } from '../data/demoData.js';
 import { TEXTE_DONNEES, LIEN_DONNEES } from '../config/legal.js';
 
 const FORMULAIRE_VIDE = {
+  // Photo de profil (ajout du 16/11) : elle était affichée depuis le début
+  // (en-tête de /profil, barre du haut, annuaire des artisans) mais AUCUN écran
+  // ne permettait de la choisir — l'avatar restait donc toujours aux initiales.
+  photoProfil: '',
   prenom: '',
   nom: '',
   metier: '',
@@ -48,6 +53,7 @@ export default function Profile() {
   useEffect(() => {
     if (!profil) return;
     setFormulaire({
+      photoProfil: profil.photoProfil || '',
       prenom: profil.prenom || '',
       nom: profil.nom || '',
       metier: profil.metier || '',
@@ -84,7 +90,10 @@ export default function Profile() {
     evt.preventDefault();
     setMessage('');
     try {
-      await mettreAJourProfil(formulaire);
+      // `photoProfil` part avec le reste du formulaire : PATCH /users/me le contrôle
+      // (data-URI JPEG ≤ 300 Ko ou URL http(s)) et renvoie le profil à jour, que
+      // AuthContext mémorise — l'avatar change donc sans rechargement.
+      await mettreAJourProfil({ ...formulaire, photoProfil: formulaire.photoProfil || '' });
       setEdition(false);
       setMessage('Profil mis à jour.');
     } catch (err) {
@@ -190,6 +199,18 @@ export default function Profile() {
 
       {edition && (
         <form onSubmit={enregistrer} className="carte mt-3 flex flex-col gap-3 p-4">
+          {/* Photo de profil : AVANT l'identité, parce que c'est la première chose
+              que voient les clients (avis, annuaire, barre du haut). Facultative et
+              compressée sous 300 Ko par PhotoUploadField (plafond serveur identique). */}
+          <PhotoUploadField
+            label="Ma photo de profil"
+            indication="Elle apparaît sur vos avis et dans l’annuaire. Facultative."
+            value={formulaire.photoProfil || ''}
+            onChange={(dataUri) => setFormulaire((prec) => ({ ...prec, photoProfil: dataUri }))}
+            requis={false}
+            libellePlusTard="Ajouter plus tard"
+          />
+
           <div className="grid grid-cols-2 gap-2">
             <label className="block">
               <span className="mb-1 block text-xs font-bold text-ink">Prénom</span>

@@ -8,8 +8,16 @@
 // de l'upload ; la photo pourra être ajoutée depuis la fiche, par le gérant.
 //
 // Décisions techniques pour le terrain :
-//  - `capture="environment"` : sur Android, ouvre directement l'appareil photo
-//    arrière (le gérant prend sa devanture sur place pendant la tournée terrain).
+//  - DEUX chemins explicites (correctif du 16/11) : « Choisir dans la galerie »
+//    (AUCUN `capture`, donc le sélecteur de fichiers / la pellicule) et « Prendre
+//    une photo » (`capture="environment"`, appareil photo arrière sur Android).
+//    Avant, un `capture="environment"` écrit en dur supprimait le choix de la
+//    galerie sur une partie des Android, alors que le champ promettait les deux :
+//    impossible de choisir une photo déjà prise pendant la tournée terrain.
+//  - HEIC / HEIF (iPhone) : le canvas ne sait pas les décoder. On l'annonce AVANT
+//    toute tentative, avec la marche à suivre (partager en JPEG), au lieu d'un
+//    « fichier illisible » incompréhensible. Aucune bibliothèque HEIC embarquée :
+//    elle pèserait plus lourd que tout l'écran d'inscription.
 //  - Compression côté navigateur AVANT envoi : cible 1000 px de large et JPEG 0,72,
 //    puis on DESCEND par paliers (qualité, puis dimensions) jusqu'à passer sous
 //    les 300 Ko (bloc F du 12/10). Une photo de smartphone pèse 3-5 Mo : compressée
@@ -40,6 +48,24 @@ export function poidsDataUriOctets(dataUri) {
   const separateur = v.indexOf(',');
   if (separateur === -1) return 0;
   return Math.floor(((v.length - separateur - 1) * 3) / 4);
+}
+
+/**
+ * Message affiché pour une photo HEIC/HEIF (iPhone) : le canvas ne la décode pas.
+ * Le texte dit quoi faire — un refus sans marche à suivre laisse l'utilisateur bloqué.
+ */
+export const MESSAGE_HEIC =
+  'Les photos HEIC (iPhone) ne sont pas encore supportées. Dans Photos, partagez la photo en JPEG d’abord.';
+
+/**
+ * Vrai si le fichier choisi est un HEIC/HEIF.
+ * On regarde l'extension ET le type MIME : selon le navigateur, l'un des deux
+ * manque (`image/heic`, `image/heif`, `photo.HEIC`, parfois type vide).
+ */
+export function estPhotoHeic(fichier) {
+  const nom = String(fichier?.name || '').toLowerCase();
+  const type = String(fichier?.type || '').toLowerCase();
+  return /\.(heic|heif)$/.test(nom) || type === 'image/heic' || type === 'image/heif';
 }
 
 /** Redimensionne puis encode l'image en JPEG à la taille et à la qualité demandées. */
@@ -126,11 +152,26 @@ export default function PhotoUploadField({
   // Le champ a été volontairement reporté : on ne montre plus l'énorme zone
   // d'upload, juste un rappel discret et un moyen de revenir en arrière.
   const [reporte, setReporte] = useState(false);
+  // Chemin choisi par l'utilisateur : 'galerie' (sélecteur de fichiers) ou
+  // 'camera' (appareil photo, via `capture="environment"`). Par défaut la galerie.
+  const [modeCapture, setModeCapture] = useState('galerie');
 
   async function gererFichier(evt) {
     const fichier = evt.target.files?.[0];
     if (!fichier) return;
     setErreurLocale('');
+
+    // ── HEIC / HEIF (iPhone) : refus EXPLICITE, documenté, sans décodage ──
+    // Le canvas ne décode pas ces fichiers : on ne tente donc RIEN (aucune
+    // bibliothèque HEIC embarquée). Sans ce garde-fou, l'utilisateur recevait
+    // « Fichier image illisible » et ne savait pas quoi faire.
+    if (estPhotoHeic(fichier)) {
+      setErreurLocale(MESSAGE_HEIC);
+      setEnCours(false);
+      if (champ.current) champ.current.value = '';
+      return;
+    }
+
     setEnCours(true);
     try {
       if (!fichier.type.startsWith('image/')) throw new Error('Choisissez une image (photo).');
@@ -144,6 +185,24 @@ export default function PhotoUploadField({
       // Permet de re-sélectionner le même fichier après une erreur.
       if (champ.current) champ.current.value = '';
     }
+  }
+
+  /**
+   * Ouvre le sélecteur de fichiers dans le chemin demandé.
+   *
+   * L'attribut `capture` est posé IMPÉRATIVEMENT et AVANT le clic : React applique
+   * `modeCapture` au rendu suivant, alors que le navigateur lit `capture` au moment
+   * exact du clic. Sans ce réglage synchrone, « Prendre une photo » pouvait ouvrir la
+   * galerie (et inversement) selon le timing du rendu.
+   */
+  function ouvrirSelecteur(mode) {
+    setModeCapture(mode);
+    setErreurLocale('');
+    const el = champ.current;
+    if (!el) return;
+    if (mode === 'camera') el.setAttribute('capture', 'environment');
+    else el.removeAttribute('capture');
+    el.click();
   }
 
   const message = erreur || erreurLocale;
@@ -182,32 +241,51 @@ export default function PhotoUploadField({
           </button>
         </div>
       ) : (
-        <button
-          type="button"
-          onClick={() => champ.current?.click()}
-          className={`relative flex w-full items-center justify-center overflow-hidden rounded-md border-2 border-dashed transition ${
-            value ? 'border-primary/40' : 'border-line hover:border-primary/60'
-          } ${message ? 'border-danger' : ''}`}
-          style={{ minHeight: 168 }}
-        >
+        <div className="flex flex-col gap-2">
           {value ? (
-            <>
-              <img src={value} alt={label} className="h-44 w-full object-cover" />
-              <span className="absolute bottom-2 right-2 rounded-full bg-black/60 px-3 py-1 text-xs font-semibold text-white">
-                Remplacer
-              </span>
-            </>
+            /* Aperçu : la photo actuelle (data-URI fraîchement compressée, ou URL
+               servie par l'API quand on complète une fiche existante). */
+            <div className="overflow-hidden rounded-md border-2 border-primary/40">
+              <img src={value} alt={label} className="h-44 w-full bg-soft object-cover" />
+            </div>
           ) : (
-            <span className="flex flex-col items-center gap-2 py-8 text-ink-muted">
-              <Icon name="camera" size={28} className="text-primary" />
-              <span className="text-sm font-semibold">
-                {enCours ? 'Traitement de la photo…' : 'Prendre une photo ou en choisir une'}
-              </span>
+            <div
+              className={`flex flex-col items-center gap-1 rounded-md border-2 border-dashed px-3 py-4 text-center text-ink-muted ${
+                message ? 'border-danger' : 'border-line'
+              }`}
+            >
+              <Icon name="camera" size={26} className="text-primary" />
               <span className="text-xs">JPEG/PNG — compressée automatiquement sous 300 Ko</span>
-            </span>
+            </div>
           )}
-          {enCours && <span className="absolute inset-0 animate-pulse bg-white/70" />}
-        </button>
+
+          {/* Deux chemins EXPLICITES : la galerie (aucun `capture`) et l'appareil
+              photo (`capture="environment"`). Avant, `capture` était en dur : sur une
+              partie des Android, le choix de la galerie disparaissait. */}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              disabled={enCours}
+              onClick={() => ouvrirSelecteur('galerie')}
+              className="btn-ghost px-2 py-2 text-xs disabled:opacity-60"
+            >
+              <Icon name="image" size={16} />
+              Choisir dans la galerie
+            </button>
+            <button
+              type="button"
+              disabled={enCours}
+              onClick={() => ouvrirSelecteur('camera')}
+              className="btn-ghost px-2 py-2 text-xs disabled:opacity-60"
+            >
+              <Icon name="camera" size={16} />
+              Prendre une photo
+            </button>
+          </div>
+          {enCours && (
+            <p className="text-center text-xs font-semibold text-ink-muted">Traitement de la photo…</p>
+          )}
+        </div>
       )}
 
       {!value && !reporte && libellePlusTard && (
@@ -228,11 +306,15 @@ export default function PhotoUploadField({
 
       {message && <p className="mt-1 text-xs font-semibold text-danger">{message}</p>}
 
+      {/* `capture` n'est posé QUE pour le chemin « Prendre une photo » : c'est lui
+          qui supprimait le choix de la galerie sur Android quand il était en dur.
+          L'attribut est aussi posé/retiré à la main dans ouvrirSelecteur(), juste
+          avant le clic (le rendu React arrive après). */}
       <input
         ref={champ}
         type="file"
         accept="image/*"
-        capture="environment"
+        capture={modeCapture === 'camera' ? 'environment' : undefined}
         className="hidden"
         onChange={gererFichier}
       />

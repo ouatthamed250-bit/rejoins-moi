@@ -24,6 +24,7 @@ import EmptyState from '../components/EmptyState.jsx';
 import BarreActionFixe from '../components/BarreActionFixe.jsx';
 import InfoBanner from '../components/InfoBanner.jsx';
 import PhotoSecours from '../components/PhotoSecours.jsx';
+import PhotoUploadField from '../components/PhotoUploadField.jsx';
 import StarRating from '../components/StarRating.jsx';
 import TagBadge from '../components/TagBadge.jsx';
 import { CompteursSepares } from '../components/EstablishmentCard.jsx';
@@ -63,6 +64,17 @@ export default function EstablishmentProfile() {
   const [note, setNote] = useState(0);
   const [commentaire, setCommentaire] = useState('');
   const [envoi, setEnvoi] = useState(false);
+
+  // ── Édition des photos par le gérant (ajout du 16/11) ──
+  // Jusqu'ici, les seules photos envoyables l'étaient à la CRÉATION de la fiche :
+  // une fiche publiée sans photo (ou avec une photo floue) ne pouvait plus jamais
+  // être complétée depuis l'application, alors que le serveur l'autorise
+  // (PATCH /api/establishments/:id, réservé au gérant propriétaire).
+  const [editionPhotos, setEditionPhotos] = useState(false);
+  const [photoDevantureEdition, setPhotoDevantureEdition] = useState('');
+  const [photoVendeurEdition, setPhotoVendeurEdition] = useState('');
+  const [enregistrementPhotos, setEnregistrementPhotos] = useState(false);
+  const [erreurPhotos, setErreurPhotos] = useState('');
 
   // ── État de secours des PHOTOS (correctif du 16/11) ──
   // Une URL de photo morte (fichier effacé, ancien hébergement) affichait un cadre
@@ -156,6 +168,20 @@ export default function EstablishmentProfile() {
     [etablissement, position.position]
   );
   const estFavori = favoris.includes(String(etablissement?.id));
+  // ── Propriétaire de la fiche ? ──
+  // Le serveur autorise PATCH /establishments/:id si `createdByUserId` correspond
+  // OU si `user.etablissementId` correspond à la fiche (routes/establishments.js).
+  // `createdByUserId` n'est pas publié dans la fiche (toCardJSON), mais
+  // `etablissementId` l'est sur le profil (User.toPublicJSON) : c'est donc le SEUL
+  // critère vérifiable côté application. Il est renseigné à la création de la fiche
+  // comme à la reprise d'une fiche importée (POST /:id/reclamer), et AuthContext le
+  // relit juste après ces deux actions (rafraichirProfil).
+  const estProprietaire = Boolean(
+    connecte &&
+      !horsLigne &&
+      profil?.etablissementId &&
+      String(profil.etablissementId) === String(etablissement?.id)
+  );
   const texteBouton =
     etablissement?.texteBoutonAction || (etablissement ? `Aller chez ${etablissement.nom}` : '');
 
@@ -206,6 +232,58 @@ export default function EstablishmentProfile() {
       texte: textePartageFiche(etablissement),
       url: urlPartageFiche(etablissement.id || etablissement._id),
     });
+  }
+
+  /** Ouvre le panneau d'édition des photos, pré-rempli avec ce qui est affiché. */
+  function ouvrirEditionPhotos() {
+    setPhotoDevantureEdition(urlDevanture);
+    setPhotoVendeurEdition(urlVendeur);
+    setErreurPhotos('');
+    setEditionPhotos(true);
+  }
+
+  /**
+   * Enregistre les photos de la fiche (gérant propriétaire uniquement).
+   *
+   * On n'envoie QUE les champs réellement modifiés. C'est volontaire : renvoyer
+   * `photoDevantureUrl` (l'URL que sert l'API) l'enregistrerait comme valeur de la
+   * photo, et la route binaire se redirigerait alors vers elle-même.
+   */
+  async function enregistrerPhotos(evt) {
+    evt.preventDefault();
+    if (!etablissement || !estProprietaire) return;
+    setErreurPhotos('');
+
+    const modifications = {};
+    if (photoDevantureEdition !== urlDevanture) modifications.photoDevanture = photoDevantureEdition;
+    if (photoVendeurEdition !== urlVendeur) modifications.photoVendeur = photoVendeurEdition;
+
+    if (Object.keys(modifications).length === 0) {
+      setEditionPhotos(false);
+      return;
+    }
+    if (
+      photoDevantureEdition &&
+      photoVendeurEdition &&
+      photoDevantureEdition === photoVendeurEdition
+    ) {
+      setErreurPhotos('Les deux photos doivent être différentes (devanture et vendeur/gérant).');
+      return;
+    }
+
+    setEnregistrementPhotos(true);
+    try {
+      const reponse = await api.patch(`/establishments/${etablissement.id}`, modifications);
+      if (reponse?.etablissement) {
+        setEtablissement((prec) => ({ ...(prec || {}), ...reponse.etablissement }));
+      }
+      setEditionPhotos(false);
+      setMessage('Photos mises à jour.');
+    } catch (err) {
+      setErreurPhotos(err?.message || 'Enregistrement impossible pour le moment.');
+    } finally {
+      setEnregistrementPhotos(false);
+    }
   }
 
   /** Publication d'un avis noté (§5). La note est obligatoire. */
@@ -375,12 +453,26 @@ export default function EstablishmentProfile() {
               {initiales(etablissement.nom).slice(0, 2) || 'RM'}
             </span>
           )}
-          {etablissement.verifie && (
-            <span className="mb-1 flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[10px] font-bold text-white">
-              <Icon name="verified" size={12} />
-              Profil vérifié
-            </span>
-          )}
+          <div className="mb-1 flex flex-wrap items-center justify-end gap-2">
+            {/* Réservé au gérant de CETTE fiche : aucun autre visiteur ne voit ce
+                bouton (le serveur refuserait de toute façon en 403). */}
+            {estProprietaire && (
+              <button
+                type="button"
+                className="flex items-center gap-1 rounded-full border border-line bg-white px-2.5 py-1 text-[10px] font-bold text-primary shadow-card"
+                onClick={ouvrirEditionPhotos}
+              >
+                <Icon name="camera" size={12} />
+                Modifier les photos
+              </button>
+            )}
+            {etablissement.verifie && (
+              <span className="flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[10px] font-bold text-white">
+                <Icon name="verified" size={12} />
+                Profil vérifié
+              </span>
+            )}
+          </div>
         </div>
 
         <h1 className="mt-2 text-2xl font-bold leading-tight text-ink">{etablissement.nom}</h1>
@@ -604,6 +696,76 @@ export default function EstablishmentProfile() {
           </button>
         </div>
       </BarreActionFixe>
+
+      {/* ── Panneau d'édition des photos (gérant uniquement) ──────────────────
+          Feuille du bas, dans le style des autres surcouches de l'app : elle
+          laisse voir la fiche derrière et se ferme d'un toucher à côté. */}
+      {editionPhotos && estProprietaire && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 p-3"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Modifier les photos de la fiche"
+          onClick={() => {
+            if (!enregistrementPhotos) setEditionPhotos(false);
+          }}
+        >
+          <form
+            onSubmit={enregistrerPhotos}
+            className="carte max-h-[90vh] w-full max-w-[480px] overflow-y-auto p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-sm font-bold text-ink">Photos de la fiche</p>
+              <button
+                type="button"
+                className="text-xs font-semibold text-ink-muted underline"
+                disabled={enregistrementPhotos}
+                onClick={() => setEditionPhotos(false)}
+              >
+                Fermer
+              </button>
+            </div>
+            <p className="mb-3 text-[11px] leading-snug text-ink-muted">
+              Ces photos apparaissent en haut de votre fiche et sur les cartes du fil. Laissez une photo telle
+              quelle pour ne pas la modifier ; « Retirer » la supprime.
+            </p>
+
+            <div className="flex flex-col gap-4">
+              <PhotoUploadField
+                label="Photo de la devanture"
+                indication="Le local vu de la rue, bien éclairé, sans personne devant."
+                value={photoDevantureEdition}
+                onChange={setPhotoDevantureEdition}
+                requis={false}
+              />
+              <PhotoUploadField
+                label="Photo du vendeur / gérant"
+                indication="La personne qui tient le commerce. Photo différente de la devanture."
+                value={photoVendeurEdition}
+                onChange={setPhotoVendeurEdition}
+                requis={false}
+              />
+            </div>
+
+            {erreurPhotos && <p className="mt-2 text-xs font-semibold text-danger">{erreurPhotos}</p>}
+
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                className="btn-ghost flex-1"
+                disabled={enregistrementPhotos}
+                onClick={() => setEditionPhotos(false)}
+              >
+                Annuler
+              </button>
+              <button type="submit" className="bouton-principal flex-[2]" disabled={enregistrementPhotos}>
+                {enregistrementPhotos ? 'Enregistrement…' : 'Enregistrer les photos'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

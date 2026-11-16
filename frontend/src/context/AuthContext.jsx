@@ -141,6 +141,24 @@ export function AuthProvider({ children }) {
   );
 
   /**
+   * Relit le profil depuis le serveur (`GET /users/me`) et le mémorise.
+   *
+   * Utile quand le SERVEUR modifie le compte sans que le client le sache :
+   * créer une fiche ou reprendre une fiche importée renseigne `etablissementId`
+   * (routes/establishments.js, POST / et POST /:id/reclamer), qui est le critère
+   * d'autorisation des mises à jour de la fiche — dont les PHOTOS. Sans cette
+   * relecture, le gérant qui vient de publier sa fiche ne verrait pas le bouton
+   * « Modifier les photos » avant de recharger l'application.
+   */
+  const rafraichirProfil = useCallback(async () => {
+    if (!getToken()) return null;
+    const donnees = await api.get('/users/me');
+    memoriser(donnees.user);
+    setHistorique(donnees.historique || []);
+    return donnees.user;
+  }, [memoriser]);
+
+  /**
    * Enregistre une interaction (vue, recherche, clic...) pour nourrir
    * l'apprentissage progressif du feed (§3). En mode démo, on alimente uniquement
    * l'état local : le classement reste cohérent pendant la session.
@@ -196,6 +214,7 @@ export function AuthProvider({ children }) {
       inscription,
       deconnexion,
       mettreAJourProfil,
+      rafraichirProfil,
       ajouterInteraction,
       basculerFavori,
     }),
@@ -212,6 +231,7 @@ export function AuthProvider({ children }) {
       inscription,
       deconnexion,
       mettreAJourProfil,
+      rafraichirProfil,
       ajouterInteraction,
       basculerFavori,
     ]

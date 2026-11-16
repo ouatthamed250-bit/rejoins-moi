@@ -79,7 +79,7 @@ const ROLES_SIMPLE = [
 
 export default function RegisterEstablishment() {
   const navigate = useNavigate();
-  const { connecte, estDemo, profil, inscription, mettreAJourProfil } = useAuth();
+  const { connecte, estDemo, profil, inscription, mettreAJourProfil, rafraichirProfil } = useAuth();
   const position = useGeolocation();
 
   // null = la question d'entrée n'a pas encore de réponse : c'est le PREMIER
@@ -115,6 +115,10 @@ export default function RegisterEstablishment() {
   const [nomPersonne, setNomPersonne] = useState('');
   const [telephoneCompte, setTelephoneCompte] = useState('');
   const [motDePasse, setMotDePasse] = useState('');
+  // Photo de profil du compte créé (facultative, ajout du 16/11) : elle est
+  // envoyée avec l'inscription, donc AUCUN écran ne la demandait jusqu'ici alors
+  // qu'elle s'affiche sur les avis et dans l'annuaire des artisans.
+  const [photoProfil, setPhotoProfil] = useState('');
   const [erreur, setErreur] = useState('');
   const [enCours, setEnCours] = useState(false);
 
@@ -169,6 +173,10 @@ export default function RegisterEstablishment() {
         lng: coords?.lng,
       });
       if (reponse?.statut === 'acceptee') {
+        // Le serveur vient de rattacher la fiche au compte (`etablissementId`) :
+        // on relit le profil pour que la fiche propose tout de suite l'édition
+        // des photos, sans recharger l'application.
+        await rafraichirProfil().catch(() => {});
         navigate(`/etablissement/${candidat.id}`, { replace: true });
         return;
       }
@@ -292,6 +300,7 @@ export default function RegisterEstablishment() {
           nom: nomPersonne.trim(),
           metier: metierSimple,
           chercheTravail: roleChoisi.chercheTravail,
+          photoProfil: photoProfil || '',
         });
       } else {
         // Compte déjà ouvert : on ne touche qu'aux capacités concernées.
@@ -321,6 +330,7 @@ export default function RegisterEstablishment() {
           motDePasse,
           prenom: prenom.trim(),
           nom: nomPersonne.trim(),
+          photoProfil: photoProfil || '',
         });
       }
       const reponse = await api.post('/establishments', {
@@ -339,6 +349,10 @@ export default function RegisterEstablishment() {
         texteBoutonAction: texteBoutonAction.trim() || `Aller chez ${nom.trim()}`,
       });
       const id = reponse?.etablissement?.id;
+      // Créer une fiche renseigne `user.etablissementId` CÔTÉ SERVEUR : on relit le
+      // profil, sinon la fiche s'ouvrirait sans le bouton « Modifier les photos »
+      // jusqu'au prochain chargement de l'application.
+      await rafraichirProfil().catch(() => {});
       navigate(id ? `/etablissement/${id}` : '/', { replace: true });
     } catch (err) {
       setErreur(err?.message || 'Inscription impossible pour le moment. Réessayez dans quelques instants.');
@@ -733,6 +747,17 @@ export default function RegisterEstablishment() {
             />
           </label>
 
+          {/* Photo de profil : facultative. Elle part AVEC l'inscription (une seule
+              requête), donc elle n'exige pas de reconnecter le compte ensuite. */}
+          <PhotoUploadField
+            label="Ma photo de profil (facultatif)"
+            indication="Elle apparaît sur vos avis et dans l’annuaire. Vous pourrez la changer depuis votre profil."
+            value={photoProfil}
+            onChange={setPhotoProfil}
+            requis={false}
+            libellePlusTard="Ajouter plus tard"
+          />
+
           <p className="text-[11px] leading-snug text-ink-muted">
             Un seul compte pour tout : chercher du travail, publier une offre, proposer vos services. Votre numéro sert
             d’identifiant et n’est jamais publié sans votre accord.
@@ -882,6 +907,19 @@ export default function RegisterEstablishment() {
                 className="w-full rounded-md border border-line px-3 py-3 text-sm outline-none focus:border-primary"
               />
             </label>
+          </div>
+
+          {/* Photo de profil du compte, AVANT l'envoi de la fiche : même requête
+              d'inscription, donc rien à reprendre après coup. Facultative. */}
+          <div className="mt-3">
+            <PhotoUploadField
+              label="Ma photo de profil (facultatif)"
+              indication="Elle apparaît sur vos avis et dans l’annuaire des artisans."
+              value={photoProfil}
+              onChange={setPhotoProfil}
+              requis={false}
+              libellePlusTard="Ajouter plus tard"
+            />
           </div>
         </section>
       )}

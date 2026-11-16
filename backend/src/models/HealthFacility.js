@@ -46,6 +46,20 @@ const healthFacilitySchema = new mongoose.Schema(
     codeAccesHash: { type: String, select: false },
 
     verifie: { type: Boolean, default: false },
+
+    // CE QUE L'ON TESTE EN AMBIENTE D'ÉVALUATION (bloc d'audit préventif).
+    // Un établissement de santé marqué `test: true` est automatiquement exclu des
+    // réponses aux requêtes publiques : il ne sera visible QUE dans l'espace
+    // d'administration. Ce champ n'est NI une note NI un avis : il ne contrevient
+    // donc pas à la contrainte de conformité décrite en tête de fichier (§6/§7).
+    //
+    // POURQUOI CE CHAMP DOIT ÊTRE DÉCLARÉ : `mongoose.set('strictQuery', true)` est
+    // actif (config/db.js). Mongoose supprime alors SILENCIEUSEMENT tout chemin de
+    // filtre absent du schéma — sans cette ligne, le filtre `{ test: { $ne: true } }`
+    // de GET /api/health-facilities était effacé.
+    // Valeur par défaut false : aucun changement pour les documents existants.
+    test: { type: Boolean, default: false, index: true },
+
     createdByUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true, strict: true }

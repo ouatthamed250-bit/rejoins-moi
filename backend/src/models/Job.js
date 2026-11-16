@@ -74,6 +74,17 @@ const jobSchema = new mongoose.Schema(
     premierContactGratuit: { type: Boolean, default: false },
 
     vues: { type: Number, default: 0, min: 0 },
+
+    // CE QUE L'ON TESTE EN AMBIENTE D'ÉVALUATION (bloc d'audit préventif).
+    // Une annonce marquée `test: true` est automatiquement exclue des réponses aux
+    // requêtes publiques : elle ne sera visible QUE dans l'espace d'administration.
+    //
+    // POURQUOI CE CHAMP DOIT ÊTRE DÉCLARÉ : `mongoose.set('strictQuery', true)` est
+    // actif (config/db.js). Mongoose supprime alors SILENCIEUSEMENT tout chemin de
+    // filtre absent du schéma — sans cette ligne, le filtre `{ test: { $ne: true } }`
+    // de GET /api/jobs était effacé et les annonces d'essai restaient publiques.
+    // Valeur par défaut false : aucun changement pour les documents existants.
+    test: { type: Boolean, default: false, index: true },
   },
   { timestamps: true }
 );

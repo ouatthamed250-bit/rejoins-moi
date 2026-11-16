@@ -15,6 +15,15 @@
  *     quelle. Le serveur reste seul juge du paiement (règle de sécurité du projet).
  */
 
+// v14 : horaires structurés (16/11) — la fiche porte une pastille « Ouvert /
+//       Fermé » calculée à l'heure présente, et l'inscription remplace le champ
+//       libre « Horaires » par un éditeur de sept jours. L'app shell change :
+//       nouvelle empreinte statutHoraire-*.js, EstablishmentProfile et
+//       RegisterEstablishment réécrits. Sans nouveau nom de cache, un téléphone
+//       déjà installé servirait l'ancien index.html en secours, donc l'ANCIENNE
+//       app — sans pastille et avec l'ancien champ de saisie.
+//
+
 // v13 : barre « Retour / Suivant » de l'inscription et bouton « + » de la
 //       navigation : la barre tranchait le bouton surélevé (elles semblaient se
 //       superposer). Nouveau CSS + nouveau JS : l'app shell change, donc nouveau
@@ -86,7 +95,7 @@
 //      bannière qui masque une carte, exactement le défaut corrigé.
 // Changer la version est indispensable dès que les fichiers « cache d'abord »
 // (icônes) ou l'app shell changent de façon visible.
-const VERSION = 'v13';
+const VERSION = 'v14';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

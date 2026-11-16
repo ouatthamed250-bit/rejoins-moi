@@ -50,12 +50,33 @@
 //      JS/CSS) : sans nouveau nom de cache, un téléphone déjà installé servirait
 //      l'ancien index.html en secours, donc l'ANCIENNE app — avec la barre qui
 //      flotte avec un interstice, exactement le bug corrigé.
+// v10 : publication du build du 17/10 — correctif d'accessibilité (le zoom du
+//      navigateur n'est plus bloqué par `maximum-scale` / `user-scalable=no`) et
+//      nouvelles empreintes JS/CSS. Trois changements, sans effet sur la logique
+//      métier :
+//        a) `install` précharge désormais les JS/CSS réellement cités par
+//           index.html (lus dans la page, jamais devinés) : la coquille hors
+//           ligne est complète dès l'installation, et non plus au 2e chargement ;
+//        b) le cache applicatif de la génération précédente survit 24 h après
+//           l'activation : un onglet resté ouvert peut encore demander un chunk
+//           de l'ancienne version (chargé à la demande) sans recevoir le 404 de
+//           GitHub Pages. Ensuite il est supprimé — jamais plus d'un ancien
+//           cache, jamais indéfiniment (voir entretenirCaches) ;
+//        c) le cache de DONNÉES d'une version passée, lui, reste supprimé sans
+//           délai : aucune réponse d'API d'une ancienne version ne resservira.
 // Changer la version est indispensable dès que les fichiers « cache d'abord »
 // (icônes) ou l'app shell changent de façon visible.
-const VERSION = 'v9';
+const VERSION = 'v10';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];
+
+/* Entretien des caches : petits marqueurs de date, jamais servis à une page. Ce
+ * cache n'est volontairement PAS versionné : il doit survivre aux publications
+ * pour que la fenêtre de grâce d'un ancien cache puisse expirer normalement. */
+const CACHE_ENTRETIEN = 'rejoinsmoi-entretien';
+const DUREE_GRACE_ANCIEN_CACHE = 24 * 60 * 60 * 1000; // 24 h
+const ANCIENS_CACHES_APP_MAX = 1;
 
 /* Base d'installation, déduite de l'emplacement du worker lui-même :
  *  - « / » si l'app est à la racine d'un domaine (Vercel, Netlify) ;
@@ -74,6 +95,15 @@ const APP_SHELL = [
   `${BASE_APPLICATION}icons/apple-touch-icon-180.png`,
 ];
 
+/* URL absolue de la page de démarrage : clé unique de la copie hors ligne. */
+const URL_INDEX = new URL(`${BASE_APPLICATION}index.html`, self.location.origin).href;
+
+/* Références JS/CSS lues dans index.html (`src="…"`, `href="…"`).
+ * Volontairement limité à .js et .css : ni images, ni données, ni URL externes.
+ * Seules les ressources du premier écran sont préchargées, et seulement si la
+ * page les cite vraiment — aucun nom de fichier n'est écrit à la main. */
+const MOTIF_RESSOURCES_INDEX = /(?:src|href)\s*=\s*["']([^"'#?\s]+\.(?:js|css))["']/gi;
+
 /* Zones interdites au cache : on ne touche même pas à la requête. */
 const CHEMINS_SENSIBLES = [
   /^\/api\/subscriptions/, // formules, souscrire, résilier, webhook CinetPay
@@ -90,6 +120,64 @@ const HOTES_PAIEMENT = ['cinetpay.com', 'cinetpay.net', 'paytech'];
 /** Nombre d'entrées maximum gardées dans le cache de données (téléphone modeste). */
 const MAX_ENTREES_DONNEES = 60;
 
+/* ─────────────────────── Préchargement de l'app shell ─────────────────────── */
+
+/** Vrai si l'URL est de même origine, dans l'app, et hors zone sensible. */
+function estRessourceDeLApplication(url) {
+  return (
+    url.origin === self.location.origin &&
+    url.pathname.startsWith(BASE_APPLICATION) &&
+    !CHEMINS_SENSIBLES.some((motif) => motif.test(url.pathname))
+  );
+}
+
+/**
+ * Précharge les fichiers JS/CSS que index.html réclame réellement.
+ *
+ * Pourquoi : APP_SHELL ne peut pas les lister (leur nom porte une empreinte qui
+ * change à chaque build). Sans ce préchargement, la coquille mise en cache à
+ * l'installation contient un index.html qui réclame des fichiers absents du
+ * cache : une ouverture hors ligne juste après l'installation afficherait une
+ * page sans style ni script. On lit donc la page déjà mise en cache (ou, à
+ * défaut, le réseau) et on ajoute ce qu'elle cite — sans jamais inventer de nom.
+ *
+ * Ne lève jamais : une ressource secondaire absente ne bloque pas l'installation.
+ */
+async function precargerRessourcesIndex(cache) {
+  try {
+    let html = '';
+    const enCache = await cache.match(URL_INDEX);
+    if (enCache) {
+      html = await enCache.text();
+    } else {
+      const reponse = await fetch(new Request(URL_INDEX, { cache: 'reload' }));
+      if (reponse && reponse.ok) html = await reponse.text();
+    }
+    if (!html) return;
+
+    const urls = new Set();
+    const motif = new RegExp(MOTIF_RESSOURCES_INDEX.source, 'gi');
+    let trouve = motif.exec(html);
+    while (trouve) {
+      try {
+        const url = new URL(trouve[1], URL_INDEX);
+        if (estRessourceDeLApplication(url)) urls.add(url.href);
+      } catch {
+        /* référence illisible : ignorée */
+      }
+      trouve = motif.exec(html);
+    }
+
+    await Promise.all(
+      [...urls].map((url) =>
+        cache.add(new Request(url, { cache: 'reload' })).catch(() => null)
+      )
+    );
+  } catch {
+    /* page illisible : on garde la coquille minimale décrite par APP_SHELL */
+  }
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
@@ -101,20 +189,119 @@ self.addEventListener('install', (event) => {
           cache.add(new Request(url, { cache: 'reload' })).catch(() => null)
         )
       );
+      // Les JS/CSS de la page : le cache v10 est complet AVANT de prendre la main,
+      // ce qui évite la page blanche hors ligne juste après une mise à jour.
+      await precargerRessourcesIndex(cache);
+      // Aucune interface de mise à jour dans l'app : on prend la main tout de
+      // suite. Le risque pour un onglet resté ouvert est traité par la fenêtre de
+      // grâce d'un jour sur l'ancien cache (voir entretenirCaches).
       await self.skipWaiting();
     })()
   );
 });
 
+/* ─────────────────────────── Entretien des caches ─────────────────────────── */
+
+/** Clé du marqueur d'échéance d'un ancien cache applicatif (jamais servie). */
+function cleMarqueur(nom) {
+  return new Request(
+    new URL(`${BASE_APPLICATION}__entretien/${encodeURIComponent(nom)}`, self.location.origin).href
+  );
+}
+
+/** Nom du cache porté par un marqueur. */
+function nomDuMarqueur(cle) {
+  try {
+    return decodeURIComponent(new URL(cle.url).pathname.split('/').pop() || '');
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Trie les caches `rejoinsmoi-*` à chaque activation :
+ *
+ *  - caches ACTUELS (v10) et cache d'entretien : jamais touchés ;
+ *  - cache de DONNÉES d'une version passée : supprimé immédiatement — aucune
+ *    réponse d'API d'une ancienne version ne doit resservir ;
+ *  - cache APPLICATIF de la version précédente : conservé DUREE_GRACE_ANCIEN_CACHE
+ *    (24 h) à compter de la première activation qui le voit comme « ancien ».
+ *    C'est ce qui permet à un onglet encore ouvert de charger un chunk de
+ *    l'ancienne version (nom haché, chargé à la demande) au lieu de recevoir un
+ *    404 de GitHub Pages. Un seul ancien cache est conservé, et seulement le
+ *    temps de la grâce : ANCIENS_CACHES_APP_MAX ;
+ *  - tout autre cache `rejoinsmoi-*` : supprimé (anciens noms, restes de tests).
+ *
+ * Les échéances sont datées dans CACHE_ENTRETIEN (petit cache non versionné) :
+ * elles expirent donc normalement même après plusieurs publications, et les
+ * marqueurs orphelins sont effacés. Aucun cache d'une autre application n'est
+ * jamais touché.
+ */
+async function entretenirCaches() {
+  const maintenant = Date.now();
+  const entretien = await caches.open(CACHE_ENTRETIEN);
+  const noms = await caches.keys();
+  const aGarder = [];
+  const aSupprimer = [];
+
+  // 1) Tout ce qui n'est pas un cache applicatif d'une version passée.
+  for (const nom of noms) {
+    if (CACHES_ACTUELS.includes(nom) || nom === CACHE_ENTRETIEN) continue;
+    if (!nom.startsWith('rejoinsmoi-')) continue; // jamais les caches d'autres apps
+    if (!nom.startsWith('rejoinsmoi-app-')) aSupprimer.push(nom);
+  }
+
+  // 2) Les caches applicatifs des versions passées.
+  const anciens = noms.filter(
+    (nom) => nom.startsWith('rejoinsmoi-app-') && !CACHES_ACTUELS.includes(nom)
+  );
+  const echeances = new Map();
+  for (const nom of anciens) {
+    const marque = await entretien.match(cleMarqueur(nom));
+    echeances.set(nom, marque ? Number(await marque.text()) : NaN);
+  }
+
+  // 2a) Ceux qui viennent d'être remplacés (pas encore de marqueur) : ce sont eux
+  //     qui peuvent encore servir un onglet ouvert. On ouvre la grâce.
+  for (const nom of anciens.filter((nom) => !Number.isFinite(echeances.get(nom)))) {
+    if (aGarder.length < ANCIENS_CACHES_APP_MAX) {
+      aGarder.push(nom);
+      await entretien.put(
+        cleMarqueur(nom),
+        new Response(String(maintenant + DUREE_GRACE_ANCIEN_CACHE))
+      );
+    } else {
+      aSupprimer.push(nom); // déjà un ancien cache : aucune accumulation
+    }
+  }
+
+  // 2b) Ceux déjà en grâce : on ne prolonge jamais, on supprime à l'échéance.
+  for (const nom of anciens.filter((nom) => Number.isFinite(echeances.get(nom)))) {
+    if (echeances.get(nom) > maintenant && aGarder.length < ANCIENS_CACHES_APP_MAX) {
+      aGarder.push(nom);
+    } else {
+      aSupprimer.push(nom);
+    }
+  }
+
+  await Promise.all(aSupprimer.map((nom) => caches.delete(nom)));
+
+  // 3) Marqueurs orphelins (cache supprimé ou disparu autrement).
+  const restants = new Set(await caches.keys());
+  for (const cle of await entretien.keys()) {
+    if (!restants.has(nomDuMarqueur(cle))) await entretien.delete(cle);
+  }
+}
+
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
-      const noms = await caches.keys();
-      await Promise.all(
-        noms
-          .filter((nom) => nom.startsWith('rejoinsmoi-') && !CACHES_ACTUELS.includes(nom))
-          .map((nom) => caches.delete(nom))
-      );
+      // Un entretien impossible ne doit jamais empêcher l'activation.
+      try {
+        await entretenirCaches();
+      } catch {
+        /* stockage indisponible : les caches restent en l'état, l'app fonctionne */
+      }
       // Navigation preload : le navigateur lance la requête en parallèle du
       // démarrage du worker (gain réel sur réseau lent). Ignoré si indisponible.
       if (self.registration.navigationPreload) {
@@ -158,20 +345,27 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(gererStatique(request));
 });
 
-/** Navigation : on sert la page fraîche, sinon l'app shell mis en cache. */
+/**
+ * Navigation : on sert la page fraîche, sinon l'app shell mis en cache.
+ *
+ * Dernier recours seulement : le cache applicatif d'une génération précédente
+ * (encore en grâce). Mieux vaut afficher l'app de la version d'avant que l'écran
+ * « hors ligne » — ses fichiers sont dans le même ancien cache, donc cohérents.
+ */
 async function gererNavigation(event) {
   try {
     const reponse = await (event.preloadResponse || fetch(event.request));
     if (reponse && reponse.ok) {
       const cache = await caches.open(CACHE_APP);
-      cache.put(`${BASE_APPLICATION}index.html`, reponse.clone()).catch(() => null);
+      cache.put(URL_INDEX, reponse.clone()).catch(() => null);
     }
     return reponse;
   } catch {
     const cache = await caches.open(CACHE_APP);
     return (
-      (await cache.match(`${BASE_APPLICATION}index.html`)) ||
+      (await cache.match(URL_INDEX)) ||
       (await cache.match(BASE_APPLICATION)) ||
+      (await chercherDansAnciensCaches(new Request(URL_INDEX))) ||
       new Response('Rejoins’Moi est hors ligne.', {
         status: 503,
         headers: { 'Content-Type': 'text/plain; charset=utf-8' },
@@ -210,7 +404,15 @@ async function gererDonnees(request) {
   }
 }
 
-/** Statique : réponse immédiate depuis le cache, mise à jour en tâche de fond. */
+/**
+ * Statique : réponse immédiate depuis le cache, mise à jour en tâche de fond.
+ *
+ * Si le cache v10 ne connaît pas le fichier ET que le réseau ne fournit rien
+ * (hors ligne, ou 404 pour une empreinte de l'ancienne version encore réclamée
+ * par un onglet resté ouvert), on cherche dans le cache applicatif précédent,
+ * conservé quelques heures pour ce cas précis. Les caches de DONNÉES ne sont
+ * jamais consultés ici : aucune donnée d'API ne ressort d'une ancienne version.
+ */
 async function gererStatique(request) {
   const cache = await caches.open(CACHE_APP);
   const enCache = await cache.match(request);
@@ -223,7 +425,28 @@ async function gererStatique(request) {
     })
     .catch(() => null);
 
-  return enCache || (await reseau) || Response.error();
+  if (enCache) return enCache;
+
+  const reponse = await reseau;
+  if (reponse && reponse.ok) return reponse;
+
+  return (await chercherDansAnciensCaches(request)) || reponse || Response.error();
+}
+
+/** Dernier recours : le cache applicatif d'une version précédente (jamais les données). */
+async function chercherDansAnciensCaches(request) {
+  try {
+    const noms = await caches.keys();
+    for (const nom of noms) {
+      if (nom === CACHE_APP || !nom.startsWith('rejoinsmoi-app-')) continue;
+      const ancien = await caches.open(nom);
+      const trouve = await ancien.match(request);
+      if (trouve) return trouve;
+    }
+  } catch {
+    /* stockage refusé : on laisse l'appelant décider */
+  }
+  return null;
 }
 
 /** Garde le cache de données borné : on retire les entrées les plus anciennes. */

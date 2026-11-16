@@ -60,7 +60,12 @@ export function CompteursSepares({ visites = 0, utilisateurs = 0, taille = 'md' 
  *   categorie?: string, note?: number, nbAvis?: number, tags?: string[], distanceKm?: number,
  *   nbVisites?: number, nbUtilisateurs?: number, texteBoutonAction?: string,
  *   verifie?: boolean, position?: {lat:number,lng:number}, onTagClick?: (tag:string)=>void,
- *   onAction?: (etablissement: object) => void, telephone?: string }} props
+ *   onAction?: (etablissement: object) => void, telephone?: string,
+ *   illustrationSecours?: boolean }} props
+ *   illustrationSecours : true → la fiche SANS photo reçoit le dessin « crayon » de
+ *     sa catégorie (voir PhotoSecours.jsx). Optionnel et désactivé par défaut :
+ *     l'appelant qui l'active est l'accueil (Feed.jsx) ; les résultats de recherche
+ *     et la fiche profil gardent exactement le rendu d'avant.
  */
 export default function EstablishmentCard({
   variant = 'feed',
@@ -80,6 +85,7 @@ export default function EstablishmentCard({
   onTagClick,
   onAction,
   telephone = '',
+  illustrationSecours = false,
 }) {
   const navigate = useNavigate();
 
@@ -174,7 +180,13 @@ export default function EstablishmentCard({
             className="h-44 w-full object-cover"
           />
         ) : (
-          <PhotoSecours nom={e.nom} className="h-44 w-full" />
+          // `illustrationSecours` (accueil) : le dessin de la catégorie remplace le
+          // fond muet. Mêmes dimensions (`h-44 w-full`) : la carte ne bouge pas.
+          <PhotoSecours
+            nom={e.nom}
+            categorie={illustrationSecours ? e.categorie : null}
+            className="h-44 w-full"
+          />
         )}
 
         <span className="absolute left-2 top-2 rounded-full bg-white/95 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-primary">

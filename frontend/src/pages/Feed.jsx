@@ -28,6 +28,7 @@ import EmptyState from '../components/EmptyState.jsx';
 import InfoBanner from '../components/InfoBanner.jsx';
 import PromptLocalisation from '../components/PromptLocalisation.jsx';
 import { Icon } from '../components/Icons.jsx';
+import Ornement from '../components/illustrations/Ornement.jsx';
 import { api, apiProbablementEndormie } from '../utils/api/client.js';
 import { lireCacheAnnuaire, ecrireCacheAnnuaire } from '../utils/cacheAnnuaire.js';
 import { urlItineraire } from '../utils/distance.js';
@@ -277,8 +278,17 @@ export default function Feed() {
           au milieu du fondu. La teinte orange lui vient désormais de la bande
           `.fondu-entete` de la barre du haut, qui s'éteint ici en douceur.
           `-mx-4` + `px-4` : la bannière occupe toute la largeur malgré la
-          gouttière de `.ecran`. */}
-      <section data-banniere-accueil="" className="-mx-4 mb-3 px-4 py-3">
+          gouttière de `.ecran`.
+
+          Ornement (03/10) : un palmier du quartier dans le coin bas-droit, comme
+          un coin d'illustration en marge. Il est ABSOLU (aucune hauteur, aucune
+          marge touchée : `banniereAccueil.hauteur` de la capture ne bouge pas) et
+          très pâle — encre à 11 % (`--esquisse-trait-faible` × 0,55), donc dans la
+          palette, jamais l'orange du texte. `!right-0` / `!bottom-0` neutralisent
+          les décalages négatifs du coin (`right:-8px`, `bottom:-12px`) : le dessin
+          reste À L'INTÉRIEUR de la bannière, sinon la page gagnerait 8 px de
+          largeur défilable. Épinglé par la capture comparative avant/après. */}
+      <section data-banniere-accueil="" className="relative -mx-4 mb-3 px-4 py-3">
 
         <h1 className="text-xl font-bold text-ink">{prenom ? `Bonjour ${prenom} 👋` : 'Bonjour 👋'}</h1>
         <p className="text-sm text-ink-muted">
@@ -294,6 +304,8 @@ export default function Feed() {
               } — ${bruts.length} affichés.`
             : 'Découvrez les commerces et artisans de votre quartier.'}
         </p>
+
+        <Ornement variante="coin" illustration="palmier" cote="bas-droite" taille={80} className="!right-0 !bottom-0" />
       </section>
 
       {/* Accès rapides : la section santé est SÉPARÉE du feed social (§6) */}
@@ -383,6 +395,7 @@ export default function Feed() {
           titre="Aucun établissement dans cette catégorie"
           description="Essayez une autre catégorie : de nouveaux commerces s’inscrivent chaque semaine."
           action={{ libelle: 'Voir tout', onClick: () => setCategorie('tous') }}
+          illustration="maison"
         />
       ) : (
         <div className="flex flex-col gap-3">
@@ -394,6 +407,7 @@ export default function Feed() {
               position={position.position}
               onAction={ouvrirItineraire}
               onTagClick={(tag) => navigate(`/recherche?q=${encodeURIComponent(tag)}`)}
+              illustrationSecours
             />
           ))}
         </div>

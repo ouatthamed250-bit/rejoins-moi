@@ -13,6 +13,14 @@ import './styles/theme.css';
 // le back-office est un outil de travail (tableaux, densité, police système), pas la vitrine
 // mobile. Les deux fichiers cohabitent sans se marcher dessus (tout est préfixé `bo-`).
 import './styles/admin.css';
+// Feuille des illustrations « crayon » (components/illustrations/) : même principe
+// qu'admin.css — un fichier ANNEXE, importé après theme.css, dont TOUS les
+// sélecteurs sont préfixés (`.esquisse-…`, `.illustration-esquisse`) et qui ne
+// redéfinit donc aucune classe de l'app. Elle porte le `position: absolute` des
+// ornements (`Ornement.jsx`) et le rendu du trait ; sans cet import, un ornement
+// de coin se pose dans le flux et pousse la mise en page de sa propre hauteur
+// (80 px sur la bannière de l'accueil) — constaté en capture avant/après.
+import './styles/esquisse.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

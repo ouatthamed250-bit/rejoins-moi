@@ -1,0 +1,252 @@
+/* esquisse.css — Illustrations « dessinées au crayon » (components/illustrations).
+ * ==========================================================================
+ * Feuille ANNEXE, sur le modèle d'admin.css : importée APRÈS theme.css dans
+ * main.jsx, elle ne redéfinit AUCUNE classe existante. Tous ses sélecteurs
+ * portent le préfixe `.esquisse` ou `.illustration-esquisse`, ce qui permet de
+ * la relire — ou de la retirer — sans rien casser ailleurs.
+ *
+ * Ce qu'elle apporte, et rien d'autre :
+ *   1. les teintes nouvelles du projet : le brun sable et sa version pâle, plus
+ *      les deux bandeaux du drapeau ivoirien. Elles sont LOCALES à ces dessins
+ *      et ne rejoignent pas la palette produit : l'ivoire et l'orange restent
+ *      le fond et l'accent de l'app ;
+ *   2. le rendu « crayon » : trait qui ne s'épaissit pas quand le dessin
+ *      grandit, second passage clair, hachures d'ombre, pastilles pleines ;
+ *   3. les ornements de mise en page (coin, médaillon, séparateur, frise,
+ *      motif de fond) ;
+ *   4. deux animations, strictement optionnelles (voir la règle ci-dessous).
+ *
+ * RÈGLE DE MOUVEMENT (héritée de l'en-tête de theme.css) : aucune animation en
+ * BOUCLE par défaut. Le feed affiche une dizaine de cartes ; dix boucles
+ * simultanées vident la batterie d'un téléphone d'entrée de gamme et de la 3G.
+ * La fumée du barbecue et le scintillement n'existent donc que si l'appelant
+ * ajoute la classe `.esquisse--anime` sur UN élément choisi (une illustration
+ * d'état vide, par exemple) — et jamais si le système demande de réduire les
+ * animations. Par défaut, tout est immobile : coût nul.
+ */
+
+:root {
+  /* Brun sable : la teinte des ORNEMENTS (le pointillé du médaillon), à ne pas
+     confondre avec celle des dessins, qui vient de `--esquisse-trait`.
+     Une seconde teinte pâle vivait ici (`--esquisse-sable-pale`) : elle n'était
+     lue par AUCUNE règle — les hachures pâles, elles, sont un `currentColor` à
+     `stroke-opacity: 0.3`. Elle a été retirée plutôt que laissée en place comme
+     un réglage qui ne règle rien. */
+  --esquisse-sable: #c9a47a;
+
+  /* Le trait : l'encre de l'app (--color-text), adoucie. Un crayon ne dessine
+     jamais du noir pur — le trait dur aurait l'air d'une bordure de tableau. */
+  --esquisse-trait: rgba(23, 33, 43, 0.42);
+  --esquisse-trait-faible: rgba(23, 33, 43, 0.2);
+
+  /* Les deux bandeaux extrêmes du drapeau ivoirien portent les VRAIES teintes
+     du drapeau — orange #f77f00, vert #009e60 — et non l'orange d'accent
+     (#ff7a18) ni le vert de la santé (#2eae5c), auxquels ils ressemblaient.
+     Cette distinction est volontaire : un drapeau national n'est pas une
+     couleur d'interface, et le confondre avec l'accent ferait lire « bouton
+     orange » là où on veut lire « Côte d'Ivoire ». Conséquence assumée : ces
+     deux teintes n'existent nulle part ailleurs dans l'app, et elles ne sont
+     écrites QUE ici. La troisième bande du drapeau (le blanc central) n'a pas
+     de variable : c'est le fond ivoire qui la fait, aucun aplat à poser.
+     `.esquisse--mono` les neutralise : c'est le mode imposé aux écrans
+     Pharmacies & Cliniques, où l'orange est interdit (§6). */
+  --esquisse-bande-1: #f77f00;
+  --esquisse-bande-3: #009e60;
+}
+
+/* Version monochrome : plus aucune couleur dans le dessin, tout au trait.
+   À poser sur le conteneur de l'illustration (`<div className="esquisse--mono">`). */
+.esquisse--mono {
+  --esquisse-bande-1: none;
+  --esquisse-bande-3: none;
+}
+
+/* ── Base d'une illustration ───────────────────────────────────────────────── */
+.illustration-esquisse {
+  display: block;
+  flex: none; /* dans un flex, un dessin ne se déforme jamais */
+}
+/* Couleur par défaut : le crayon de l'app (encre adoucie). Elle est écrite dans
+   un `:where(…)` — donc de SPÉCIFICITÉ NULLE — pour une raison précise :
+   esquisse.css est importée APRÈS les utilitaires Tailwind (qui vivent dans
+   theme.css). Sans le `:where`, `class="illustration-esquisse text-health"`
+   garderait la couleur par défaut et le vert de la santé ne s'appliquerait
+   jamais. Ici, n'importe quelle classe de couleur passée par l'appelant
+   (`text-ink-muted`, `text-primary`, `text-health`…) gagne. */
+:where(.illustration-esquisse) {
+  color: var(--esquisse-trait);
+}
+/* Le trait garde la MÊME épaisseur à 32 px comme à 160 px. Sans cela, la
+   pastille minuscule deviendrait un pâté et la grande illustration un trait
+   invisible : c'est le défaut classique d'un SVG mis à l'échelle. */
+.illustration-esquisse :where(path, circle, ellipse, line, rect, polyline, polygon) {
+  vector-effect: non-scaling-stroke;
+}
+/* Second passage du crayon — la main repasse toujours deux fois. */
+.illustration-esquisse .esquisse-clair {
+  stroke-opacity: 0.45;
+}
+/* Hachures d'ombre : encore plus fines et plus pâles. */
+.illustration-esquisse .esquisse-hachure {
+  stroke-opacity: 0.3;
+  stroke-width: 0.8;
+}
+/* Tache pleine (nombril, pastille) : jamais du noir pur non plus. */
+.illustration-esquisse .esquisse-plein {
+  fill: currentColor;
+  stroke: none;
+  opacity: 0.16;
+}
+
+/* ── Ornements : du décor, donc jamais cliquable ni annoncé ────────────────── */
+.esquisse-coin,
+.esquisse-medaillon,
+.esquisse-separateur,
+.esquisse-frise,
+.esquisse-motif {
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Coin : dessin très pâle dans un coin du bloc PARENT (qui doit être `relative`).
+   `z-index: 0` : il passe derrière le contenu de ce bloc, il ne le recouvre pas. */
+.esquisse-coin {
+  position: absolute;
+  z-index: 0;
+  color: var(--esquisse-trait-faible);
+  opacity: 0.55;
+}
+.esquisse-coin--droite {
+  top: -10px;
+  right: -12px;
+}
+.esquisse-coin--gauche {
+  top: -10px;
+  left: -12px;
+}
+.esquisse-coin--bas-droite {
+  bottom: -12px;
+  right: -8px;
+}
+.esquisse-coin--bas-gauche {
+  bottom: -12px;
+  left: -8px;
+}
+
+/* Médaillon : pastille ronde en pointillés autour du dessin (état vide, en-tête
+   de section). Le pointillé dit « provisoire » mieux qu'un aplat. */
+.esquisse-medaillon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border: 1px dashed var(--esquisse-sable);
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--esquisse-trait);
+}
+
+/* ── Frise : bandeau de losanges répétés (pied du tiroir, haut d'une feuille) ──
+   Tuile répétée en X plutôt qu'un SVG étiré : sur 390 px de large, une frise
+   étirée déformerait ses losanges, une tuile jamais.
+
+   ATTENTION — les trois tuiles de fond ci-dessous (frise, séparateur, motif)
+   portent leur teinte ÉCRITE EN DUR (`%23c9a47a`), et non `var(--esquisse-sable)` :
+   une `url("data:…")` ne résout aucune variable CSS, la couleur y est figée.
+   Régler `--esquisse-sable` déplace donc le pointillé du médaillon SANS toucher
+   ces trois bandes. Le piège est verrouillé par la recette : la planche relit la
+   teinte réellement peinte de ces trois tuiles, la compare à `--esquisse-sable`
+   et ÉCHOUE si les deux divergent (voir captures-signature/planche.mjs). Si tu
+   changes la teinte ici, change le token dans le même geste.
+
+   LARGEUR (frise ET séparateur) — ces deux bandes n'ont AUCUNE largeur propre :
+   une hauteur, une tuile répétée, et c'est tout ; c'est le parent qui donne la
+   largeur. Posées dans un conteneur flex, elles tombent donc à 0 pixel et
+   DISPARAISSENT sans le moindre avertissement (arrivé dans la planche de
+   recette). En flex, prévoir `flex: 1` ou `width: 100%` sur la bande. */
+.esquisse-frise {
+  display: block;
+  height: 22px;
+  opacity: 0.55;
+  background-repeat: repeat-x;
+  background-position: left center;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='22' viewBox='0 0 26 22'%3E%3Cg fill='none' stroke='%23c9a47a' stroke-width='1.1' stroke-linecap='round'%3E%3Cpath d='M13 3.5 20.5 11 13 18.5 5.5 11z'/%3E%3Cpath d='M6 20.5h14' stroke-opacity='.35'/%3E%3C/g%3E%3Ccircle cx='13' cy='11' r='1.5' fill='%23c9a47a' fill-opacity='.6'/%3E%3C/svg%3E");
+}
+
+/* ── Séparateur : trait dessiné en festons réguliers, à la place d'un <hr> ──
+   Une ligne droite traversant tout l'écran est la marque d'une maquette
+   d'ordinateur ; ce trait-là a des bosses, comme tracé à la main. */
+.esquisse-separateur {
+  display: block;
+  height: 16px;
+  opacity: 0.5;
+  background-repeat: repeat-x;
+  background-position: left top;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='16' viewBox='0 0 14 16'%3E%3Cg fill='none' stroke='%23c9a47a' stroke-width='1.1' stroke-linecap='round'%3E%3Cpath d='M0 12a7 7 0 0 1 14 0'/%3E%3Cpath d='M4 13.6v1.4M10 13.6v1.4' stroke-opacity='.4'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+/* ── Motif : champ de losanges très pâle, en fond d'un bloc ──
+   Même esprit que `.fond-traits-fins` de theme.css (tuile dans un calque posé
+   DERRIÈRE le contenu), mais avec le répertoire graphique des esquisses. À
+   poser sur un parent `position: relative`. */
+.esquisse-motif {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  opacity: 0.5;
+  background-repeat: repeat;
+  background-size: 116px 116px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='116' height='116' viewBox='0 0 116 116'%3E%3Cg fill='none' stroke='%23c9a47a' stroke-width='1'%3E%3Cpath d='M29 7 51 29 29 51 7 29z' stroke-opacity='.6'/%3E%3Cpath d='M87 65 109 87 87 109 65 87z' stroke-opacity='.45'/%3E%3Cpath d='M87 7v12M81 13h12' stroke-opacity='.3'/%3E%3C/g%3E%3Ccircle cx='29' cy='87' r='1.8' fill='%23c9a47a' fill-opacity='.5'/%3E%3C/svg%3E");
+}
+
+/* ── Animations : OPTIONNELLES, et jamais en boucle par défaut ────────────────
+   Deux usages seulement :
+     .esquisse--anime   sur un CONTENEUR → la fumée respire, les étincelles
+                        scintillent (barbecue, marmite). À réserver à une
+                        illustration isolée, jamais à une liste ;
+     .esquisse--trace   sur l'illustration → apparition « posée », en un seul
+                        passage, pour un état vide qui remplace une liste.
+   Tout est enfermé dans `prefers-reduced-motion: no-preference` : si le système
+   demande moins d'animation, le dessin reste parfaitement immobile. */
+@media (prefers-reduced-motion: no-preference) {
+  .esquisse--anime .esquisse-fumee {
+    animation: esquisseFumee 6.5s ease-in-out infinite;
+  }
+  .esquisse--anime .esquisse-etincelle {
+    animation: esquisseEtincelle 3.4s ease-in-out infinite;
+  }
+  .esquisse--trace {
+    animation: esquisseTrait 520ms ease-out both;
+  }
+}
+
+@keyframes esquisseFumee {
+  0%,
+  100% {
+    opacity: 0.32;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 0.62;
+    transform: translateY(-3px);
+  }
+}
+@keyframes esquisseEtincelle {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  40% {
+    opacity: 0.75;
+  }
+}
+@keyframes esquisseTrait {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

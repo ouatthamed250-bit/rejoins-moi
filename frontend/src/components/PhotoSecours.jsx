@@ -16,20 +16,65 @@
 // le DOM et permet aux vérifications automatiques (scripts/capture-ecrans.mjs) de
 // prouver qu'aucun pavé orange ne subsiste.
 
+//
+// 03/10 — Dessin « crayon » de secours (accueil seulement) : une fiche sans photo
+// montrait un fond ivoire avec une pastille ; c'est juste, mais muet. Le dessin du
+// quartier vient se poser DERRIÈRE la pastille, dans le même volume, quand
+// l'appelant passe `categorie`. Le fond, la teinte, les dimensions et la position
+// de la pastille ne changent pas d'un pixel, et les autres écrans (fiche, résultats
+// de recherche) n'y voient que du feu : sans `categorie`, le rendu est celui d'avant.
+
 import { Icon } from './Icons.jsx';
+import Illustration from './illustrations/Illustration.jsx';
 
 /**
- * @param {{ nom?: string, className?: string, compact?: boolean }} props
+ * Dessin « crayon » du cas « fiche sans photo », par catégorie.
+ *
+ * Pourquoi la table est ici : le dessin de remplacement fait partie du
+ * remplacement. Les clés sont celles de tracesEsquisse.jsx (aucune trace n'est
+ * inventée) et le choix suit la destination écrite dans le kit —
+ *   « maison »      → « le quartier (accueil, états vides) » ;
+ *   « marmite »     → l'alimentation (la marmite du garba) ;
+ *   « etalMarche »  → le commerce (l'étal, l'auvent rayé) ;
+ *   « motifWax »    → la beauté (le wax des salons et des ateliers) ;
+ *   « boiteOutils » → « le travail (main-d'œuvre, artisanat, services) » ;
+ *   « croixSante »  → la santé, EN TEINTE DE CRAYON : le vert reste réservé à
+ *                     l'écran Pharmacies & Cliniques (§6), on ne l'importe pas ici ;
+ *   « paillote »    → la spiritualité (l'abri où l'on se rassemble).
+ * `autre` et toute catégorie inconnue retombent sur « maison » : la maison du
+ * quartier, celle du kit, plutôt qu'un dessin qui n'existe pas.
+ */
+export const DESSIN_SECOURS_PAR_CATEGORIE = {
+  alimentation: 'marmite',
+  beaute: 'motifWax',
+  services: 'boiteOutils',
+  artisanat: 'boiteOutils',
+  commerce: 'etalMarche',
+  sante: 'croixSante',
+  spiritualite: 'paillote',
+  autre: 'maison',
+};
+
+/** Repli : la maison du quartier (trace prévue par le kit pour l'accueil). */
+const DESSIN_PAR_DEFAUT = 'maison';
+
+/**
+ * @param {{ nom?: string, className?: string, compact?: boolean, categorie?: string|null }} props
  *   nom       : nom de l'établissement (affiché sur les grands formats)
  *   className : dimensions et arrondis, imposés par l'appelant (h-44 w-full…)
  *   compact   : true pour une petite vignette (86×86 des résultats de recherche) :
  *               pastille seule, le nom n'y tiendrait pas lisiblement
+ *   categorie : slug de catégorie → pose le dessin de secours derrière la pastille.
+ *               `null` (défaut) = AUCUN dessin : les appelants qui ne le demandent
+ *               pas (fiche profil, résultats de recherche) gardent le rendu v2.
  */
-export default function PhotoSecours({ nom = '', className = '', compact = false }) {
+export default function PhotoSecours({ nom = '', className = '', compact = false, categorie = null }) {
+  const dessin = categorie ? DESSIN_SECOURS_PAR_CATEGORIE[categorie] || DESSIN_PAR_DEFAUT : null;
+
   return (
     <div
       data-photo-secours=""
-      className={`flex flex-col items-center justify-center gap-2 overflow-hidden bg-gradient-to-b from-soft to-white ring-1 ring-inset ring-line ${className}`}
+      className={`relative isolate flex flex-col items-center justify-center gap-2 overflow-hidden bg-gradient-to-b from-soft to-white ring-1 ring-inset ring-line ${className}`}
     >
       <span
         className={`flex shrink-0 items-center justify-center rounded-full bg-white text-primary shadow-card ring-1 ring-primary/20 ${
@@ -41,6 +86,18 @@ export default function PhotoSecours({ nom = '', className = '', compact = false
       {!compact && (
         <span className="max-w-[85%] text-center text-sm font-bold uppercase leading-tight tracking-wide text-primary-dark">
           {nom}
+        </span>
+      )}
+      {/* Dessin de secours : DERNIER enfant du bloc, pour que la pastille reste le
+          `firstElementChild` (les contrôles automatiques lisent sa couleur de
+          pastille). Il est posé en `-z-10` dans le contexte d'empilement créé par
+          `isolate` : il passe donc derrière la pastille et le nom, mais devant le
+          fond ivoire de la carte — et il ne peut pas glisser sous la carte
+          elle-même. `pointer-events-none` : du décor ne capte jamais le clic
+          (toute la surface est le lien vers la fiche). */}
+      {dessin && (
+        <span aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 flex items-center justify-center">
+          <Illustration nom={dessin} taille={compact ? 56 : 128} className="opacity-[0.18]" />
         </span>
       )}
     </div>

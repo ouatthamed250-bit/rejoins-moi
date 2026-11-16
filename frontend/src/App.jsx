@@ -21,27 +21,31 @@
 //  - <InstallAppButton /> (ajout PWA du 29/09) flotte au-dessus de la bottom nav
 //    pour proposer l'installation de l'app sur l'écran d'accueil.
 
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { lazy, Suspense } from 'react';
 import { AuthProvider } from './context/AuthContext.jsx';
 
 import BottomNav from './components/BottomNav.jsx';
 import TopBar from './components/TopBar.jsx';
 import InfoBanner from './components/InfoBanner.jsx';
 import InstallAppButton from './components/InstallAppButton.jsx';
+import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { useAuth } from './hooks/useAuth.js';
 
 import Feed from './pages/Feed.jsx';
 import Search from './pages/Search.jsx';
-import EstablishmentProfile from './pages/EstablishmentProfile.jsx';
-import PharmaciesCliniques from './pages/PharmaciesCliniques.jsx';
-import RegisterEstablishment from './pages/RegisterEstablishment.jsx';
-import JobBoard from './pages/JobBoard.jsx';
-import Jobs from './pages/Jobs.jsx';
-import Messages from './pages/Messages.jsx';
-import Profile from './pages/Profile.jsx';
-import Login from './pages/Login.jsx';
-import Admin from './pages/Admin.jsx';
-import MentionsLegales from './pages/MentionsLegales.jsx';
+
+const EstablishmentProfile = lazy(() => import('./pages/EstablishmentProfile.jsx'));
+const PharmaciesCliniques = lazy(() => import('./pages/PharmaciesCliniques.jsx'));
+const RegisterEstablishment = lazy(() => import('./pages/RegisterEstablishment.jsx'));
+const JobBoard = lazy(() => import('./pages/JobBoard.jsx'));
+const Jobs = lazy(() => import('./pages/Jobs.jsx'));
+const Messages = lazy(() => import('./pages/Messages.jsx'));
+const Profile = lazy(() => import('./pages/Profile.jsx'));
+const Login = lazy(() => import('./pages/Login.jsx'));
+const Admin = lazy(() => import('./pages/Admin.jsx'));
+const MentionsLegales = lazy(() => import('./pages/MentionsLegales.jsx'));
+const NotFound = lazy(() => import('./pages/NotFound.jsx'));
 
 /** Routes affichées en plein écran : ni TopBar ni BottomNav. */
 const ROUTES_PLEIN_ECRAN = [/^\/etablissement\//, /^\/admin\/?$/];
@@ -72,7 +76,9 @@ export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter basename={basenameApp()}>
-        <Structure />
+        <ErrorBoundary>
+          <Structure />
+        </ErrorBoundary>
       </BrowserRouter>
     </AuthProvider>
   );
@@ -105,27 +111,29 @@ function Structure() {
             16/11). Ici elle pousse le contenu au lieu de le masquer, et reste
             visible dès le premier écran. */}
         {!pleinEcran && <InstallAppButton />}
-        <Routes>
+        <Suspense fallback={<div className="ecran py-8 text-center text-ink-muted">Chargement…</div>}>
+          <Routes>
 
-          <Route path="/" element={<Feed />} />
-          <Route path="/recherche" element={<Search />} />
-          <Route path="/etablissement/:id" element={<EstablishmentProfile />} />
-          <Route path="/pharmacies-cliniques" element={<PharmaciesCliniques />} />
-          <Route path="/inscription" element={<RegisterEstablishment />} />
-          <Route path="/jobs" element={<Jobs />} />
-          <Route path="/main-doeuvre" element={<JobBoard />} />
-          <Route path="/messages" element={<Messages />} />
-          <Route path="/profil" element={<Profile />} />
-          <Route path="/connexion" element={<Login />} />
-          {/* Page « Mentions légales » (bloc G) : données collectées, ce qui est public,
-              et suppression/correction par WhatsApp — accessible depuis le profil, la
-              connexion et le menu principal. */}
-          <Route path="/mentions-legales" element={<MentionsLegales />} />
-          {/* Back-office : écran plein écran, jeton admin distinct du compte utilisateur. */}
-          <Route path="/admin" element={<Admin />} />
-          {/* Toute route inconnue revient au feed : jamais d'écran blanc. */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+            <Route path="/" element={<Feed />} />
+            <Route path="/recherche" element={<Search />} />
+            <Route path="/etablissement/:id" element={<EstablishmentProfile />} />
+            <Route path="/pharmacies-cliniques" element={<PharmaciesCliniques />} />
+            <Route path="/inscription" element={<RegisterEstablishment />} />
+            <Route path="/jobs" element={<Jobs />} />
+            <Route path="/main-doeuvre" element={<JobBoard />} />
+            <Route path="/messages" element={<Messages />} />
+            <Route path="/profil" element={<Profile />} />
+            <Route path="/connexion" element={<Login />} />
+            {/* Page « Mentions légales » (bloc G) : données collectées, ce qui est public,
+                et suppression/correction par WhatsApp — accessible depuis le profil, la
+                connexion et le menu principal. */}
+            <Route path="/mentions-legales" element={<MentionsLegales />} />
+            {/* Back-office : écran plein écran, jeton admin distinct du compte utilisateur. */}
+            <Route path="/admin" element={<Admin />} />
+            {/* Toute route inconnue affiche la page 404. */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Suspense>
       </main>
 
       {!pleinEcran && <BottomNav />}

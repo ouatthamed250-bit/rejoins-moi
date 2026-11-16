@@ -15,6 +15,12 @@
  *     quelle. Le serveur reste seul juge du paiement (règle de sécurité du projet).
  */
 
+// v12 : allègement du bundle initial (lazy loading des 10 pages non-first-screen) :
+//       bundle principal 461 kB → 280 kB. ErrorBoundary global et page 404
+//       explicite (NotFound). L'app shell change (nouvelles empreintes JS/CSS) :
+//       sans nouveau nom de cache, un téléphone déjà installé servirait l'ancien
+//       index.html en secours, donc l'ancienne app.
+
 // v8 : VAGUE 1 (blocs B1/B2, C, D, E). L'écran d'inscription change visiblement (repère
 //      « Placer sur la carte » déplaçable, compte créé DANS le parcours), le fil s'ouvre
 //      par proximité, une fiche importée propose « C'est votre établissement ? » et
@@ -74,7 +80,7 @@
 //      bannière qui masque une carte, exactement le défaut corrigé.
 // Changer la version est indispensable dès que les fichiers « cache d'abord »
 // (icônes) ou l'app shell changent de façon visible.
-const VERSION = 'v11';
+const VERSION = 'v12';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

@@ -223,6 +223,31 @@ export default function MenuPrincipal({ ouvert, onFermer }) {
           </div>
         )}
 
+        {/* Mon établissement (16/11) : raccourci du gérant vers sa fiche. Placé
+            juste AU-DESSUS de l'abonnement — c'est l'action du quotidien, alors
+            que l'abonnement se règle une fois. Masqué pour les comptes sans fiche
+            (`etablissementId` absent) : inutile d'afficher un lien creux. */}
+        {connecte && profil?.etablissementId && (
+          <div className="mx-3 mb-3 rounded-md border border-line bg-white p-3">
+            <p className="flex items-center gap-2 text-xs font-bold text-ink">
+              <Icon name="store" size={16} className="text-primary" />
+              Mon établissement
+            </p>
+            <p className="mt-1 text-[11px] leading-snug text-ink-muted">
+              Modifier les informations, les horaires et les photos, ou fermer temporairement la
+              fiche.
+            </p>
+            <button
+              type="button"
+              className="bouton-principal mt-2 w-full py-2 text-xs"
+              onClick={() => aller(`/etablissement/${profil.etablissementId}`)}
+            >
+              <Icon name="store" size={16} />
+              Gérer ma fiche
+            </button>
+          </div>
+        )}
+
         {/* Abonnement : l'option qui débloque Jobs + la mise en avant du profil artisan. */}
         <div className="mx-3 mb-3 rounded-md border border-primary/30 bg-primary/5 p-3">
           <p className="flex items-center gap-2 text-xs font-bold text-ink">

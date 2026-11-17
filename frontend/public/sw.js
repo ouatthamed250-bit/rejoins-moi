@@ -101,9 +101,16 @@
 //      empreintes JS/CSS) : sans nouveau nom de cache, un téléphone déjà installé
 //      servirait l'ancien index.html en secours, donc l'ANCIENNE app — avec la
 //      bannière qui masque une carte, exactement le défaut corrigé.
+// v16 : publication du 16/11 — le médaillon du gérant s'affiche ENTIER (il était
+//      peint SOUS la photo de couverture : `<header>` en `position: relative` est
+//      peint après les blocs non positionnés), plus l'édition des informations de la
+//      fiche (nom, description, contacts, horaires) et les raccourcis « Mon
+//      établissement » du Profil et du Menu. L'app shell change (nouvelles empreintes
+//      JS) : sans nouveau nom de cache, un téléphone déjà installé servirait l'ancien
+//      index.html en secours, donc l'ANCIENNE app — médaillon toujours rogné.
 // Changer la version est indispensable dès que les fichiers « cache d'abord »
 // (icônes) ou l'app shell changent de façon visible.
-const VERSION = 'v15';
+const VERSION = 'v16';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

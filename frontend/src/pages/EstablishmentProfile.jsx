@@ -114,6 +114,22 @@ export default function EstablishmentProfile() {
   const [erreurHoraires, setErreurHoraires] = useState('');
   const [messageGestion, setMessageGestion] = useState('');
 
+  // ── Édition des informations de la fiche (ajout du 16/11) ──
+  // Une fiche publiée avec un nom mal orthographié, une description vide ou un
+  // ancien numéro restait figée : le serveur accepte pourtant ces champs
+  // (PATCH /establishments/:id, `champsSimple`). `infosEdition` est le brouillon
+  // du panneau « Modifier la fiche » — rien n'est écrit avant « Enregistrer ».
+  const [editionInfos, setEditionInfos] = useState(false);
+  const [infosEdition, setInfosEdition] = useState({
+    nom: '',
+    description: '',
+    telephone: '',
+    whatsapp: '',
+    horaires: '',
+  });
+  const [enregistrementInfos, setEnregistrementInfos] = useState(false);
+  const [erreurInfos, setErreurInfos] = useState('');
+
   // ── État de secours des PHOTOS (correctif du 16/11) ──
   // Une URL de photo morte (fichier effacé, ancien hébergement) affichait un cadre
   // vide ou l'icône « image brisée » du navigateur, alors que la fiche sait très
@@ -504,6 +520,67 @@ export default function EstablishmentProfile() {
     }
   }
 
+  /**
+   * Ouvre le panneau « Modifier la fiche », pré-rempli avec ce qui est publié.
+   * Le badge « Ouvert / Fermé » ne dépend PAS du champ texte `horaires` mais de
+   * la grille (`horairesStructures`) : les deux saisies coexistent donc, et le
+   * panneau le dit au gérant pour éviter de croire qu'il règle l'ouverture ici.
+   */
+  function ouvrirEditionInfos() {
+    setInfosEdition({
+      nom: etablissement?.nom || '',
+      description: etablissement?.description || '',
+      telephone: etablissement?.telephone || '',
+      whatsapp: etablissement?.whatsapp || '',
+      horaires: etablissement?.horaires || '',
+    });
+    setErreurInfos('');
+    setEditionInfos(true);
+  }
+
+  /**
+   * Enregistre les informations de la fiche (nom, description, contacts, horaires).
+   *
+   * Le serveur n'accepte que ces champs via `champsSimple` et applique un `trim()`
+   * sur chacun : on envoie la version déjà nettoyée, pour que l'écran affiche
+   * exactement ce qui est stocké. Le nom est le seul champ obligatoire (c'est lui
+   * qui s'affiche partout : fil, favoris, partage WhatsApp).
+   */
+  async function enregistrerInfos(evt) {
+    evt.preventDefault();
+    if (!etablissement || !estProprietaire) return;
+
+    const nom = infosEdition.nom.trim();
+    if (nom.length < 2) {
+      setErreurInfos('Le nom de l’établissement est obligatoire (2 caractères minimum).');
+      return;
+    }
+
+    setErreurInfos('');
+    setEnregistrementInfos(true);
+    const modifications = {
+      nom,
+      description: infosEdition.description.trim(),
+      telephone: infosEdition.telephone.trim(),
+      whatsapp: infosEdition.whatsapp.trim(),
+      horaires: infosEdition.horaires.trim(),
+    };
+    try {
+      const reponse = await api.patch(`/establishments/${etablissement.id}`, modifications);
+      if (reponse?.etablissement) {
+        setEtablissement((prec) => ({ ...(prec || {}), ...reponse.etablissement }));
+      } else {
+        setEtablissement((prec) => (prec ? { ...prec, ...modifications } : prec));
+      }
+      setEditionInfos(false);
+      setMessage('Informations de la fiche mises à jour.');
+    } catch (err) {
+      setErreurInfos(err?.message || 'Enregistrement impossible pour le moment.');
+    } finally {
+      setEnregistrementInfos(false);
+    }
+  }
+
   /** Publication d'un avis noté (§5). La note est obligatoire. */
   async function publierAvis(evt) {
     evt.preventDefault();
@@ -645,20 +722,32 @@ export default function EstablishmentProfile() {
           </div>
         </div>
 
-        <span className="absolute bottom-3 right-3 rounded-full bg-white/95 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-primary">
-          {libelleCategorie}
-        </span>
-        {distance != null && (
-          <span className="absolute bottom-3 left-3 flex items-center gap-1 rounded-full bg-black/55 px-2 py-1 text-[10px] font-bold text-white">
-            <Icon name="mapPin" size={12} />
-            {formatDistanceKm(distance)}
+        {/* Pastilles du bas de la couverture, empilées À DROITE : le bas-gauche est
+            occupé par le médaillon du gérant (juste en dessous), qui doit rester
+            entièrement visible. Sans ce déplacement, le médaillon le recouvrirait. */}
+        <div className="absolute bottom-3 right-3 flex flex-col items-end gap-1.5">
+          {distance != null && (
+            <span className="flex items-center gap-1 rounded-full bg-black/55 px-2 py-1 text-[10px] font-bold text-white">
+              <Icon name="mapPin" size={12} />
+              {formatDistanceKm(distance)}
+            </span>
+          )}
+          <span className="rounded-full bg-white/95 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-primary">
+            {libelleCategorie}
           </span>
-        )}
+        </div>
       </header>
 
       <div className="ecran">
-        {/* Médaillon de la photo du vendeur, chevauchant la devanture */}
-        <div className="-mt-10 flex items-end justify-between gap-3">
+        {/* Médaillon de la photo du vendeur, chevauchant la devanture.
+            16/11 (correctif) : `relative z-10` est INDISPENSABLE. `<header>` est en
+            `position: relative`, donc il est peint APRÈS les blocs du flux restés
+            non positionnés : sans z-index, la couverture recouvrait le haut du
+            médaillon — exactement les 40 px remontés par `-mt-10` — et le visage du
+            gérant était coupé. Le médaillon apparaît maintenant en ENTIER, en bas à
+            gauche, en chevauchement propre. `.ecran` ne rogne rien (ni overflow, ni
+            hauteur fixe) : aucun `overflow-hidden` à corriger. */}
+        <div className="relative z-10 -mt-10 flex items-end justify-between gap-3">
           {urlVendeur && !vendeurCassee ? (
             <img
               src={urlVendeur}
@@ -709,6 +798,19 @@ export default function EstablishmentProfile() {
               >
                 <Icon name="image" size={12} />
                 Modifier la galerie
+              </button>
+            )}
+            {/* Textes et contacts de la fiche (16/11) : nom, description, téléphone,
+                WhatsApp, horaires affichés. Même règle que les photos : réservé au
+                propriétaire, et le serveur refuserait de toute façon en 403. */}
+            {estProprietaire && (
+              <button
+                type="button"
+                className="flex items-center gap-1 rounded-full border border-line bg-white px-2.5 py-1 text-[10px] font-bold text-primary shadow-card"
+                onClick={ouvrirEditionInfos}
+              >
+                <Icon name="edit" size={12} />
+                Modifier la fiche
               </button>
             )}
             {etablissement.verifie && (
@@ -1294,6 +1396,134 @@ export default function EstablishmentProfile() {
               </button>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* ── Panneau « Modifier la fiche » (gérant uniquement, 16/11) ───────────
+          Même feuille du bas que la galerie. Ici, uniquement les TEXTES et les
+          CONTACTS : les photos ont leur panneau (elles passent par Cloudinary), et
+          la grille d'ouverture jour par jour a le sien (« Gérer » → Horaires). */}
+      {editionInfos && estProprietaire && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 p-3"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Modifier les informations de la fiche"
+          onClick={() => {
+            if (!enregistrementInfos) setEditionInfos(false);
+          }}
+        >
+          <form
+            onSubmit={enregistrerInfos}
+            className="carte max-h-[92vh] w-full max-w-[480px] overflow-y-auto p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-sm font-bold text-ink">Modifier la fiche</p>
+              <button
+                type="button"
+                className="text-xs font-semibold text-ink-muted underline"
+                disabled={enregistrementInfos}
+                onClick={() => setEditionInfos(false)}
+              >
+                Fermer
+              </button>
+            </div>
+            <p className="mb-3 text-[11px] leading-snug text-ink-muted">
+              Ces informations sont publiques : elles s’affichent sur votre fiche, dans le fil et
+              dans le lien partagé sur WhatsApp.
+            </p>
+
+            <label className="mb-3 block">
+              <span className="mb-1 block text-xs font-bold text-ink">Nom de l’établissement</span>
+              <input
+                value={infosEdition.nom}
+                onChange={(e) => setInfosEdition((prec) => ({ ...prec, nom: e.target.value }))}
+                maxLength={80}
+                required
+                className="w-full rounded-md border border-line px-3 py-2.5 text-sm outline-none focus:border-primary"
+              />
+            </label>
+
+            <label className="mb-3 block">
+              <span className="mb-1 block text-xs font-bold text-ink">Description</span>
+              <textarea
+                value={infosEdition.description}
+                onChange={(e) =>
+                  setInfosEdition((prec) => ({ ...prec, description: e.target.value }))
+                }
+                rows={4}
+                maxLength={800}
+                placeholder="Ce que vous vendez, ce qui vous distingue, comment vous trouver…"
+                className="w-full resize-none rounded-md border border-line px-3 py-2.5 text-sm outline-none focus:border-primary"
+              />
+              <span className="mt-1 block text-[10px] text-ink-muted">
+                {infosEdition.description.length}/800 caractères
+              </span>
+            </label>
+
+            <div className="mb-3 grid grid-cols-2 gap-2">
+              <label className="block">
+                <span className="mb-1 block text-xs font-bold text-ink">Téléphone</span>
+                <input
+                  value={infosEdition.telephone}
+                  onChange={(e) =>
+                    setInfosEdition((prec) => ({ ...prec, telephone: e.target.value }))
+                  }
+                  type="tel"
+                  inputMode="tel"
+                  maxLength={24}
+                  placeholder="07 00 00 00 00"
+                  className="w-full rounded-md border border-line px-3 py-2.5 text-sm outline-none focus:border-primary"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-bold text-ink">WhatsApp</span>
+                <input
+                  value={infosEdition.whatsapp}
+                  onChange={(e) =>
+                    setInfosEdition((prec) => ({ ...prec, whatsapp: e.target.value }))
+                  }
+                  type="tel"
+                  inputMode="tel"
+                  maxLength={24}
+                  placeholder="Vide = le téléphone"
+                  className="w-full rounded-md border border-line px-3 py-2.5 text-sm outline-none focus:border-primary"
+                />
+              </label>
+            </div>
+
+            <label className="mb-1 block">
+              <span className="mb-1 block text-xs font-bold text-ink">Horaires affichés</span>
+              <input
+                value={infosEdition.horaires}
+                onChange={(e) => setInfosEdition((prec) => ({ ...prec, horaires: e.target.value }))}
+                maxLength={120}
+                placeholder="Ex. Lun–Sam 08:00–18:00"
+                className="w-full rounded-md border border-line px-3 py-2.5 text-sm outline-none focus:border-primary"
+              />
+            </label>
+            <p className="mb-3 text-[11px] leading-snug text-ink-muted">
+              Ce texte est la ligne d’horaires de la fiche. La pastille « Ouvert / Fermé », elle, se
+              règle jour par jour dans « Gérer » → Horaires d’ouverture.
+            </p>
+
+            {erreurInfos && <p className="mb-2 text-xs font-semibold text-danger">{erreurInfos}</p>}
+
+            <div className="mt-1 flex gap-2">
+              <button
+                type="button"
+                className="btn-ghost flex-1"
+                disabled={enregistrementInfos}
+                onClick={() => setEditionInfos(false)}
+              >
+                Annuler
+              </button>
+              <button type="submit" className="bouton-principal flex-[2]" disabled={enregistrementInfos}>
+                {enregistrementInfos ? 'Enregistrement…' : 'Enregistrer'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
 

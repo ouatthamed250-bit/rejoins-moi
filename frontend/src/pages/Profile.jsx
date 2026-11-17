@@ -160,6 +160,30 @@ export default function Profile() {
         </button>
       </section>
 
+      {/* Mon établissement (16/11) : le gérant n'avait AUCUN chemin vers sa propre
+          fiche depuis son profil — il devait retrouver sa boutique dans le fil.
+          La carte n'apparaît que si le compte est rattaché à une fiche
+          (`profil.etablissementId`), et mène directement à l'écran de gestion. */}
+      {profil.etablissementId && (
+        <section className="carte mt-3 flex items-center gap-3 border-l-4 border-l-primary p-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <Icon name="store" size={20} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold text-ink">Mon établissement</p>
+            <p className="text-[11px] leading-snug text-ink-muted">
+              Modifier le nom, la description, les horaires, les photos — ou fermer temporairement.
+            </p>
+          </div>
+          <Link
+            to={`/etablissement/${profil.etablissementId}`}
+            className="bouton-principal shrink-0 px-3 py-2 text-xs"
+          >
+            Gérer
+          </Link>
+        </section>
+      )}
+
       {/* Abonnement (ajout du 29/09) : l'option qui débloque en une fois les offres de
           boulot, les demandes de main-d'œuvre et la mise en avant du profil artisan. */}
       <div className="mt-3">

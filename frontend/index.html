@@ -66,6 +66,18 @@
       rel="stylesheet"
     />
 
+    <!-- Open Graph / Twitter (migration Cloudflare Pages) : c'est ce que lit
+         WhatsApp quand un lien est partagé (titre, phrase, vignette). L'image est
+         déclarée en URL ABSOLUE sur le domaine publié — un chemin relatif ne donne
+         aucune vignette aux robots de WhatsApp/Facebook, qui ne connaissent pas la
+         page d'où vient le lien. `summary_large_image` = grande vignette. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Rejoins'Moi — Découvre les artisans de ton quartier à Abidjan" />
+    <meta property="og:description" content="Trouvez un artisan de quartier à Abidjan et connectez-vous à la main-d'œuvre locale." />
+    <meta property="og:image" content="https://rejoins-moi.pages.dev/icons/icon-512.png" />
+    <meta property="og:url" content="https://rejoins-moi.pages.dev/" />
+    <meta name="twitter:card" content="summary_large_image" />
+
     <title>Rejoins'Moi — Découvre · Soutiens · Connecte-toi</title>
   </head>
   <body>

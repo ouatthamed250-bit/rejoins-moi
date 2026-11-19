@@ -56,12 +56,15 @@ const LIBELLES_CATEGORIES = {
 export default function EstablishmentProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { connecte, profil, favoris, basculerFavori, ajouterInteraction } = useAuth();
+  const { connecte, profil, favoris, visites, basculerFavori, basculerVisite, ajouterInteraction } = useAuth();
   const position = useGeolocation();
 
   const [etablissement, setEtablissement] = useState(null);
   const [avis, setAvis] = useState([]);
   const [chargement, setChargement] = useState(true);
+  // « Déjà visité » renvoyé par GET /establishments/:id (optionalAuth) : la fiche
+  // reste publique, mais un compte connecté reçoit son propre état de visite.
+  const [visiteServeur, setVisiteServeur] = useState(false);
   const [horsLigne, setHorsLigne] = useState(false);
   const [introuvable, setIntrouvable] = useState(false);
   const [message, setMessage] = useState('');
@@ -181,15 +184,22 @@ export default function EstablishmentProfile() {
     const coords = position.position;
     try {
       const requete = coords ? `?lat=${coords.lat}&lng=${coords.lng}` : '';
-      const reponse = await api.get(`/establishments/${id}${requete}`, { auth: false });
+      // Jeton ACTIVÉ (défaut du client) : c'est lui qui permet au serveur de
+      // répondre `estVisite` pour CE compte. La fiche reste publique — la route est
+      // en `optionalAuth`, un visiteur sans jeton reçoit la même fiche, sans le
+      // booléen. Sans ce changement (l'appel était en `auth: false`), le serveur ne
+      // savait jamais qui regardait et « déjà visité » serait toujours faux.
+      const reponse = await api.get(`/establishments/${id}${requete}`);
       setEtablissement(reponse.etablissement);
       setAvis(reponse.avis || []);
+      setVisiteServeur(Boolean(reponse.estVisite));
       setHorsLigne(false);
     } catch (err) {
       const demo = ETABLISSEMENTS_DEMO.find((e) => String(e.id) === String(id));
       if (demo) {
         setEtablissement(demo);
         setAvis(AVIS_DEMO);
+        setVisiteServeur(false);
         setHorsLigne(true);
       } else {
         setIntrouvable(true);
@@ -246,6 +256,12 @@ export default function EstablishmentProfile() {
     [etablissement, position.position]
   );
   const estFavori = favoris.includes(String(etablissement?.id));
+  // « Déjà visité » (privé) : `visites` vient du compte (état partagé, mise à jour
+  // immédiate au clic) ; `visiteServeur` est le booléen renvoyé par la fiche, utile
+  // quand le profil local est encore en cours de rafraîchissement.
+  const estVisite =
+    visites.includes(String(etablissement?.id || id)) ||
+    Boolean(visiteServeur && String(etablissement?.id || id) === String(id));
   // ── Propriétaire de la fiche ? ──
   // Le serveur autorise PATCH /establishments/:id si `createdByUserId` correspond
   // OU si `user.etablissementId` correspond à la fiche (routes/establishments.js).
@@ -707,6 +723,40 @@ export default function EstablishmentProfile() {
               onClick={partager}
             >
               <Icon name="share" size={18} />
+            </button>
+            {/* « Déjà visité » (privé, ajout du 17/11) : à côté de l'étoile.
+                Le libellé reste VISIBLE, contrairement aux deux icônes voisines :
+                une simple coche ne dirait pas que la marque est personnelle et
+                qu'elle se retrouve dans « Mes visites » (profil).
+                Coché → vert plein (`health`) ; sinon même fond blanc que les autres. */}
+            <button
+              type="button"
+              aria-pressed={estVisite}
+              aria-label={
+                estVisite
+                  ? 'Retirer de mes établissements déjà visités'
+                  : 'Marquer comme déjà visité (privé)'
+              }
+              title={
+                estVisite
+                  ? 'Déjà visité — conservé dans votre profil, invisible pour les autres'
+                  : 'Marquer comme déjà visité (privé)'
+              }
+              className={`flex h-9 items-center gap-1 rounded-full px-2.5 text-[11px] font-bold shadow-card transition active:scale-95 ${
+                estVisite ? 'bg-health text-white' : 'bg-white/95 text-ink'
+              }`}
+              onClick={() => {
+                // Sans compte, la marque ne vivrait que sur cet appareil : on
+                // invite à se connecter (multi-appareils) au lieu de faire semblant.
+                if (!connecte) {
+                  navigate('/connexion', { state: { depuis: `/etablissement/${id}` } });
+                  return;
+                }
+                basculerVisite(etablissement.id || id);
+              }}
+            >
+              <Icon name="check" size={15} />
+              Déjà visité
             </button>
             <button
               type="button"

@@ -198,6 +198,35 @@ export function AuthProvider({ children }) {
     [profil, token, estDemo, memoriser]
   );
 
+  /**
+   * Bascule « déjà visité » (privé) — même contrat qu'un favori : la pastille
+   * réagit immédiatement (optimiste), puis le serveur renvoie le tableau complet.
+   *
+   * Différence volontaire avec `basculerFavori` : aucune interaction de feed n'est
+   * écrite ici. Le carnet de visites est PRIVÉ ; il ne doit pas servir à classer
+   * publiquement les fiches ni à révéler un comportement à un tiers.
+   */
+  const basculerVisite = useCallback(
+    async (establishmentId) => {
+      const dejaVisite = (profil?.visites || []).map(String).includes(String(establishmentId));
+      const visites = dejaVisite
+        ? (profil?.visites || []).filter((v) => String(v) !== String(establishmentId))
+        : [...(profil?.visites || []), establishmentId];
+      memoriser({ ...profil, visites });
+
+      if (token && !estDemo) {
+        try {
+          const reponse = await api.post(`/users/me/visites/${establishmentId}`, {});
+          memoriser({ ...profil, visites: reponse.visites });
+        } catch {
+          /* on garde l'état optimiste local */
+        }
+      }
+      return !dejaVisite;
+    },
+    [profil, token, estDemo, memoriser]
+  );
+
   const valeurContexte = useMemo(
     () => ({
       profil,
@@ -208,6 +237,9 @@ export function AuthProvider({ children }) {
       chargement,
       historique,
       favoris: (profil?.favoris || []).map(String),
+      // Carnet de visites privé : mêmes ids (« Déjà visité »), lus par la fiche et
+      // par la section « Mes visites » du profil.
+      visites: (profil?.visites || []).map(String),
       messagesNonLus,
       setMessagesNonLus,
       connexion,
@@ -217,6 +249,7 @@ export function AuthProvider({ children }) {
       rafraichirProfil,
       ajouterInteraction,
       basculerFavori,
+      basculerVisite,
     }),
     [
       profil,
@@ -234,6 +267,7 @@ export function AuthProvider({ children }) {
       rafraichirProfil,
       ajouterInteraction,
       basculerFavori,
+      basculerVisite,
     ]
   );
 

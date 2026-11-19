@@ -10,6 +10,9 @@
 //    conditionne la variante de gratuité du premier contact (§2).
 //  - Les favoris sont affichés depuis l'état local (profil.favoris) : aucune requête
 //    supplémentaire n'est nécessaire.
+//  - « Mes visites » (ajout du 17/11) suit la même logique, mais le carnet ne
+//    contient que des IDENTIFIANTS : nom et photo de chaque fiche sont relus auprès
+//    de l'API (voir l'effet `chargerFichesVisites`). Ce carnet est PRIVÉ.
 
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -42,13 +45,45 @@ const FORMULAIRE_VIDE = {
   chercheTravail: true,
 };
 
+/**
+ * Carte compacte d'une fiche, partagée par « Mes favoris » et « Mes visites » :
+ * une seule définition, donc un rendu identique dans les deux sections.
+ * L'image préfère l'URL servie par l'API (`photoDevantureUrl`) et retombe sur la
+ * photo des données de démonstration.
+ */
+function CarteFicheListe({ fiche }) {
+  const lieu = [fiche.quartier, fiche.commune].filter(Boolean).join(', ');
+  return (
+    <Link to={`/etablissement/${fiche.id}`} className="carte flex items-center gap-3 p-2">
+      <img
+        src={fiche.photoDevantureUrl || fiche.photoDevanture}
+        alt={fiche.nom}
+        loading="lazy"
+        decoding="async"
+        className="h-12 w-12 rounded-md object-cover"
+      />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-bold text-ink">{fiche.nom}</span>
+        <span className="block text-[11px] text-ink-muted">{lieu || 'Adresse non précisée'}</span>
+      </span>
+      <Icon name="chevronRight" size={18} className="text-ink-muted" />
+    </Link>
+  );
+}
+
 export default function Profile() {
   const navigate = useNavigate();
-  const { profil, connecte, estDemo, deconnexion, mettreAJourProfil, favoris } = useAuth();
+  const { profil, connecte, estDemo, deconnexion, mettreAJourProfil, favoris, visites } = useAuth();
   const [edition, setEdition] = useState(false);
   const [formulaire, setFormulaire] = useState(FORMULAIRE_VIDE);
   const [message, setMessage] = useState('');
   const [mesBesoins, setMesBesoins] = useState([]);
+  // ── « Mes visites » (privé, ajout du 17/11) ──
+  // Le compte ne stocke que des IDENTIFIANTS : nom et photo sont relus fiche par
+  // fiche. Un carnet réel contient quelques fiches, pas des centaines ; les fiches
+  // de démonstration sont résolues localement, sans appel réseau.
+  const [fichesVisites, setFichesVisites] = useState([]);
+  const [chargementVisites, setChargementVisites] = useState(false);
 
   useEffect(() => {
     if (!profil) return;
@@ -85,6 +120,40 @@ export default function Profile() {
       annule = true;
     };
   }, [connecte, estDemo, profil?.id]);
+
+  // Résolution des fiches visitées : le carnet ne contient que des identifiants.
+  // Les plus récentes d'abord (on ajoute en fin de tableau côté serveur).
+  useEffect(() => {
+    let annule = false;
+    async function chargerFichesVisites() {
+      const ids = visites.slice(-30).reverse();
+      if (ids.length === 0) {
+        setFichesVisites([]);
+        return;
+      }
+      setChargementVisites(true);
+      const fiches = await Promise.all(
+        ids.map(async (unId) => {
+          const demonstration = ETABLISSEMENTS_DEMO.find((e) => String(e.id) === String(unId));
+          if (demonstration) return demonstration;
+          try {
+            const reponse = await api.get(`/establishments/${unId}`);
+            return reponse.etablissement || null;
+          } catch {
+            // Fiche retirée, ou API endormie : on n'affiche pas de trou dans la liste.
+            return null;
+          }
+        })
+      );
+      if (annule) return;
+      setFichesVisites(fiches.filter(Boolean));
+      setChargementVisites(false);
+    }
+    chargerFichesVisites();
+    return () => {
+      annule = true;
+    };
+  }, [visites]);
 
   async function enregistrer(evt) {
     evt.preventDefault();
@@ -369,24 +438,38 @@ export default function Profile() {
           <ul className="flex flex-col gap-2">
             {etablissementsFavoris.map((e) => (
               <li key={e.id}>
-                <Link to={`/etablissement/${e.id}`} className="carte flex items-center gap-3 p-2">
-                  {/* Favoris : issus des données de démo (URL) ou de l'API. On préfère
-                      l'URL servie par l'API quand elle existe. */}
-                  <img
-                    src={e.photoDevantureUrl || e.photoDevanture}
-                    alt={e.nom}
-                    loading="lazy"
-                    decoding="async"
-                    className="h-12 w-12 rounded-md object-cover"
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-bold text-ink">{e.nom}</span>
-                    <span className="block text-[11px] text-ink-muted">
-                      {e.quartier}, {e.commune}
-                    </span>
-                  </span>
-                  <Icon name="chevronRight" size={18} className="text-ink-muted" />
-                </Link>
+                <CarteFicheListe fiche={e} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* Mes visites (privé) — juste après les favoris : deux carnets personnels
+          voisins. Le libellé et la phrase d'aide rappellent que ces fiches ne sont
+          visibles que par l'utilisateur, pour ne pas le laisser croire qu'il
+          « note » publiquement un établissement. */}
+      <section className="mt-4">
+        <h2 className="mb-1 text-sm font-bold text-ink">Mes visites ({visites.length})</h2>
+        <p className="mb-2 text-[11px] text-ink-muted">
+          Carnet privé : ces fiches ne sont visibles que par vous.
+        </p>
+        {chargementVisites ? (
+          <p className="text-xs text-ink-muted">Chargement de vos fiches…</p>
+        ) : visites.length === 0 ? (
+          <p className="text-xs text-ink-muted">
+            Vous n’avez pas encore marqué d’établissement comme visité.
+          </p>
+        ) : fichesVisites.length === 0 ? (
+          <p className="text-xs text-ink-muted">
+            Vos fiches visitées sont momentanément indisponibles (réseau lent). Elles
+            réapparaîtront au prochain chargement.
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {fichesVisites.map((e) => (
+              <li key={e.id}>
+                <CarteFicheListe fiche={e} />
               </li>
             ))}
           </ul>

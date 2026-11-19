@@ -958,6 +958,10 @@ router.post(
  */
 router.get(
   '/:id',
+  // `optionalAuth` : la fiche reste PUBLIQUE (aucun compte requis), mais quand un
+  // jeton accompagne la requête on peut répondre « déjà visité ? ». Aucun jeton
+  // invalide ne bloque la lecture : le middleware ignore et continue en anonyme.
+  optionalAuth,
   asyncHandler(async (req, res) => {
     const doc = await Establishment.findById(req.params.id);
     if (!doc) throw new ApiError(404, 'Établissement introuvable.');
@@ -967,9 +971,17 @@ router.get(
       ? getDistanceKm(coords.lat, coords.lng, doc.localisation.lat, doc.localisation.lng)
       : null;
 
+    // « Déjà visité » (ajout du 17/11) : booléen calculé pour CE compte, jamais
+    // stocké sur la fiche. Ne sort donc que dans la réponse à l'utilisateur
+    // concerné — c'est une information privée (la fiche n'est pas modifiée).
+    const estVisite = Boolean(
+      req.user && (req.user.visites || []).some((v) => String(v) === String(doc._id))
+    );
+
     res.json({
       etablissement: doc.toCardJSON({ distanceKm, base: basePublique(req) }),
       avis: (doc.avis || []).slice().reverse().slice(0, 50),
+      estVisite,
     });
   })
 );

@@ -155,6 +155,9 @@ router.get(
   asyncHandler(async (req, res) => {
     const abonnement = await Subscription.trouverActif(req.user._id);
     res.json({
+      // `toPublicJSON` porte déjà `favoris` ET `visites` (ajout du 17/11) : c'est
+      // ce qui permet au frontend de savoir, dès le chargement, quelles fiches
+      // sont marquées « déjà visité » — sans requête supplémentaire.
       user: req.user.toPublicJSON({ abonnement }),
       historique: (req.user.historiqueInteractions || []).slice(-60).reverse(),
     });
@@ -240,6 +243,40 @@ router.post(
     req.user.ajouterInteraction({ type: 'favori', establishmentId: id });
     await req.user.save();
     res.json({ favoris: req.user.favoris.map(String), estFavori: !dejaFavori });
+  })
+);
+
+/**
+ * POST /api/users/me/visites/:establishmentId — marque/démarque une fiche comme
+ * « déjà visité » (toggle), exactement comme la route des favoris.
+ *
+ * POURQUOI ICI ET PAS SUR L'ÉTABLISSEMENT : « déjà visité » est un souvenir
+ * PERSONNEL (« j'ai déjà mangé chez ce maquis »), pas une donnée de la fiche. Il
+ * vit donc dans le compte, et la réponse ne contient que le tableau du compte
+ * connecté — aucun autre utilisateur ne peut le lire. Le compteur public de la
+ * fiche (`compteurVisites`) est une notion différente, alimentée par les vues.
+ *
+ * Le paramètre est validé (24 caractères hexadécimaux) avant écriture : un
+ * identifiant fantaisiste ferait échouer la sauvegarde Mongoose en 500.
+ */
+router.post(
+  '/me/visites/:establishmentId',
+  protect,
+  asyncHandler(async (req, res) => {
+    const id = req.params.establishmentId;
+    if (!/^[0-9a-fA-F]{24}$/.test(String(id))) {
+      throw new ApiError(400, 'Identifiant d’établissement invalide.');
+    }
+    const dejaVisite = (req.user.visites || []).some((v) => String(v) === String(id));
+    if (dejaVisite) {
+      req.user.visites = req.user.visites.filter((v) => String(v) !== String(id));
+    } else {
+      req.user.visites.push(id);
+    }
+    // Pas d'interaction ajoutée au feed : le carnet de visites est privé, il ne
+    // doit pas peser sur l'apprentissage public du classement (§3).
+    await req.user.save();
+    res.json({ visites: req.user.visites.map(String), estVisite: !dejaVisite });
   })
 );
 

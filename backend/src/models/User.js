@@ -119,6 +119,16 @@ const userSchema = new mongoose.Schema(
     historiqueInteractions: [interactionSchema],
     favoris: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Establishment' }],
 
+    // Carnet de visites PRIVÉ (ajout du 17/11) : fiches que l'utilisateur a
+    // marquées « déjà visité ». C'est un repère PERSONNEL (ai-je déjà été chez ce
+    // coiffeur ?), pas une statistique : il ne doit donc jamais être visible par
+    // les autres. Le tableau ne sort que par `toPublicJSON`, c'est-à-dire dans
+    // GET /api/users/me et dans les réponses de connexion — toujours pour le
+    // compte lui-même, jamais dans une fiche ni dans une liste publique.
+    // (À ne pas confondre avec `compteurVisites` de l'Establishment, qui est le
+    // nombre PUBLIC de visites de la fiche.)
+    visites: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Establishment' }],
+
     // Établissement rattaché (fiche créée ou gérée par cet utilisateur)
     etablissementId: { type: mongoose.Schema.Types.ObjectId, ref: 'Establishment' },
 
@@ -217,6 +227,9 @@ userSchema.methods.toPublicJSON = function toPublicJSON({ abonnement = null, abo
     nombreAvis: this.nombreAvis,
     segment: this.segment,
     favoris: (this.favoris || []).map(String),
+    // « Déjà visité » : inclus ici parce que cette forme ne sert QUE le compte
+    // propriétaire (voir le commentaire du champ dans le schéma).
+    visites: (this.visites || []).map(String),
     etablissementId: this.etablissementId || null,
     // Abonnement (cahier des charges, ajout du 29/09) : deux drapeaux dérivés,
     // jamais stockés, pour que le frontend n'ait rien à recalculer.

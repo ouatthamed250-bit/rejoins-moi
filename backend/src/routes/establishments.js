@@ -1125,10 +1125,21 @@ router.patch(
       if (tags.length < 3) throw new ApiError(400, 'Conservez au moins 3 produits/services.');
       doc.tags = tags;
     }
-    if (req.body?.localisation) {
-      const lat = Number(req.body.localisation.lat);
-      const lng = Number(req.body.localisation.lng);
-      if (Number.isFinite(lat) && Number.isFinite(lng)) doc.localisation = { lat, lng };
+    // Localisation (16/11) : le gérant peut re-mesurer la position de son commerce
+    // depuis la fiche (calibrage GPS de 10 s, puis confirmation sur la carte).
+    // `parseCoords` applique les mêmes bornes que la création (lat -90..90,
+    // lng -180..180, (0,0) refusé) : une mesure aberrante est REJETÉE (400) au lieu
+    // d'être ignorée en silence — l'écran croirait avoir enregistré un point.
+    if (req.body?.localisation !== undefined) {
+      const coords = parseCoords(req.body.localisation);
+      if (!coords) {
+        throw new ApiError(
+          400,
+          'Position invalide : latitude entre -90 et 90, longitude entre -180 et 180.',
+          { champLocalisation: true }
+        );
+      }
+      doc.localisation = coords;
     }
     if (req.body?.texteBoutonAction !== undefined) {
       // Le libellé reste dynamique : par défaut « Aller chez {nom} » (§5)

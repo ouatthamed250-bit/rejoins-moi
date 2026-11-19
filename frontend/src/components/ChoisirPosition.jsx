@@ -8,6 +8,12 @@
 // ce point. C'est un CHOIX déclaré, jamais une mesure déguisée — l'écran l'écrit
 // noir sur blanc, et l'origine est mémorisée comme telle (`source: 'manuel'`).
 //
+// GARDE-FOU (16/11) : quand l'écran fournit `reference` (la position déjà
+// enregistrée), l'écart entre le repère et elle est calculé à chaque déplacement.
+// Au-delà d'un kilomètre, un bandeau demande « êtes-vous sûr d'être sur place ? » :
+// un calibrage fait depuis un autre quartier enverrait tous les clients au mauvais
+// endroit. L'avertissement n'interdit pas de valider, il oblige à regarder.
+//
 // POIDS DE LA CARTE (décision technique)
 // Leaflet et ses tuiles pèsent bien plus lourd que tout le reste de l'application :
 // ils ne sont donc PAS dans le paquet initial. Ce composant charge Leaflet par
@@ -24,9 +30,18 @@ import { useEffect, useRef, useState } from 'react';
 
 import { Icon } from './Icons.jsx';
 import { CENTRE_DEFAUT } from '../utils/position.js';
+import { formatDistanceKm, getDistanceKm } from '../utils/distance.js';
 
 const ZOOM_INITIAL = 14;
 const TUILES = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+/**
+ * Écart au-delà duquel on demande confirmation explicite (garde-fou anti-erreur).
+ * Un gérant qui recalibre sa position reste à quelques mètres de son commerce :
+ * au-delà d'un kilomètre, c'est presque toujours une erreur (mauvais GPS, mauvaise
+ * ville, calibrage fait depuis chez soi) et le point enverrait les clients ailleurs.
+ */
+const SEUIL_ALERTE_KM = 1;
 
 /**
  * Repère dessiné en SVG — le `mapPin` de l'application (Icons.jsx), en orange, avec la
@@ -40,9 +55,21 @@ const ICONE_REPERE = `<svg width="30" height="30" viewBox="0 0 24 24" aria-hidde
 
 /**
  * @param {{ ouvert: boolean, onFermer: () => void, onValider: (lat: number, lng: number) => void,
- *   centre?: { lat: number, lng: number }|null, onGps?: () => void }} props
+ *   centre?: { lat: number, lng: number }|null, onGps?: () => void,
+ *   reference?: { lat: number, lng: number }|null, seuilAlerteKm?: number,
+ *   titre?: string, aide?: string }} props
  */
-export default function ChoisirPosition({ ouvert, onFermer, onValider, centre = null, onGps }) {
+export default function ChoisirPosition({
+  ouvert,
+  onFermer,
+  onValider,
+  centre = null,
+  onGps,
+  reference = null,
+  seuilAlerteKm = SEUIL_ALERTE_KM,
+  titre = 'Ma position sur la carte',
+  aide = 'Faites glisser le repère orange sur votre quartier (ou touchez la carte : le repère s’y place). Puis validez — les distances partiront de ce point.',
+}) {
   const conteneur = useRef(null);
   const carte = useRef(null);
   const marqueur = useRef(null);
@@ -128,6 +155,14 @@ export default function ChoisirPosition({ ouvert, onFermer, onValider, centre = 
 
   if (!ouvert) return null;
 
+  // Garde-fou : écart entre le repère posé et la position actuellement enregistrée.
+  // `getDistanceKm` rend `null` si un des points est invalide → pas d'alerte plutôt
+  // qu'une alerte sur une distance fabriquée.
+  const distanceReferenceKm = reference
+    ? getDistanceKm(point.lat, point.lng, reference.lat, reference.lng)
+    : null;
+  const alerteDistance = distanceReferenceKm != null && distanceReferenceKm > seuilAlerteKm;
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 animate-pop-in"
@@ -137,17 +172,14 @@ export default function ChoisirPosition({ ouvert, onFermer, onValider, centre = 
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Choisir ma position sur la carte"
+        aria-label={titre}
         className="w-full max-w-[480px] rounded-t-xl bg-white p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-lg"
         onClick={(evt) => evt.stopPropagation()}
       >
         <div className="mb-2 flex items-start gap-2">
           <span className="flex-1">
-            <span className="block text-sm font-bold text-ink">Ma position sur la carte</span>
-            <span className="block text-[11px] leading-snug text-ink/70">
-              Faites glisser le repère orange sur votre quartier (ou touchez la carte : le repère s’y
-              place). Puis validez — les distances partiront de ce point.
-            </span>
+            <span className="block text-sm font-bold text-ink">{titre}</span>
+            <span className="block text-[11px] leading-snug text-ink/70">{aide}</span>
           </span>
           <button
             type="button"
@@ -158,6 +190,20 @@ export default function ChoisirPosition({ ouvert, onFermer, onValider, centre = 
             <Icon name="close" size={18} />
           </button>
         </div>
+
+        {/* Bandeau de garde-fou, AU-DESSUS de la carte (dans le flux, pas en overlay :
+            les contrôles Leaflet montent à z-index 1000 et passeraient par-dessus un
+            avertissement posé à l'intérieur). Il n'empêche pas de valider — il
+            demande de regarder avant. */}
+        {alerteDistance && (
+          <p
+            role="alert"
+            className="mb-2 rounded-md border border-danger/40 bg-danger/10 px-2 py-1.5 text-[11px] font-semibold leading-snug text-danger"
+          >
+            Attention, cette position est à {formatDistanceKm(distanceReferenceKm)} de la position
+            actuelle. Êtes-vous sûr d’être sur place ?
+          </p>
+        )}
 
         <div className="relative overflow-hidden rounded-md border border-line">
           <div ref={conteneur} className="h-[300px] w-full bg-soft" />

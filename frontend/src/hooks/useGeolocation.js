@@ -49,6 +49,106 @@ import {
 } from '../utils/position.js';
 
 /**
+ * Calibrage GPS — la position EXACTE d'un commerce, pas celle de l'utilisateur.
+ *
+ * `getCurrentPosition` rend la PREMIÈRE mesure disponible : sur un téléphone qui
+ * vient de s'allumer, c'est souvent la position réseau (plusieurs centaines de
+ * mètres d'erreur), et c'est ce point-là qui se retrouve dans une fiche. En écoutant
+ * en continu (`watchPosition`) pendant dix secondes, le vrai GPS a le temps
+ * d'accrocher les satellites et d'affiner — on ne garde que la mesure au plus petit
+ * `coords.accuracy` (le rayon d'incertitude annoncé par le téléphone), et non la
+ * dernière arrivée, qui peut être moins bonne que la précédente.
+ *
+ * Décisions :
+ *  - `maximumAge: 0` : la mesure doit être NEUVE. Réutiliser une position mémorisée
+ *    reviendrait à recopier l'ancien point — exactement ce que ce bouton corrige.
+ *  - `enableHighAccuracy: true` : sans le vrai GPS, dix secondes de mesures réseau
+ *    n'améliorent rien.
+ *  - Refus d'autorisation (`code === 1`) : on rejette TOUT DE SUITE, attendre dix
+ *    secondes de plus ne produirait aucune mesure.
+ *  - Indisponibilité (`2`) et délai (`3`) : on continue d'écouter jusqu'au bout, une
+ *    mesure peut arriver entre-temps ; on ne rejette qu'à la fin, faute de mesure.
+ *  - Aucune coordonnée inventée : sans mesure, la promesse est rejetée et l'écran
+ *    propose le choix manuel sur la carte.
+ *
+ * @param {number} [dureeMs=10000] durée d'écoute, en millisecondes
+ * @returns {Promise<{ lat: number, lng: number, accuracy: number|null }>}
+ */
+export function calibrerPositionGps(dureeMs = 10000) {
+  return new Promise((resolve, reject) => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      reject(new Error("La géolocalisation n'est pas disponible sur cet appareil."));
+      return;
+    }
+
+    const duree = Math.max(1000, Number(dureeMs) || 10000);
+    let meilleure = null;
+    let termine = false;
+    let veille = null;
+    let minuteur = null;
+
+    function arreter() {
+      if (veille != null) navigator.geolocation.clearWatch(veille);
+      if (minuteur != null) clearTimeout(minuteur);
+      veille = null;
+      minuteur = null;
+    }
+
+    function echouer(message) {
+      if (termine) return;
+      termine = true;
+      arreter();
+      reject(new Error(message));
+    }
+
+    try {
+      veille = navigator.geolocation.watchPosition(
+        (pos) => {
+          if (termine) return;
+          const { latitude, longitude, accuracy } = pos.coords;
+          const mesure = {
+            lat: latitude,
+            lng: longitude,
+            accuracy: Number.isFinite(accuracy) ? accuracy : null,
+          };
+          // `?? Infinity` : une mesure sans `accuracy` ne doit jamais battre une
+          // mesure chiffrée, même si elle arrive en premier.
+          if (!meilleure || (mesure.accuracy ?? Infinity) < (meilleure.accuracy ?? Infinity)) {
+            meilleure = mesure;
+          }
+        },
+        (err) => {
+          if (err?.code === 1) {
+            echouer(
+              'Localisation refusée. Autorisez la géolocalisation pour ce site, puis relancez le calibrage.'
+            );
+          }
+        },
+        { enableHighAccuracy: true, timeout: duree, maximumAge: 0 }
+      );
+    } catch (err) {
+      echouer(err?.message || 'Impossible de démarrer le calibrage GPS.');
+      return;
+    }
+
+    minuteur = setTimeout(() => {
+      if (termine) return;
+      termine = true;
+      arreter();
+      if (!meilleure) {
+        reject(
+          new Error(
+            "Aucune position reçue pendant le calibrage. Sortez à l'air libre, vérifiez que la localisation du téléphone est activée, puis réessayez — ou choisissez la position sur la carte."
+          )
+        );
+        return;
+      }
+      resolve(meilleure);
+    }, duree);
+  });
+}
+
+/**
  * @param {{ auto?: boolean }} [options] `auto: false` = ne rien demander au montage
  *   (l'écran pilote lui-même la demande).
  * @returns {{ lat: number|null, lng: number|null, position: {lat:number,lng:number}|null,

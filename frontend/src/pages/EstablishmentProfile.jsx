@@ -18,7 +18,7 @@
 //    médicaux). On redirige vers la section Pharmacies & Cliniques, palette verte.
 //  - Hors ligne : la fiche de démonstration correspondante s'affiche et on le dit.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import EmptyState from '../components/EmptyState.jsx';
@@ -31,15 +31,18 @@ import EditeurHoraires from '../components/EditeurHoraires.jsx';
 import StarRating from '../components/StarRating.jsx';
 import TagBadge from '../components/TagBadge.jsx';
 import { CompteursSepares } from '../components/EstablishmentCard.jsx';
-import { Icon } from '../components/Icons.jsx';
+import { Icon, IconLoader } from '../components/Icons.jsx';
 import { api } from '../utils/api/client.js';
 import { distanceDepuis, formatDistanceKm, urlItineraire } from '../utils/distance.js';
 import { formatDateRelative, formatNote, formatTelephone, initiales } from '../utils/format.js';
 import { partagerWhatsApp, textePartageFiche, urlPartageFiche } from '../utils/partage.js';
 import { estOuvertMaintenant, horairesParDefaut, resumerHoraires } from '../utils/statutHoraire.js';
 import { AVIS_DEMO, ETABLISSEMENTS_DEMO, PROFIL_DEMO } from '../data/demoData.js';
-import { useGeolocation } from '../hooks/useGeolocation.js';
+import { calibrerPositionGps, useGeolocation } from '../hooks/useGeolocation.js';
 import { useAuth } from '../hooks/useAuth.js';
+
+/** Leaflet n'arrive que si le gérant ouvre réellement la carte de recalibrage. */
+const ChoisirPosition = lazy(() => import('../components/ChoisirPosition.jsx'));
 
 /** Miroir des libellés de catégories (data/demoData.js). */
 const LIBELLES_CATEGORIES = {
@@ -132,6 +135,25 @@ export default function EstablishmentProfile() {
   });
   const [enregistrementInfos, setEnregistrementInfos] = useState(false);
   const [erreurInfos, setErreurInfos] = useState('');
+
+  // ── Localisation de l'établissement (calibrage GPS du 16/11) ──
+  // Une fiche publiée avec un point approximatif envoie les clients au mauvais
+  // endroit. Le gérant peut donc re-mesurer sur place : 10 s de GPS, la meilleure
+  // mesure, puis confirmation visuelle sur la carte.
+  //
+  // `localisationEdition` est un BROUILLON (`{ lat, lng, accuracy }`) : rien ne part
+  // au serveur avant « Enregistrer », comme le reste du panneau. `positionGps` est
+  // la mesure fraîche, utilisée comme centre de la carte ; elle est oubliée dès que
+  // la carte se ferme pour ne pas devenir un point de départ trompeur la fois
+  // suivante.
+  const [localisationEdition, setLocalisationEdition] = useState(null);
+  const [positionGps, setPositionGps] = useState(null);
+  const [cartePositionOuverte, setCartePositionOuverte] = useState(false);
+  const [calibrageEnCours, setCalibrageEnCours] = useState(false);
+  const [erreurLocalisation, setErreurLocalisation] = useState('');
+  // Jeton de calibrage : fermer le panneau pendant les 10 s doit annuler l'ouverture
+  // de la carte (sinon elle surgirait par-dessus un panneau déjà refermé).
+  const calibrageId = useRef(0);
 
   // ── État de secours des PHOTOS (correctif du 16/11) ──
   // Une URL de photo morte (fichier effacé, ancien hébergement) affichait un cadre
@@ -551,16 +573,81 @@ export default function EstablishmentProfile() {
       horaires: etablissement?.horaires || '',
     });
     setErreurInfos('');
+    // La localisation repart de la fiche publiée : un brouillon abandonné la fois
+    // précédente ne doit pas ressurgir.
+    setLocalisationEdition(null);
+    setPositionGps(null);
+    setCartePositionOuverte(false);
+    setCalibrageEnCours(false);
+    setErreurLocalisation('');
+    calibrageId.current += 1;
     setEditionInfos(true);
   }
 
   /**
-   * Enregistre les informations de la fiche (nom, description, contacts, horaires).
+   * Ferme le panneau « Modifier la fiche » (et le brouillon de localisation avec).
+   * Invalide un calibrage en vol : la promesse de `calibrerPositionGps` se résoudra
+   * quand même au bout des 10 s, mais son résultat sera ignoré (jeton différent).
+   */
+  function fermerEditionInfos() {
+    calibrageId.current += 1;
+    setCalibrageEnCours(false);
+    setCartePositionOuverte(false);
+    setPositionGps(null);
+    setLocalisationEdition(null);
+    setErreurLocalisation('');
+    setEditionInfos(false);
+  }
+
+  /**
+   * Calibrage GPS (10 s) de la position du commerce.
    *
-   * Le serveur n'accepte que ces champs via `champsSimple` et applique un `trim()`
-   * sur chacun : on envoie la version déjà nettoyée, pour que l'écran affiche
-   * exactement ce qui est stocké. Le nom est le seul champ obligatoire (c'est lui
-   * qui s'affiche partout : fil, favoris, partage WhatsApp).
+   * Différence avec le hook `useGeolocation` de la fiche : ici, la question n'est pas
+   * « où suis-je » mais « où est mon commerce ». Le gérant est sur place, il ouvre ce
+   * panneau, lance le calibrage, et la carte s'ouvre sur la mesure la plus précise
+   * obtenue pour qu'il confirme du regard avant d'enregistrer.
+   */
+  async function lancerCalibrageGps() {
+    const jeton = calibrageId.current + 1;
+    calibrageId.current = jeton;
+    setErreurLocalisation('');
+    setCalibrageEnCours(true);
+    try {
+      const mesure = await calibrerPositionGps(10000);
+      if (calibrageId.current !== jeton) return; // panneau fermé pendant les 10 s
+      setPositionGps(mesure);
+      setCartePositionOuverte(true);
+    } catch (err) {
+      if (calibrageId.current !== jeton) return;
+      setErreurLocalisation(
+        err?.message || 'Calibrage GPS impossible. Choisissez la position sur la carte.'
+      );
+    } finally {
+      if (calibrageId.current === jeton) setCalibrageEnCours(false);
+    }
+  }
+
+  /**
+   * Option manuelle, gardée en secours : GPS refusé, coupé, ou mesure impossible.
+   * La carte part de la position déjà connue (brouillon, sinon fiche publiée).
+   */
+  function ouvrirCartePosition() {
+    setErreurLocalisation('');
+    setPositionGps(null);
+    setCartePositionOuverte(true);
+  }
+
+  /**
+   * Enregistre les informations de la fiche (nom, description, contacts, horaires).
+   * La LOCALISATION part dans le même PATCH quand elle a été recalibrée (GPS 10 s)
+   * ou désignée sur la carte : un seul enregistrement pour tout ce que le gérant a
+   * corrigé, et rien n'est écrit tant qu'il n'a pas touché « Enregistrer ».
+   *
+   * Le serveur n'accepte que ces champs via `champsSimple` (plus `localisation`,
+   * validée sur ses bornes) et applique un `trim()` sur chacun : on envoie la
+   * version déjà nettoyée, pour que l'écran affiche exactement ce qui est stocké.
+   * Le nom est le seul champ obligatoire (c'est lui qui s'affiche partout : fil,
+   * favoris, partage WhatsApp).
    */
   async function enregistrerInfos(evt) {
     evt.preventDefault();
@@ -581,6 +668,26 @@ export default function EstablishmentProfile() {
       whatsapp: infosEdition.whatsapp.trim(),
       horaires: infosEdition.horaires.trim(),
     };
+
+    // La localisation ne part QUE si elle a été recalibrée ou choisie sur la carte,
+    // et seulement si elle diffère réellement du point publié : un PATCH qui ne
+    // touche qu'au téléphone ne doit pas réécrire le miroir GeoJSON (`position`) ni
+    // relancer l'index spatial pour rien.
+    const ancienneLocalisation = etablissement.localisation || null;
+    const localisationChangee =
+      Boolean(localisationEdition) &&
+      Number.isFinite(Number(localisationEdition.lat)) &&
+      Number.isFinite(Number(localisationEdition.lng)) &&
+      (!ancienneLocalisation ||
+        Math.abs(Number(localisationEdition.lat) - Number(ancienneLocalisation.lat)) > 1e-7 ||
+        Math.abs(Number(localisationEdition.lng) - Number(ancienneLocalisation.lng)) > 1e-7);
+    if (localisationChangee) {
+      modifications.localisation = {
+        lat: Number(localisationEdition.lat),
+        lng: Number(localisationEdition.lng),
+      };
+    }
+
     try {
       const reponse = await api.patch(`/establishments/${etablissement.id}`, modifications);
       if (reponse?.etablissement) {
@@ -588,7 +695,7 @@ export default function EstablishmentProfile() {
       } else {
         setEtablissement((prec) => (prec ? { ...prec, ...modifications } : prec));
       }
-      setEditionInfos(false);
+      fermerEditionInfos();
       setMessage('Informations de la fiche mises à jour.');
     } catch (err) {
       setErreurInfos(err?.message || 'Enregistrement impossible pour le moment.');
@@ -1460,7 +1567,7 @@ export default function EstablishmentProfile() {
           aria-modal="true"
           aria-label="Modifier les informations de la fiche"
           onClick={() => {
-            if (!enregistrementInfos) setEditionInfos(false);
+            if (!enregistrementInfos) fermerEditionInfos();
           }}
         >
           <form
@@ -1474,7 +1581,7 @@ export default function EstablishmentProfile() {
                 type="button"
                 className="text-xs font-semibold text-ink-muted underline"
                 disabled={enregistrementInfos}
-                onClick={() => setEditionInfos(false)}
+                onClick={fermerEditionInfos}
               >
                 Fermer
               </button>
@@ -1558,6 +1665,79 @@ export default function EstablishmentProfile() {
               règle jour par jour dans « Gérer » → Horaires d’ouverture.
             </p>
 
+            {/* ── Localisation de l'établissement (16/11) ──────────────────────
+                Une fiche au point approximatif envoie les clients ailleurs. Le
+                gérant re-mesure donc sur place : 10 s d'écoute GPS (on garde la
+                meilleure mesure), puis la carte s'ouvre pour confirmation
+                visuelle — centrée sur cette mesure fraîche. Un écart de plus d'un
+                kilomètre y déclenche le bandeau « êtes-vous sûr d'être sur
+                place ? ». Rien n'est écrit en base avant « Enregistrer ». */}
+            <div className="mb-3 rounded-md border border-line p-3">
+              <p className="mb-1 text-xs font-bold text-ink">Localisation de l’établissement</p>
+              <p className="mb-2 text-[11px] leading-snug text-ink-muted">
+                Position enregistrée :{' '}
+                <span className="font-semibold text-ink">
+                  {etablissement?.localisation?.lat != null &&
+                  etablissement?.localisation?.lng != null
+                    ? `${Number(etablissement.localisation.lat).toFixed(5)}, ${Number(
+                        etablissement.localisation.lng
+                      ).toFixed(5)}`
+                    : 'non renseignée'}
+                </span>
+              </p>
+
+              {localisationEdition && (
+                <p className="mb-2 rounded-md bg-primary-pale px-2 py-1.5 text-[11px] font-semibold leading-snug text-ink">
+                  Nouvelle position prête : {Number(localisationEdition.lat).toFixed(5)},{' '}
+                  {Number(localisationEdition.lng).toFixed(5)}
+                  {localisationEdition.accuracy
+                    ? ` (précision ±${Math.round(localisationEdition.accuracy)} m)`
+                    : ''}
+                  . Elle sera enregistrée avec le bouton « Enregistrer ».
+                </p>
+              )}
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={lancerCalibrageGps}
+                  disabled={calibrageEnCours || enregistrementInfos}
+                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
+                >
+                  {calibrageEnCours ? (
+                    <IconLoader size={16} />
+                  ) : (
+                    <Icon name="refresh" size={16} />
+                  )}
+                  {calibrageEnCours
+                    ? 'Calibrage GPS en cours (10s)…'
+                    : 'Actualiser ma position GPS'}
+                </button>
+                <button
+                  type="button"
+                  onClick={ouvrirCartePosition}
+                  disabled={calibrageEnCours || enregistrementInfos}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-md border border-line px-3 py-2 text-xs font-bold text-ink disabled:opacity-60"
+                >
+                  <Icon name="mapPin" size={16} />
+                  Choisir sur la carte
+                </button>
+              </div>
+
+              {calibrageEnCours && (
+                <p className="mt-2 text-[11px] leading-snug text-ink-muted" aria-live="polite">
+                  Restez sur place, téléphone à l’air libre : le GPS affine la mesure pendant ces
+                  10 secondes. La carte s’ouvrira ensuite pour confirmation.
+                </p>
+              )}
+
+              {erreurLocalisation && (
+                <p className="mt-2 text-[11px] font-semibold leading-snug text-danger" role="alert">
+                  {erreurLocalisation}
+                </p>
+              )}
+            </div>
+
             {erreurInfos && <p className="mb-2 text-xs font-semibold text-danger">{erreurInfos}</p>}
 
             <div className="mt-1 flex gap-2">
@@ -1565,7 +1745,7 @@ export default function EstablishmentProfile() {
                 type="button"
                 className="btn-ghost flex-1"
                 disabled={enregistrementInfos}
-                onClick={() => setEditionInfos(false)}
+                onClick={fermerEditionInfos}
               >
                 Annuler
               </button>
@@ -1575,6 +1755,35 @@ export default function EstablishmentProfile() {
             </div>
           </form>
         </div>
+      )}
+
+      {/* ── Carte de confirmation de la localisation (16/11) ──────────────────
+          Ouverte soit par le calibrage GPS (centrée sur la mesure fraîche), soit
+          par « Choisir sur la carte ». Rendue APRÈS le panneau dans le DOM : à
+          z-index égal, elle se pose au-dessus. `reference` est la position
+          actuelle (brouillon s'il existe, sinon fiche publiée) : c'est elle qui
+          alimente le garde-fou « à plus d'un kilomètre ». Valider écrit le
+          brouillon, pas la base — l'enregistrement reste le bouton du panneau. */}
+      {cartePositionOuverte && (
+        <Suspense fallback={null}>
+          <ChoisirPosition
+            ouvert={cartePositionOuverte}
+            titre="Position de l’établissement"
+            aide="Faites glisser le repère orange sur l’emplacement exact du commerce (ou touchez la carte : le repère s’y place). Puis validez — c’est ce point que verront les clients."
+            onFermer={() => {
+              setCartePositionOuverte(false);
+              setPositionGps(null);
+            }}
+            centre={positionGps || localisationEdition || etablissement?.localisation || null}
+            reference={localisationEdition || etablissement?.localisation || null}
+            onValider={(lat, lng) => {
+              setLocalisationEdition({ lat, lng, accuracy: positionGps?.accuracy ?? null });
+              setCartePositionOuverte(false);
+              setPositionGps(null);
+              setErreurLocalisation('');
+            }}
+          />
+        </Suspense>
       )}
 
       {/* ── Photo en plein écran (lecture seule) ───────────────────────────────

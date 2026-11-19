@@ -33,7 +33,7 @@ import TagBadge from '../components/TagBadge.jsx';
 import { CompteursSepares } from '../components/EstablishmentCard.jsx';
 import { Icon, IconLoader } from '../components/Icons.jsx';
 import { api } from '../utils/api/client.js';
-import { distanceDepuis, formatDistanceKm, urlItineraire } from '../utils/distance.js';
+import { distanceDepuis, formatDistanceKm, getDistanceKm, urlItineraire } from '../utils/distance.js';
 import { formatDateRelative, formatNote, formatTelephone, initiales } from '../utils/format.js';
 import { partagerWhatsApp, textePartageFiche, urlPartageFiche } from '../utils/partage.js';
 import { estOuvertMaintenant, horairesParDefaut, resumerHoraires } from '../utils/statutHoraire.js';
@@ -1777,7 +1777,16 @@ export default function EstablishmentProfile() {
             centre={positionGps || localisationEdition || etablissement?.localisation || null}
             reference={localisationEdition || etablissement?.localisation || null}
             onValider={(lat, lng) => {
-              setLocalisationEdition({ lat, lng, accuracy: positionGps?.accuracy ?? null });
+              // La précision annoncée n'a de sens QU'AU point mesuré : si le gérant
+              // déplace le repère de plus de 30 m, la valeur GPS ne décrit plus ce
+              // point et on ne l'affiche pas (mieux vaut aucune précision qu'une
+              // précision fausse).
+              const ecartGpsKm = positionGps
+                ? getDistanceKm(lat, lng, positionGps.lat, positionGps.lng)
+                : null;
+              const precisionGps =
+                ecartGpsKm != null && ecartGpsKm <= 0.03 ? positionGps?.accuracy ?? null : null;
+              setLocalisationEdition({ lat, lng, accuracy: precisionGps });
               setCartePositionOuverte(false);
               setPositionGps(null);
               setErreurLocalisation('');

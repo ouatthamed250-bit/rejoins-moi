@@ -986,10 +986,10 @@ export default function EstablishmentProfile() {
 
                 {menuAdminOuvert && (
                   <>
-                    {/* Voile invisible plein écran : un toucher à côté referme le menu,
-                        comme les feuilles du bas. Un `div` et non un `<button>` : un
-                        bouton nu hérite du fond du navigateur et poserait un voile gris
-                        sur toute la fiche. */}
+                    {/* Voile invisible plein écran : un toucher à côté referme le menu.
+                        Un `div` comme les autres surcouches de la fiche (voir le panneau
+                        photos) : ce n'est pas un contrôle, il n'a rien à faire dans
+                        l'ordre de tabulation — Échap ferme le menu au clavier. */}
                     <div
                       aria-hidden="true"
                       className="fixed inset-0 z-20"

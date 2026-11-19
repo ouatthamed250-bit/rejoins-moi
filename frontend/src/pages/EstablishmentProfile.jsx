@@ -17,6 +17,16 @@
 //  - Catégorie « santé » : ni étoiles ni avis (§6, on ne note pas des actes
 //    médicaux). On redirige vers la section Pharmacies & Cliniques, palette verte.
 //  - Hors ligne : la fiche de démonstration correspondante s'affiche et on le dit.
+//  - HIÉRARCHIE (16/11) : quatre boutons d'administration (« Gérer », « Modifier les
+//    photos », « Modifier la galerie », « Modifier la fiche ») se disputaient le haut
+//    de la fiche ; sur un téléphone la rangée passait à la ligne et venait chevaucher
+//    le médaillon du gérant. Ils sont regroupés derrière UN bouton « Modifier ma
+//    fiche » qui ouvre un menu — les quatre actions et leurs panneaux sont inchangés.
+//  - « Déjà visité » n'est plus une grosse pastille du haut : c'est une coche discrète
+//    dans la barre d'action du bas, à côté de « Aller chez <nom> », là où l'on décide
+//    qu'on est venu.
+//  - La couverture réserve 40 px sous la photo (`pb-10`) : le médaillon rond y
+//    termine sa course, plus aucun bouton ne le recouvre.
 
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -74,6 +84,13 @@ export default function EstablishmentProfile() {
   const [note, setNote] = useState(0);
   const [commentaire, setCommentaire] = useState('');
   const [envoi, setEnvoi] = useState(false);
+
+  // ── Menu du gérant (16/11) ──
+  // Un seul point d'entrée pour les quatre actions d'administration : le bouton
+  // « Modifier ma fiche » ouvre ce menu. Les panneaux visés (informations, galerie,
+  // photos, gestion) ne changent pas — seul l'accès est regroupé, pour que le haut
+  // de la fiche redevienne lisible et que le médaillon du gérant reste dégagé.
+  const [menuAdminOuvert, setMenuAdminOuvert] = useState(false);
 
   // ── Édition des photos par le gérant (ajout du 16/11) ──
   // Jusqu'ici, les seules photos envoyables l'étaient à la CRÉATION de la fiche :
@@ -307,6 +324,14 @@ export default function EstablishmentProfile() {
   const texteBouton =
     etablissement?.texteBoutonAction || (etablissement ? `Aller chez ${etablissement.nom}` : '');
 
+  /**
+   * Gabarit d'une ligne du menu du gérant. Écrit une fois : les quatre actions
+   * doivent se ressembler au pixel près, sinon le menu redevient le patchwork de
+   * pastilles qu'il remplace.
+   */
+  const classeLigneMenu =
+    'flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-xs font-bold text-ink transition active:bg-soft';
+
   /** Clic sur le gros bouton : +1 UTILISATEUR (§3) puis ouverture de l'itinéraire. */
   async function allerChez() {
     if (!etablissement) return;
@@ -354,6 +379,33 @@ export default function EstablishmentProfile() {
       texte: textePartageFiche(etablissement),
       url: urlPartageFiche(etablissement.id || etablissement._id),
     });
+  }
+
+  /**
+   * Coche « Déjà visité » de la barre du bas (16/11).
+   *
+   * L'action a quitté le haut de la fiche : entre le partage et l'étoile, elle y
+   * passait pour un bouton public de plus. Elle est maintenant à côté de « Aller
+   * chez … », l'endroit où l'on décide justement qu'on est venu. Sans compte, la
+   * marque ne vivrait que sur cet appareil : on invite à se connecter (multi-
+   * appareils) au lieu de faire semblant — même règle qu'avant.
+   */
+  function basculerVisiteDepuisLaBarre() {
+    if (!etablissement) return;
+    if (!connecte) {
+      navigate('/connexion', { state: { depuis: `/etablissement/${id}` } });
+      return;
+    }
+    basculerVisite(etablissement.id || id);
+  }
+
+  /**
+   * Exécute une action du menu du gérant en refermant le menu : une seule feuille
+   * ouverte à la fois (les panneaux sont des surcouches plein écran).
+   */
+  function actionAdmin(action) {
+    setMenuAdminOuvert(false);
+    action();
   }
 
   /** Ouvre le panneau d'édition des photos, pré-rempli avec ce qui est affiché. */
@@ -785,113 +837,88 @@ export default function EstablishmentProfile() {
        flottante » du 08/10). */
     <div className="min-h-full bg-white">
       {/* ── Grande photo de devanture + médaillon du vendeur/gérant ── */}
-      <header className="relative">
-        {/* PHOTO : on préfère l'URL servie par l'API (`photoDevantureUrl`), valable
-            quelle que soit la façon dont l'image est stockée (base64 ou URL
-            distante). `photoDevanture` reste utilisé en repli. */}
-        {urlDevanture && !devantureCassee ? (
-          <img
-            src={urlDevanture}
-            alt={`Devanture de ${etablissement.nom}`}
-            className="h-56 w-full bg-soft object-cover"
-            onError={() => setDevantureCassee(true)}
-          />
-        ) : (
-          /* v2 : même correctif que la carte du feed — plus de pavé orange plein
-             sur l'en-tête d'une fiche sans photo, le fond reste ivoire.
-             16/11 : le dessin de la catégorie (affiné par les tags : « Pharmacie »,
-             « Coiffeurs(ses) », « Transfert d'argent »…) vient en filigrane, comme
-             sur la carte du feed — l'en-tête d'une fiche et sa carte disent
-             désormais la même chose. */
-          <PhotoSecours
-            nom={etablissement.nom}
-            categorie={etablissement.categorie}
-            tags={etablissement.tags}
-            sousCategorie={etablissement.sousCategorie}
-            className="h-56 w-full"
-          />
-        )}
-
-        {/* Barre d'actions flottante : retour, partage, favori */}
-        <div className="absolute inset-x-0 top-0 flex items-center justify-between p-3">
-          <button
-            type="button"
-            aria-label="Retour"
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/95 text-ink shadow-card transition active:scale-95"
-            onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/'))}
-          >
-            <Icon name="chevronLeft" size={19} />
-          </button>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              aria-label="Partager la fiche"
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/95 text-ink shadow-card transition active:scale-95"
-              onClick={partager}
-            >
-              <Icon name="share" size={18} />
-            </button>
-            {/* « Déjà visité » (privé, ajout du 17/11) : à côté de l'étoile.
-                Le libellé reste VISIBLE, contrairement aux deux icônes voisines :
-                une simple coche ne dirait pas que la marque est personnelle et
-                qu'elle se retrouve dans « Mes visites » (profil).
-                Coché → vert plein (`health`) ; sinon même fond blanc que les autres. */}
-            <button
-              type="button"
-              aria-pressed={estVisite}
-              aria-label={
-                estVisite
-                  ? 'Retirer de mes établissements déjà visités'
-                  : 'Marquer comme déjà visité (privé)'
-              }
-              title={
-                estVisite
-                  ? 'Déjà visité — conservé dans votre profil, invisible pour les autres'
-                  : 'Marquer comme déjà visité (privé)'
-              }
-              className={`flex h-9 items-center gap-1 rounded-full px-2.5 text-[11px] font-bold shadow-card transition active:scale-95 ${
-                estVisite ? 'bg-health text-white' : 'bg-white/95 text-ink'
-              }`}
-              onClick={() => {
-                // Sans compte, la marque ne vivrait que sur cet appareil : on
-                // invite à se connecter (multi-appareils) au lieu de faire semblant.
-                if (!connecte) {
-                  navigate('/connexion', { state: { depuis: `/etablissement/${id}` } });
-                  return;
-                }
-                basculerVisite(etablissement.id || id);
-              }}
-            >
-              <Icon name="check" size={15} />
-              Déjà visité
-            </button>
-            <button
-              type="button"
-              aria-pressed={estFavori}
-              aria-label={estFavori ? 'Retirer des favoris' : 'Ajouter aux favoris'}
-              className={`flex h-9 w-9 items-center justify-center rounded-full shadow-card transition active:scale-95 ${
-                estFavori ? 'bg-primary text-white' : 'bg-white/95 text-ink'
-              }`}
-              onClick={() => basculerFavori(etablissement.id)}
-            >
-              <Icon name="star" size={18} filled={estFavori} />
-            </button>
-          </div>
-        </div>
-
-        {/* Pastilles du bas de la couverture, empilées À DROITE : le bas-gauche est
-            occupé par le médaillon du gérant (juste en dessous), qui doit rester
-            entièrement visible. Sans ce déplacement, le médaillon le recouvrirait. */}
-        <div className="absolute bottom-3 right-3 flex flex-col items-end gap-1.5">
-          {distance != null && (
-            <span className="flex items-center gap-1 rounded-full bg-black/55 px-2 py-1 text-[10px] font-bold text-white">
-              <Icon name="mapPin" size={12} />
-              {formatDistanceKm(distance)}
-            </span>
+      <header className="relative pb-10">
+        {/* PHOTO + surcouches dans leur propre boîte `relative` : les boutons et les
+            pastilles restent collés aux bords de l'IMAGE (pas de la bande blanche
+            réservée en dessous, `pb-10`), sinon ils descendraient sur le médaillon. */}
+        <div className="relative">
+          {/* PHOTO : on préfère l'URL servie par l'API (`photoDevantureUrl`), valable
+              quelle que soit la façon dont l'image est stockée (base64 ou URL
+              distante). `photoDevanture` reste utilisé en repli. */}
+          {urlDevanture && !devantureCassee ? (
+            <img
+              src={urlDevanture}
+              alt={`Devanture de ${etablissement.nom}`}
+              className="h-56 w-full bg-soft object-cover"
+              onError={() => setDevantureCassee(true)}
+            />
+          ) : (
+            /* v2 : même correctif que la carte du feed — plus de pavé orange plein
+               sur l'en-tête d'une fiche sans photo, le fond reste ivoire.
+               16/11 : le dessin de la catégorie (affiné par les tags : « Pharmacie »,
+               « Coiffeurs(ses) », « Transfert d'argent »…) vient en filigrane, comme
+               sur la carte du feed — l'en-tête d'une fiche et sa carte disent
+               désormais la même chose. */
+            <PhotoSecours
+              nom={etablissement.nom}
+              categorie={etablissement.categorie}
+              tags={etablissement.tags}
+              sousCategorie={etablissement.sousCategorie}
+              className="h-56 w-full"
+            />
           )}
-          <span className="rounded-full bg-white/95 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-primary">
-            {libelleCategorie}
-          </span>
+
+          {/* Barre d'actions flottante — TROIS boutons publics seulement : retour,
+              partage, favori. « Déjà visité » est descendu dans la barre du bas (coche),
+              et l'administration est derrière l'unique bouton « Modifier ma fiche ». */}
+          <div className="absolute inset-x-0 top-0 flex items-center justify-between p-3">
+            <button
+              type="button"
+              aria-label="Retour"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/95 text-ink shadow-card transition active:scale-95"
+              onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/'))}
+            >
+              <Icon name="chevronLeft" size={19} />
+            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                aria-label="Partager la fiche"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/95 text-ink shadow-card transition active:scale-95"
+                onClick={partager}
+              >
+                <Icon name="share" size={18} />
+              </button>
+              <button
+                type="button"
+                aria-pressed={estFavori}
+                aria-label={estFavori ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+                className={`flex h-9 w-9 items-center justify-center rounded-full shadow-card transition active:scale-95 ${
+                  estFavori ? 'bg-primary text-white' : 'bg-white/95 text-ink'
+                }`}
+                onClick={() => basculerFavori(etablissement.id)}
+              >
+                <Icon name="star" size={18} filled={estFavori} />
+              </button>
+            </div>
+          </div>
+
+          {/* Pastilles du bas de la couverture, empilées À DROITE : le bas-gauche est
+              occupé par le médaillon du gérant (juste en dessous), qui doit rester
+              entièrement visible. Sans ce déplacement, le médaillon le recouvrirait.
+              Elles restent dans la boîte de l'IMAGE : sur un écran étroit, c'est la
+              bande blanche réservée sous la photo (`pb-10`) qui reçoit le médaillon. */}
+          <div className="absolute bottom-3 right-3 flex flex-col items-end gap-1.5">
+            {distance != null && (
+              <span className="flex items-center gap-1 rounded-full bg-black/55 px-2 py-1 text-[10px] font-bold text-white">
+                <Icon name="mapPin" size={12} />
+                {formatDistanceKm(distance)}
+              </span>
+            )}
+            <span className="rounded-full bg-white/95 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-primary">
+              {libelleCategorie}
+            </span>
+          </div>
         </div>
       </header>
 
@@ -900,11 +927,17 @@ export default function EstablishmentProfile() {
             16/11 (correctif) : `relative z-10` est INDISPENSABLE. `<header>` est en
             `position: relative`, donc il est peint APRÈS les blocs du flux restés
             non positionnés : sans z-index, la couverture recouvrait le haut du
-            médaillon — exactement les 40 px remontés par `-mt-10` — et le visage du
-            gérant était coupé. Le médaillon apparaît maintenant en ENTIER, en bas à
-            gauche, en chevauchement propre. `.ecran` ne rogne rien (ni overflow, ni
-            hauteur fixe) : aucun `overflow-hidden` à corriger. */}
-        <div className="relative z-10 -mt-10 flex items-end justify-between gap-3">
+            médaillon — exactement les 40 px remontés — et le visage du gérant était
+            coupé. `.ecran` ne rogne rien (ni overflow, ni hauteur fixe) : aucun
+            `overflow-hidden` à corriger.
+
+            16/11 (espace réservé) : la couverture garde 40 px de blanc sous la photo
+            (`pb-10`) et la rangée remonte de 80 px (`-mt-20`). Résultat : le médaillon
+            chevauche l'image de 40 px, termine sa course dans la bande blanche, et son
+            bas coïncide avec la fin du `<header>` — plus aucun bouton ne le masque, et
+            il ne mord pas non plus sur le titre. `items-center` centre le bouton
+            « Modifier ma fiche » sur la hauteur du médaillon. */}
+        <div className="relative z-10 -mt-20 flex items-center justify-between gap-3">
           {urlVendeur && !vendeurCassee ? (
             <img
               src={urlVendeur}
@@ -917,58 +950,104 @@ export default function EstablishmentProfile() {
               {initiales(etablissement.nom).slice(0, 2) || 'RM'}
             </span>
           )}
-          <div className="mb-1 flex flex-wrap items-center justify-end gap-2">
-            {/* Panneau de gestion du gérant (16/11) : fermeture temporaire en un
-                clic et correction des horaires. Le bouton vire au rouge quand la
-                fiche est fermée — le gérant voit son état sans ouvrir le panneau. */}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {/* UN SEUL point d'entrée pour l'administration (16/11).
+                Avant : quatre pastilles côte à côte (« Gérer », « Modifier les photos »,
+                « Modifier la galerie », « Modifier la fiche »). Sur un téléphone elles
+                passaient à la ligne, allongeaient la rangée et venaient brouiller le
+                médaillon. Le menu propose exactement les mêmes actions, nommées en
+                clair, et se referme dès qu'on en choisit une (une seule feuille
+                ouverte à la fois). Réservé au gérant de CETTE fiche : le serveur
+                refuserait de toute façon en 403. */}
             {estProprietaire && (
-              <button
-                type="button"
-                className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-bold shadow-card ${
-                  fermetureActive
-                    ? 'border-danger bg-danger text-white'
-                    : 'border-line bg-white text-primary'
-                }`}
-                onClick={ouvrirGestion}
+              <div
+                className="relative"
+                onKeyDown={(evt) => {
+                  // Échap referme le menu, comme un tiroir : le focus reste sur le
+                  // bouton déclencheur, qui est à l'intérieur de ce conteneur.
+                  if (evt.key === 'Escape') setMenuAdminOuvert(false);
+                }}
               >
-                <Icon name={fermetureActive ? 'ban' : 'store'} size={12} />
-                {fermetureActive ? 'Fiche fermée — Gérer' : 'Gérer'}
-              </button>
-            )}
-            {/* Réservé au gérant de CETTE fiche : aucun autre visiteur ne voit ce
-                bouton (le serveur refuserait de toute façon en 403). */}
-            {estProprietaire && (
-              <button
-                type="button"
-                className="flex items-center gap-1 rounded-full border border-line bg-white px-2.5 py-1 text-[10px] font-bold text-primary shadow-card"
-                onClick={ouvrirEditionPhotos}
-              >
-                <Icon name="camera" size={12} />
-                Modifier les photos
-              </button>
-            )}
-            {estProprietaire && (
-              <button
-                type="button"
-                className="flex items-center gap-1 rounded-full border border-line bg-white px-2.5 py-1 text-[10px] font-bold text-primary shadow-card"
-                onClick={ouvrirEditionGalerie}
-              >
-                <Icon name="image" size={12} />
-                Modifier la galerie
-              </button>
-            )}
-            {/* Textes et contacts de la fiche (16/11) : nom, description, téléphone,
-                WhatsApp, horaires affichés. Même règle que les photos : réservé au
-                propriétaire, et le serveur refuserait de toute façon en 403. */}
-            {estProprietaire && (
-              <button
-                type="button"
-                className="flex items-center gap-1 rounded-full border border-line bg-white px-2.5 py-1 text-[10px] font-bold text-primary shadow-card"
-                onClick={ouvrirEditionInfos}
-              >
-                <Icon name="edit" size={12} />
-                Modifier la fiche
-              </button>
+                <button
+                  type="button"
+                  aria-haspopup="menu"
+                  aria-expanded={menuAdminOuvert}
+                  aria-label="Modifier ma fiche"
+                  className={`relative flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-bold shadow-card transition active:scale-95 ${
+                    fermetureActive
+                      ? 'border-danger/40 bg-danger/10 text-danger'
+                      : 'border-line bg-white text-primary'
+                  }`}
+                  onClick={() => setMenuAdminOuvert((ouvert) => !ouvert)}
+                >
+                  <Icon name="edit" size={13} />
+                  Modifier ma fiche
+                </button>
+
+                {menuAdminOuvert && (
+                  <>
+                    {/* Voile invisible plein écran : un toucher à côté referme le menu,
+                        comme les feuilles du bas. Un `div` et non un `<button>` : un
+                        bouton nu hérite du fond du navigateur et poserait un voile gris
+                        sur toute la fiche. */}
+                    <div
+                      aria-hidden="true"
+                      className="fixed inset-0 z-20"
+                      onClick={() => setMenuAdminOuvert(false)}
+                    />
+                    <div
+                      role="menu"
+                      aria-label="Actions du gérant"
+                      className="absolute right-0 top-full z-30 mt-2 w-64 overflow-hidden rounded-lg border border-line bg-white p-1 shadow-lg"
+                    >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className={classeLigneMenu}
+                        onClick={() => actionAdmin(ouvrirEditionInfos)}
+                      >
+                        <Icon name="edit" size={15} />
+                        <span className="flex-1 text-left">Modifier les informations</span>
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className={classeLigneMenu}
+                        onClick={() => actionAdmin(ouvrirEditionGalerie)}
+                      >
+                        <Icon name="image" size={15} />
+                        <span className="flex-1 text-left">Modifier la galerie</span>
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className={classeLigneMenu}
+                        onClick={() => actionAdmin(ouvrirEditionPhotos)}
+                      >
+                        <Icon name="camera" size={15} />
+                        <span className="flex-1 text-left">Modifier les photos de devanture</span>
+                      </button>
+
+                      <div className="my-1 h-px bg-line" aria-hidden="true" />
+
+                      {/* Gestion : fermeture temporaire et horaires. La ligne vire au
+                          rouge quand la fiche est fermée — le gérant voit son état
+                          sans ouvrir le panneau. */}
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className={`${classeLigneMenu} ${fermetureActive ? 'text-danger' : ''}`}
+                        onClick={() => actionAdmin(ouvrirGestion)}
+                      >
+                        <Icon name={fermetureActive ? 'ban' : 'store'} size={15} />
+                        <span className="flex-1 text-left">
+                          {fermetureActive ? 'Fiche fermée — gérer' : 'Gérer'}
+                        </span>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             )}
             {etablissement.verifie && (
               <span className="flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[10px] font-bold text-white">
@@ -1247,9 +1326,13 @@ export default function EstablishmentProfile() {
 
       {/* ── Bouton d'action fixe : le TEXTE est dynamique, « Aller chez <nom> » (§5).
           BarreActionFixe le colle au bas RÉEL de la fenêtre et publie sa hauteur :
-          aucun avis, aucun bloc ne reste coincé derrière (barre système comprise). ── */}
+          aucun avis, aucun bloc ne reste coincé derrière (barre système comprise).
+          La coche « Déjà visité » vit ICI (16/11) : à côté de « Aller chez … », là où
+          l'on décide qu'on est venu. Elle est discrète tant qu'elle est vide, verte
+          pleine une fois cochée — même signal que l'ancienne pastille du haut, sans
+          encombrer l'en-tête. ── */}
       <BarreActionFixe>
-        <div className="ecran flex items-center gap-3 py-3">
+        <div className="ecran flex items-center gap-2 py-3">
           <div className="min-w-0 flex-1">
             <p className="truncate text-[10px] font-bold uppercase tracking-wide text-ink-muted">
               {estSante
@@ -1260,6 +1343,28 @@ export default function EstablishmentProfile() {
               {distance != null ? `À ${formatDistanceKm(distance)} de vous` : 'Itinéraire et contact direct'}
             </p>
           </div>
+          <button
+            type="button"
+            aria-pressed={estVisite}
+            aria-label={
+              estVisite
+                ? 'Retirer de mes établissements déjà visités'
+                : 'Marquer comme déjà visité (privé)'
+            }
+            title={
+              estVisite
+                ? 'Déjà visité — conservé dans votre profil, invisible pour les autres'
+                : 'Marquer comme déjà visité (privé)'
+            }
+            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full border transition active:scale-95 ${
+              estVisite
+                ? 'border-health bg-health text-white'
+                : 'border-line bg-white text-ink-muted'
+            }`}
+            onClick={basculerVisiteDepuisLaBarre}
+          >
+            <Icon name="check" size={18} />
+          </button>
           <button
             type="button"
             className={`${estSante ? 'btn-health' : 'bouton-principal'} shrink-0 text-sm`}

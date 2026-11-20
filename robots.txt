@@ -1,0 +1,14 @@
+# robots.txt — Rejoins'Moi (Cloudflare Pages)
+#
+# Tout est public : annuaire d'artisans, fiches, offres de main-d'œuvre. Aucune
+# zone privée n'a besoin d'être cachée ici : l'administration et le profil sont
+# derrière une connexion (un robot qui les ouvre ne voit qu'un formulaire).
+#
+# Le sitemap est régénéré par `node scripts/generer-sitemap.mjs` : il contient
+# l'accueil et TOUTES les fiches d'établissements, dont les balises Open Graph et
+# JSON-LD sont servies à la volée par les fonctions Cloudflare Pages.
+
+User-agent: *
+Allow: /
+
+Sitemap: https://rejoins-moi.pages.dev/sitemap.xml

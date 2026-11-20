@@ -13,7 +13,7 @@
 //  - « Abonnement artisan » est visible par tout le monde, mais mis en valeur :
 //    c'est l'écran qui explique ce que l'abonnement débloque.
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 import { Icon } from './Icons.jsx';
@@ -54,6 +54,48 @@ const SECTIONS = [
 ];
 
 /**
+ * Met à jour l'application « de force » (17/11) : désinscrit le service worker,
+ * supprime les caches `rejoinsmoi-*`, puis recharge la page.
+ *
+ * C'est la MÊME recette que le lien « Forcer la mise à jour » du bandeau
+ * (components/MiseAJourPWA.jsx). Elle y est interne : plutôt que de faire
+ * dépendre une page d'un composant d'interface, on la recopie ici. Les trois
+ * copies (bandeau, menu, profil) doivent rester identiques.
+ *
+ * À quoi ça sert : un téléphone resté sur une version ANTÉRIEURE au bandeau — ou
+ * un Safari iOS qui ne signale pas toujours le nouveau worker — n'avait aucun
+ * moyen de se débloquer ; la seule issue connue était de désinstaller l'app,
+ * ce qui efface aussi ce que le navigateur sait d'elle (et l'installation sur
+ * l'écran d'accueil). Ce bouton va droit au but, sans rien perdre du compte :
+ * les données vivent sur le serveur, pas dans le téléphone.
+ *
+ * Ne touche JAMAIS : les données du compte, la saisie en cours (le rechargement
+ * n'a lieu qu'après le clic), les caches d'autres applications (le filtre
+ * `rejoinsmoi-` est strict) ni les règles de paiement (voir sw.js).
+ */
+async function forcerMiseAJour() {
+  try {
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      const enregistrement = await navigator.serviceWorker.getRegistration();
+      if (enregistrement) await enregistrement.unregister();
+    }
+  } catch {
+    /* rien à désinscrire : on continue, le rechargement reste utile */
+  }
+  try {
+    if (typeof caches !== 'undefined') {
+      const noms = await caches.keys();
+      await Promise.all(
+        noms.filter((nom) => nom.startsWith('rejoinsmoi-')).map((nom) => caches.delete(nom))
+      );
+    }
+  } catch {
+    /* stockage refusé (navigation privée) : le rechargement fera l'affaire */
+  }
+  if (typeof window !== 'undefined') window.location.reload();
+}
+
+/**
  * @param {{ ouvert: boolean, onFermer: () => void }} props
  */
 export default function MenuPrincipal({ ouvert, onFermer }) {
@@ -61,6 +103,8 @@ export default function MenuPrincipal({ ouvert, onFermer }) {
   const { profil, connecte, estDemo, deconnexion } = useAuth();
   // État d'installation PARTAGÉ avec le bandeau d'installation (InstallAppButton).
   const { contenu, installee, installer, enCours, note, diagnostic } = useInstallation();
+  /** « Forcer la mise à jour » en cours : le libellé se verrouille le temps du rechargement. */
+  const [majEnCours, setMajEnCours] = useState(false);
 
   // Échap ferme le tiroir : réflexe attendu par les utilisateurs au clavier.
   useEffect(() => {
@@ -71,6 +115,16 @@ export default function MenuPrincipal({ ouvert, onFermer }) {
     document.addEventListener('keydown', surTouche);
     return () => document.removeEventListener('keydown', surTouche);
   }, [ouvert, onFermer]);
+
+  /**
+   * Bouton de secours. Le tiroir n'est PAS refermé : le libellé « Mise à jour en
+   * cours… » reste visible jusqu'au rechargement (moins d'une seconde en général).
+   * Si le rechargement échoue, l'utilisateur peut simplement recliquer.
+   */
+  function lancerMiseAJour() {
+    setMajEnCours(true);
+    forcerMiseAJour();
+  }
 
   if (!ouvert) return null;
 
@@ -266,6 +320,24 @@ export default function MenuPrincipal({ ouvert, onFermer }) {
           >
             <Icon name={connecte ? 'unlock' : 'lock'} size={16} />
             {connecte ? 'Gérer mon abonnement' : 'Se connecter pour s’abonner'}
+          </button>
+        </div>
+
+        {/* Secours « mise à jour » (17/11) : entrée discrète, juste au-dessus de la
+            déconnexion, tout en bas du tiroir. Volontairement petite et sans cadre :
+            ce n'est pas une fonction du quotidien, c'est la porte de sortie quand un
+            téléphone s'entête sur une vieille version (app installée avant le bandeau,
+            Safari iOS qui ne signale pas le nouveau service worker). Sans elle, la
+            seule issue était de désinstaller l'application. */}
+        <div className="px-3 pb-2">
+          <button
+            type="button"
+            disabled={majEnCours}
+            onClick={lancerMiseAJour}
+            className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-[11px] font-semibold text-ink-muted transition hover:bg-soft disabled:opacity-60"
+          >
+            <Icon name="refresh" size={16} className="shrink-0 text-primary" />
+            {majEnCours ? 'Mise à jour en cours…' : 'Forcer la mise à jour'}
           </button>
         </div>
 

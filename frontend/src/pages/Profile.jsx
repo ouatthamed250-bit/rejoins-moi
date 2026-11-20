@@ -71,12 +71,54 @@ function CarteFicheListe({ fiche }) {
   );
 }
 
+/**
+ * Met à jour l'application « de force » (17/11) : désinscrit le service worker,
+ * supprime les caches `rejoinsmoi-*`, puis recharge la page.
+ *
+ * Même recette que le lien du bandeau (components/MiseAJourPWA.jsx) et que
+ * l'entrée du menu principal (components/MenuPrincipal.jsx) : les trois copies
+ * doivent rester identiques. Elle n'est pas factorisée dans utils/pwa.js pour ne
+ * pas élargir le périmètre de cette livraison.
+ *
+ * Pourquoi ce bouton ici aussi : c'est le profil qu'un utilisateur ouvre quand
+ * « l'app fait n'importe quoi » (photos anciennes, boutons absents). Le geste
+ * habituel — désinstaller puis réinstaller — efface l'installation, l'invitation
+ * et les réglages du navigateur pour la même application. Un clic suffit.
+ *
+ * Ne touche JAMAIS : les données du compte (elles sont sur le serveur), la saisie
+ * en cours (le rechargement n'a lieu qu'après le clic), les caches d'autres
+ * applications (filtre strict `rejoinsmoi-`) ni les règles de paiement (voir sw.js).
+ */
+async function forcerMiseAJour() {
+  try {
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      const enregistrement = await navigator.serviceWorker.getRegistration();
+      if (enregistrement) await enregistrement.unregister();
+    }
+  } catch {
+    /* rien à désinscrire : on continue, le rechargement reste utile */
+  }
+  try {
+    if (typeof caches !== 'undefined') {
+      const noms = await caches.keys();
+      await Promise.all(
+        noms.filter((nom) => nom.startsWith('rejoinsmoi-')).map((nom) => caches.delete(nom))
+      );
+    }
+  } catch {
+    /* stockage refusé (navigation privée) : le rechargement fera l'affaire */
+  }
+  if (typeof window !== 'undefined') window.location.reload();
+}
+
 export default function Profile() {
   const navigate = useNavigate();
   const { profil, connecte, estDemo, deconnexion, mettreAJourProfil, favoris, visites } = useAuth();
   const [edition, setEdition] = useState(false);
   const [formulaire, setFormulaire] = useState(FORMULAIRE_VIDE);
   const [message, setMessage] = useState('');
+  /** « Forcer la mise à jour » en cours : le libellé se verrouille le temps du rechargement. */
+  const [majEnCours, setMajEnCours] = useState(false);
   const [mesBesoins, setMesBesoins] = useState([]);
   // ── « Mes visites » (privé, ajout du 17/11) ──
   // Le compte ne stocke que des IDENTIFIANTS : nom et photo sont relus fiche par
@@ -170,6 +212,11 @@ export default function Profile() {
     }
   }
 
+  function lancerMiseAJour() {
+    setMajEnCours(true);
+    forcerMiseAJour();
+  }
+
   if (!connecte) {
     return (
       <div className="ecran py-6">
@@ -189,6 +236,21 @@ export default function Profile() {
           <button type="button" className="btn-ghost w-full text-sm" onClick={() => navigate('/pharmacies-cliniques')}>
             <Icon name="pharmacy" size={18} />
             Pharmacies & Cliniques
+          </button>
+        </div>
+
+        {/* Secours « mise à jour » (17/11). Aussi pour les comptes déconnectés : un
+            téléphone bloqué sur une vieille version l'est avant même de se connecter,
+            et c'est écran qu'on ouvre quand « l'app ne ressemble plus à rien ». */}
+        <div className="mt-5 text-center">
+          <button
+            type="button"
+            disabled={majEnCours}
+            onClick={lancerMiseAJour}
+            className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-ink-muted underline transition active:scale-95 disabled:opacity-60"
+          >
+            <Icon name="refresh" size={14} className="text-primary" />
+            {majEnCours ? 'Mise à jour en cours…' : 'Problème d’affichage ? Forcer la mise à jour'}
           </button>
         </div>
       </div>
@@ -538,6 +600,22 @@ export default function Profile() {
           Mentions légales
         </Link>
       </p>
+
+      {/* Secours « mise à jour » (17/11) : tout en bas, en petit. C'est le geste de
+          la dernière chance quand l'app reste figée sur une vieille version (téléphone
+          installé avant le bandeau « nouvelle version », Safari iOS capricieux). Il
+          remplace le réflexe « désinstaller puis réinstaller », qui efface l'installation. */}
+      <div className="mt-4 text-center">
+        <button
+          type="button"
+          disabled={majEnCours}
+          onClick={lancerMiseAJour}
+          className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-ink-muted underline transition active:scale-95 disabled:opacity-60"
+        >
+          <Icon name="refresh" size={14} className="text-primary" />
+          {majEnCours ? 'Mise à jour en cours…' : 'Problème d’affichage ? Forcer la mise à jour'}
+        </button>
+      </div>
     </div>
   );
 }

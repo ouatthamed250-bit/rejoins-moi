@@ -241,7 +241,7 @@ export default function Profile() {
 
         {/* Secours « mise à jour » (17/11). Aussi pour les comptes déconnectés : un
             téléphone bloqué sur une vieille version l'est avant même de se connecter,
-            et c'est écran qu'on ouvre quand « l'app ne ressemble plus à rien ». */}
+            et c'est l'écran qu'on ouvre quand « l'app ne ressemble plus à rien ». */}
         <div className="mt-5 text-center">
           <button
             type="button"

@@ -15,6 +15,20 @@
  *     quelle. Le serveur reste seul juge du paiement (règle de sécurité du projet).
  */
 
+// v17 : bandeau « nouvelle version disponible » (16/11) — components/MiseAJourPWA.jsx
+//       écoute ce worker : dès qu'une version prend la main, un bandeau s'affiche
+//       en haut de l'écran et propose « Mettre à jour », avec un lien de secours
+//       qui force le rechargement (worker désinscrit + caches `rejoinsmoi-*`
+//       vidés). C'est la réponse au défaut constaté sur le terrain : un téléphone
+//       gardait l'app ouverte et continuait d'afficher l'ANCIENNE version (sans la
+//       localisation GPS, avec l'ancienne fiche surchargée) alors que le
+//       déploiement était en ligne — le worker se mettait bien à jour, mais la page
+//       restait en mémoire sans que rien ne l'indique. La fiche est aussi allégée
+//       (un seul bouton « Modifier ma fiche », coche « Déjà visité » descendue dans
+//       la barre du bas, médaillon entièrement visible). L'app shell change : sans
+//       nouveau nom de cache, un téléphone déjà installé servirait l'ancien
+//       index.html en secours, donc l'ANCIENNE app — sans bandeau.
+//
 // v15 : tableau de bord du gérant (16/11) — « Gérer mon établissement » : fermer
 //       la fiche temporairement en un clic (avec une raison affichée au client :
 //       « Fermé (Rupture de stock) »), la rouvrir, et corriger ses horaires après
@@ -110,7 +124,7 @@
 //      index.html en secours, donc l'ANCIENNE app — médaillon toujours rogné.
 // Changer la version est indispensable dès que les fichiers « cache d'abord »
 // (icônes) ou l'app shell changent de façon visible.
-const VERSION = 'v16';
+const VERSION = 'v17';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];
@@ -236,9 +250,13 @@ self.addEventListener('install', (event) => {
       // Les JS/CSS de la page : le cache v10 est complet AVANT de prendre la main,
       // ce qui évite la page blanche hors ligne juste après une mise à jour.
       await precargerRessourcesIndex(cache);
-      // Aucune interface de mise à jour dans l'app : on prend la main tout de
-      // suite. Le risque pour un onglet resté ouvert est traité par la fenêtre de
-      // grâce d'un jour sur l'ancien cache (voir entretenirCaches).
+      // Le bandeau « nouvelle version disponible » (components/MiseAJourPWA.jsx)
+      // prévient l'utilisateur dès qu'un worker prend la main : c'est le seul
+      // moyen de lui faire recharger une page restée des jours en mémoire. On
+      // prend néanmoins la main TOUT DE SUITE, comme avant (v17) : la prochaine
+      // ouverture est ainsi déjà à jour même si le bandeau a été fermé (« Plus
+      // tard »). Le risque pour un onglet resté ouvert est traité par la fenêtre
+      // de grâce d'un jour sur l'ancien cache (voir entretenirCaches).
       await self.skipWaiting();
     })()
   );

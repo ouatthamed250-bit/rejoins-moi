@@ -20,6 +20,13 @@
 //    qu'on partage, elle doit ressembler à une page, pas à un onglet.
 //  - <InstallAppButton /> (ajout PWA du 29/09) flotte au-dessus de la bottom nav
 //    pour proposer l'installation de l'app sur l'écran d'accueil.
+//  - <MiseAJourPWA /> (16/11) affiche un bandeau « Une nouvelle version est
+//    disponible » dès qu'un service worker plus récent prend la main. Sans lui,
+//    un téléphone qui gardait l'app ouverte continuait d'afficher l'ancienne
+//    version pendant des jours (localisation GPS et fiche nettoyée invisibles),
+//    alors que le déploiement était bien en ligne : le worker changeait, la page
+//    restait en mémoire. Il est monté ici, hors des routes, pour couvrir aussi
+//    les écrans plein écran (fiche établissement, /admin).
 
 import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
@@ -29,6 +36,7 @@ import BottomNav from './components/BottomNav.jsx';
 import TopBar from './components/TopBar.jsx';
 import InfoBanner from './components/InfoBanner.jsx';
 import InstallAppButton from './components/InstallAppButton.jsx';
+import MiseAJourPWA from './components/MiseAJourPWA.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { useAuth } from './hooks/useAuth.js';
 
@@ -94,6 +102,11 @@ function Structure() {
   // contenu (z-index négatif) : un fond blanc ici le masquerait.
   return (
     <div className="min-h-full">
+      {/* Bandeau « nouvelle version » : premier enfant, hors du flux visuel (fixed).
+          Il doit pouvoir apparaître au-dessus de n'importe quel écran, y compris la
+          fiche établissement qui n'a ni barre du haut ni navigation basse. */}
+      <MiseAJourPWA />
+
       {modeDemo && (
         <div className="ecran pt-2">
           <InfoBanner variante="demo" titre="Mode démonstration">

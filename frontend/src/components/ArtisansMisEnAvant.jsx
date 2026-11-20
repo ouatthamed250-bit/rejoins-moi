@@ -38,7 +38,7 @@ import { dessinDeContexte } from './illustrations/dessinsContexte.js';
 import { api } from '../utils/api/client.js';
 import { filtrerArtisansDemo } from '../data/demoData.js';
 import { distanceDepuis, formatDistanceKm } from '../utils/distance.js';
-import { initiales } from '../utils/format.js';
+import { formaterNomPublic, initiales } from '../utils/format.js';
 import { useGeolocation } from '../hooks/useGeolocation.js';
 
 /**
@@ -49,7 +49,9 @@ import { useGeolocation } from '../hooks/useGeolocation.js';
 function PastilleArtisan({ artisan }) {
   const [cassee, setCassee] = useState(false);
   const dessin = dessinDeContexte({ metier: artisan.metier });
-  const nom = artisan.nomComplet || 'Artisan';
+  // Un compte dont le « nom » est en réalité un numéro ne l'expose pas ici : c'est
+  // l'annuaire public, le contact passe par la mise en relation payante (§2).
+  const nom = formaterNomPublic(artisan.nomComplet) || 'Artisan';
 
   return (
     <span className="relative isolate flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/10 text-[11px] font-bold text-primary ring-1 ring-inset ring-primary/10">
@@ -201,7 +203,7 @@ export default function ArtisansMisEnAvant({
                   )}
                 </div>
                 <p className="mt-1 truncate text-xs font-bold text-ink">
-                  {artisan.nomComplet || 'Artisan'}
+                  {formaterNomPublic(artisan.nomComplet) || 'Artisan'}
                 </p>
                 <p className="truncate text-[11px] font-semibold text-primary">
                   {artisan.metier || 'Métier à préciser'}

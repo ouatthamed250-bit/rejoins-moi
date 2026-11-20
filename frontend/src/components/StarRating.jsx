@@ -56,6 +56,24 @@ export default function StarRating({
   const valeur = Math.max(0, Math.min(5, Number(note) || 0));
   const affichee = survol || valeur;
 
+  // Fiche jamais notée : cinq étoiles vides + « 0 (0 avis) » donnent l'impression
+  // d'une mauvaise note alors que personne ne s'est encore exprimé. On affiche donc
+  // une pastille « Nouveau » (gris clair, texte gris foncé, plus petite qu'une note).
+  // En mode saisie (interactif), on garde toujours les étoiles : l'utilisateur doit
+  // pouvoir choisir sa note, même sur une fiche sans avis.
+  if (!interactif && nombreAvis === 0) {
+    return (
+      <div className={`flex items-center ${className}`}>
+        <span
+          className="rounded-full bg-soft px-2 py-0.5 text-[10px] font-bold leading-tight text-ink-muted"
+          title="Aucun avis pour l'instant : soyez la première personne à en laisser un."
+        >
+          Nouveau
+        </span>
+      </div>
+    );
+  }
+
   function rendreCliquable(i, evt) {
     if (!interactif) return;
     // Support du clavier (accessibilité) : flèches gauche/droite.

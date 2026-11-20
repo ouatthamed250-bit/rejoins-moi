@@ -35,7 +35,7 @@ import { dessinDeContexte } from '../components/illustrations/dessinsContexte.js
 import { api } from '../utils/api/client.js';
 import { paiementDisponible, FRAIS_DEBLOCAGE } from '../utils/payment.js';
 import { distanceDepuis, formatDistanceKm } from '../utils/distance.js';
-import { formatDateRelative, formatFcfa, formatTelephone, initiales } from '../utils/format.js';
+import { formatDateRelative, formatFcfa, formatTelephone, formaterNomPublic, initiales } from '../utils/format.js';
 import { METIERS, filtrerBesoinsDemo } from '../data/demoData.js';
 import { useGeolocation } from '../hooks/useGeolocation.js';
 import { useAuth } from '../hooks/useAuth.js';
@@ -396,6 +396,9 @@ function CarteBesoin({
   const b = besoin || {};
   const premierContactOffert = b.segment === 'journalier' && b.premierContactGratuit;
   const nombreDeblocages = Number(b.nombreDeblocages) || 0;
+  // Nom affiché de l'auteur : un compte créé avec son NUMÉRO dans le champ « nom »
+  // ne doit pas l'exposer ici — le contact passe par le déblocage payant (§2).
+  const nomPosteurPublic = formaterNomPublic(b.nomPosteur);
   // Dessin du métier dans la pastille (même règle que Jobs.jsx) : repli sur l'icône.
   const dessinMetier = dessinDeContexte({ metier: b.metier });
 
@@ -453,9 +456,9 @@ function CarteBesoin({
 
       <p className="mt-2 flex items-center gap-2 text-[11px] text-ink-muted">
         <span className="flex h-6 w-6 items-center justify-center rounded-full bg-soft text-[9px] font-bold text-primary">
-          {initiales(b.nomPosteur || 'Habitant')}
+          {initiales(nomPosteurPublic || 'Habitant')}
         </span>
-        Publié par <span className="font-semibold text-ink">{b.nomPosteur || 'un habitant'}</span>
+        Publié par <span className="font-semibold text-ink">{nomPosteurPublic || 'un habitant'}</span>
       </p>
 
       {telephone ? (

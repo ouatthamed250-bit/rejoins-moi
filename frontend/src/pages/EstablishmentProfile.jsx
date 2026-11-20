@@ -44,7 +44,7 @@ import { CompteursSepares } from '../components/EstablishmentCard.jsx';
 import { Icon, IconLoader } from '../components/Icons.jsx';
 import { api } from '../utils/api/client.js';
 import { distanceDepuis, formatDistanceKm, getDistanceKm, urlItineraire } from '../utils/distance.js';
-import { formatDateRelative, formatNote, formatTelephone, initiales } from '../utils/format.js';
+import { formatDateRelative, formatNote, formatTelephone, formaterNomPublic, initiales } from '../utils/format.js';
 import { partagerWhatsApp, textePartageFiche, urlPartageFiche } from '../utils/partage.js';
 import { estOuvertMaintenant, horairesParDefaut, resumerHoraires } from '../utils/statutHoraire.js';
 import { AVIS_DEMO, ETABLISSEMENTS_DEMO, PROFIL_DEMO } from '../data/demoData.js';
@@ -1295,23 +1295,30 @@ export default function EstablishmentProfile() {
               </p>
             ) : (
               <ul className="mt-3 flex flex-col gap-2">
-                {avis.map((a, i) => (
-                  <li key={a.id || a._id || i} className="carte p-3">
-                    <div className="flex items-center gap-2">
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-soft text-[11px] font-bold text-primary">
-                        {initiales(a.auteurNom || 'Client')}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-bold text-ink">{a.auteurNom || 'Client'}</p>
-                        <p className="text-[10px] text-ink-muted">{formatDateRelative(a.at || a.createdAt)}</p>
+                {avis.map((a, i) => {
+                  // Un « nom » qui est en réalité un numéro (« 0707123456 »,
+                  // « Sahore Zogbo 0707… ») est masqué : laisser le téléphone d'un
+                  // auteur d'avis en clair contournerait la mise en relation payante
+                  // (§2) et exposerait son numéro à toute la ville sans son accord.
+                  const nomAuteur = formaterNomPublic(a.auteurNom) || 'Client';
+                  return (
+                    <li key={a.id || a._id || i} className="carte p-3">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-soft text-[11px] font-bold text-primary">
+                          {initiales(nomAuteur)}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs font-bold text-ink">{nomAuteur}</p>
+                          <p className="text-[10px] text-ink-muted">{formatDateRelative(a.at || a.createdAt)}</p>
+                        </div>
+                        <StarRating note={a.note} afficherNombre={false} taille={13} />
                       </div>
-                      <StarRating note={a.note} afficherNombre={false} taille={13} />
-                    </div>
-                    {a.commentaire && (
-                      <p className="mt-2 text-xs leading-snug text-ink">{a.commentaire}</p>
-                    )}
-                  </li>
-                ))}
+                      {a.commentaire && (
+                        <p className="mt-2 text-xs leading-snug text-ink">{a.commentaire}</p>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </section>

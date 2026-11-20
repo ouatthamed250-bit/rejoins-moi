@@ -100,7 +100,9 @@ router.post(
     });
 
     await user.save();
-    res.status(201).json({ token: signToken(user), user: user.toPublicJSON() });
+    // `prive: true` : le compte qui vient de se créer reçoit SA vue (le frontend
+    // affiche son portefeuille et ses favoris dès l'inscription).
+    res.status(201).json({ token: signToken(user), user: user.toPublicJSON({ prive: true }) });
   })
 );
 
@@ -144,7 +146,8 @@ router.post(
     // L'abonnement est renvoyé dès la connexion : l'interface affiche tout de suite
     // « contacts inclus » sur la page Jobs, sans second aller-retour réseau.
     const abonnement = await Subscription.trouverActif(user._id);
-    res.json({ token: signToken(user), user: user.toPublicJSON({ abonnement }) });
+    // `prive: true` : le mot de passe vient d'être vérifié, c'est bien le propriétaire.
+    res.json({ token: signToken(user), user: user.toPublicJSON({ abonnement, prive: true }) });
   })
 );
 
@@ -155,10 +158,11 @@ router.get(
   asyncHandler(async (req, res) => {
     const abonnement = await Subscription.trouverActif(req.user._id);
     res.json({
-      // `toPublicJSON` porte déjà `favoris` ET `visites` (ajout du 17/11) : c'est
-      // ce qui permet au frontend de savoir, dès le chargement, quelles fiches
-      // sont marquées « déjà visité » — sans requête supplémentaire.
-      user: req.user.toPublicJSON({ abonnement }),
+      // C'est le compte lui-même : `prive: true` débloque `favoris`, `visites`,
+      // `solde` et l'état du compte — ce qui permet au frontend de savoir, dès le
+      // chargement, quelles fiches sont marquées « déjà visité », sans requête
+      // supplémentaire. Aucune route publique ne passe cette option.
+      user: req.user.toPublicJSON({ abonnement, prive: true }),
       historique: (req.user.historiqueInteractions || []).slice(-60).reverse(),
     });
   })
@@ -203,7 +207,7 @@ router.patch(
     }
     await req.user.save();
     const abonnement = await Subscription.trouverActif(req.user._id);
-    res.json({ user: req.user.toPublicJSON({ abonnement }) });
+    res.json({ user: req.user.toPublicJSON({ abonnement, prive: true }) });
   })
 );
 

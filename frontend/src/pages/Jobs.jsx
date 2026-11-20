@@ -33,7 +33,7 @@ import { paiementDisponible, FRAIS_DEBLOCAGE } from '../utils/payment.js';
 import { chargerFormules, libellePrix, abonnementLocalActif, lireAbonnementLocal } from '../utils/abonnement.js';
 import { ABONNEMENT as MIROIR } from '../config/abonnement.js';
 import { distanceDepuis, formatDistanceKm } from '../utils/distance.js';
-import { formatDateRelative, formatFcfa, formatTelephone, initiales } from '../utils/format.js';
+import { formatDateRelative, formatFcfa, formatTelephone, formaterNomPublic, initiales } from '../utils/format.js';
 import { filtrerBesoinsDemo, METIERS } from '../data/demoData.js';
 import { useGeolocation } from '../hooks/useGeolocation.js';
 import { useAuth } from '../hooks/useAuth.js';
@@ -431,6 +431,9 @@ function CarteAnnonce({
   // quand le métier n'a pas de trace dédiée : aucun trou, aucun cadre vide.
   const dessinMetier = dessinDeContexte({ metier: annonce.metier });
   const montant = Number(annonce.budgetFcfa) > 0 ? formatFcfa(annonce.budgetFcfa) : '';
+  // Nom affiché de l'auteur : un compte créé avec son NUMÉRO dans le champ « nom »
+  // ne doit pas l'exposer ici — le contact passe par le déblocage payant (§2).
+  const nomPosteurPublic = formaterNomPublic(annonce.nomPosteur);
 
   return (
     <article className="carte p-3">
@@ -486,9 +489,9 @@ function CarteAnnonce({
 
       <p className="mt-2 flex items-center gap-2 text-[11px] text-ink-muted">
         <span className="flex h-6 w-6 items-center justify-center rounded-full bg-soft text-[9px] font-bold text-primary">
-          {initiales(annonce.nomPosteur || 'Habitant')}
+          {initiales(nomPosteurPublic || 'Habitant')}
         </span>
-        Publié par <span className="font-semibold text-ink">{annonce.nomPosteur || 'un habitant'}</span>
+        Publié par <span className="font-semibold text-ink">{nomPosteurPublic || 'un habitant'}</span>
       </p>
 
       {telephone ? (

@@ -15,6 +15,16 @@
  *     quelle. Le serveur reste seul juge du paiement (règle de sécurité du projet).
  */
 
+// v18 : nettoyage sécurité / affichage du 17/11 — les fiches jamais notées affichent
+//       une pastille « Nouveau » au lieu de cinq étoiles vides et « 0 (0 avis) », les
+//       noms qui sont en réalité des NUMÉROS de téléphone sont anonymisés dans les avis
+//       et les annonces (« Utilisateur Rejoins'Moi »), et les contacts débloqués sont
+//       effacés à la déconnexion (le déblocage payant ne profite plus au compte
+//       suivant). Ces changements vivent dans le JS de l'app (StarRating, Jobs,
+//       JobBoard, EstablishmentProfile, AuthContext) : les empreintes index-*.js
+//       changent, donc nouveau nom de cache — sinon un téléphone déjà installé
+//       servirait l'ancien index.html en secours et garderait les anciens écrans.
+//
 // v17 : bandeau « nouvelle version disponible » (16/11) — components/MiseAJourPWA.jsx
 //       écoute ce worker : dès qu'une version prend la main, un bandeau s'affiche
 //       en haut de l'écran et propose « Mettre à jour », avec un lien de secours
@@ -124,7 +134,7 @@
 //      index.html en secours, donc l'ANCIENNE app — médaillon toujours rogné.
 // Changer la version est indispensable dès que les fichiers « cache d'abord »
 // (icônes) ou l'app shell changent de façon visible.
-const VERSION = 'v17';
+const VERSION = 'v18';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

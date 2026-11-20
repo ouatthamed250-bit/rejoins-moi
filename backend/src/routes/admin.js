@@ -85,7 +85,9 @@ router.post(
       // Jeton COURT (12 h, bloc F) : le back-office peut tout faire, une session
       // d'une journée de travail suffit — voir DUREE_JETON_ADMIN dans middleware/auth.js.
       token: signToken(user, { expiresIn: DUREE_JETON_ADMIN }),
-      user: user.toPublicJSON(),
+      // `prive: true` : le back-office est le seul autre lecteur légitime des
+      // données privées (dernière connexion, état du compte, solde…).
+      user: user.toPublicJSON({ prive: true }),
       admin: true,
     });
   })
@@ -96,7 +98,7 @@ router.get(
   '/moi',
   protectAdmin,
   asyncHandler(async (req, res) => {
-    res.json({ user: req.user.toPublicJSON() });
+    res.json({ user: req.user.toPublicJSON({ prive: true }) });
   })
 );
 
@@ -374,7 +376,9 @@ router.get(
 
     res.json({
       items: docs.map((d) => ({
-        ...d.toPublicJSON(),
+        // Liste du back-office : seule route qui doit voir l'état de compte et la
+        // dernière connexion de chaque personne (modération).
+        ...d.toPublicJSON({ prive: true }),
         depots: depotsParUser.get(String(d._id)) || {
           total: 0,
           enAttente: 0,
@@ -530,7 +534,7 @@ router.get(
     }
 
     res.json({
-      user: user.toPublicJSON({ abonnement }),
+      user: user.toPublicJSON({ abonnement, prive: true }),
       resume,
       depots: depots.map((d) => ({
         ...d.toJSON(),
@@ -592,7 +596,7 @@ router.patch(
     }
 
     await user.save();
-    res.json({ user: user.toPublicJSON(), message: 'Compte mis à jour.' });
+    res.json({ user: user.toPublicJSON({ prive: true }), message: 'Compte mis à jour.' });
   })
 );
 
@@ -638,7 +642,8 @@ router.patch(
     const actuel = user.statutCompte || 'actif';
     if (actuel === statut) {
       return res.json({
-        user: user.toPublicJSON(),
+        // Le back-office doit voir l'état résultant (statut, motif, date) : `prive`.
+        user: user.toPublicJSON({ prive: true }),
         message: statut === 'actif' ? 'Ce compte était déjà actif.' : 'Ce compte était déjà suspendu.',
       });
     }
@@ -654,7 +659,7 @@ router.patch(
     await user.save();
 
     res.json({
-      user: user.toPublicJSON(),
+      user: user.toPublicJSON({ prive: true }),
       message:
         statut === 'suspendu'
           ? 'Compte suspendu : la connexion est coupée immédiatement, même avec un jeton déjà émis.'

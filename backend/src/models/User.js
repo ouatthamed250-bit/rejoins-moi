@@ -188,16 +188,32 @@ userSchema.methods.verifierMotDePasse = function verifierMotDePasse(motDePasse) 
 };
 
 /**
- * Représentation publique : jamais de hash ni d'historique brut lourd.
+ * Représentation d'un compte, sans hash de mot de passe ni historique brut lourd.
  *
- * @param {{ abonnement?: object|null, abonnementActif?: boolean|null }} [options]
+ * ⚠️ Depuis le 17/11 (nettoyage des données exposées), cette forme est STRICTEMENT
+ * PUBLIQUE par défaut. Elle sert des routes ouvertes à tous — `GET /api/users/artisans`
+ * (annuaire) et `GET /api/users/:id` (réputation) — donc un visiteur non connecté la lit.
+ * Les données privées (portefeuille, préférences, carnet de visites, état de modération,
+ * dernière connexion) n'y figurent PLUS : n'importe qui pouvait lire le solde d'un artisan,
+ * la liste de ses favoris ou un motif de suspension en appelant l'annuaire public.
+ *
+ * Ces champs restent disponibles, mais seulement si l'appelant passe `{ prive: true }` :
+ * c'est le cas UNIQUEMENT du compte lui-même (`POST /users/register`, `POST /users/login`,
+ * `GET|PATCH /users/me`) et du back-office (jeton admin). Aucune route publique ne le fait.
+ *
+ * @param {{ abonnement?: object|null, abonnementActif?: boolean|null, prive?: boolean }} [options]
  *   - `abonnement` : document Subscription actif (quand l'appelant l'a chargé) ;
  *   - `abonnementActif` : booléen explicite, pratique quand on sait déjà qu'un
- *     abonnement est actif sans avoir chargé le document (annuaire des artisans).
+ *     abonnement est actif sans avoir chargé le document (annuaire des artisans) ;
+ *   - `prive` : true pour le propriétaire du compte ou l'admin, jamais pour le public.
  *   On en déduit `abonnementActif` (accès Jobs inclus) et `misEnAvant` (profil
  *   artisan poussé dans le feed et la recherche).
  */
-userSchema.methods.toPublicJSON = function toPublicJSON({ abonnement = null, abonnementActif = null } = {}) {
+userSchema.methods.toPublicJSON = function toPublicJSON({
+  abonnement = null,
+  abonnementActif = null,
+  prive = false,
+} = {}) {
   const actif =
     abonnementActif !== null ? Boolean(abonnementActif) : Boolean(abonnement && abonnement.estActifMaintenant?.());
   return {
@@ -210,27 +226,32 @@ userSchema.methods.toPublicJSON = function toPublicJSON({ abonnement = null, abo
     estArtisan: Boolean(this.estArtisan),
     chercheTravail: Boolean(this.chercheTravail),
     estAdmin: Boolean(this.estAdmin),
-    // État du compte : le back-office affiche/aiguille dessus, donc il doit être public
-    // (le propriétaire du compte le voit aussi : on ne suspend jamais en secret).
-    statutCompte: this.statutCompte || 'actif',
-    suspendu: (this.statutCompte || 'actif') === 'suspendu',
-    motifSuspension: this.motifSuspension || '',
-    suspenduAt: this.suspenduAt || null,
-    dernierLoginAt: this.dernierLoginAt || null,
     roles: this.roles,
     metier: this.metier,
     bio: this.bio,
     quartier: this.quartier,
     commune: this.commune,
-    solde: this.solde,
     noteMoyenne: this.noteMoyenne,
     nombreAvis: this.nombreAvis,
     segment: this.segment,
-    favoris: (this.favoris || []).map(String),
-    // « Déjà visité » : inclus ici parce que cette forme ne sert QUE le compte
-    // propriétaire (voir le commentaire du champ dans le schéma).
-    visites: (this.visites || []).map(String),
     etablissementId: this.etablissementId || null,
+    // ── Données PRIVÉES (jamais dans une réponse publique) ────────────────────
+    // Portefeuille, préférences, carnet de visites, état de modération et dernière
+    // connexion : réservés au compte lui-même et au back-office. Un seul verrou,
+    // `prive`, pour que l'oubli soit impossible côté routeur : une route publique
+    // qui appelle `toPublicJSON()` sans option ne peut PAS les laisser fuir.
+    ...(prive
+      ? {
+          statutCompte: this.statutCompte || 'actif',
+          suspendu: (this.statutCompte || 'actif') === 'suspendu',
+          motifSuspension: this.motifSuspension || '',
+          suspenduAt: this.suspenduAt || null,
+          dernierLoginAt: this.dernierLoginAt || null,
+          solde: this.solde,
+          favoris: (this.favoris || []).map(String),
+          visites: (this.visites || []).map(String),
+        }
+      : {}),
     // Abonnement (cahier des charges, ajout du 29/09) : deux drapeaux dérivés,
     // jamais stockés, pour que le frontend n'ait rien à recalculer.
     abonnementActif: actif,

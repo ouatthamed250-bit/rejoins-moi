@@ -16,6 +16,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { api, ApiError, getProfilLocal, getToken, setProfilLocal, setToken } from '../utils/api/client.js';
 import { ecrireAbonnementLocal } from '../utils/abonnement.js';
+import { CLE_CONTACTS } from '../utils/contactsLocaux.js';
 import { PROFIL_DEMO } from '../data/demoData.js';
 
 const AuthContext = createContext(null);
@@ -125,6 +126,15 @@ export function AuthProvider({ children }) {
     // Le miroir local d'abonnement appartient au compte : on l'efface aussi,
     // sinon un second utilisateur verrait « contacts inclus » sans abonnement.
     ecrireAbonnementLocal(null);
+    // Contacts débloqués (numéros PAYÉS, 500 FCFA l'unité) : ils appartiennent au
+    // compte qui les a payés. Sans cette purge, la personne suivante qui se connecte
+    // sur le même téléphone retrouverait ces numéros dans « Mes mises en relation »
+    // et sur les annonces — le déblocage payant serait offert au suivant.
+    try {
+      localStorage.removeItem(CLE_CONTACTS);
+    } catch {
+      /* stockage indisponible (navigation privée) : il n'y a rien à purger */
+    }
   }, [memoriser]);
 
   const mettreAJourProfil = useCallback(

@@ -54,10 +54,62 @@ export function normalizePhone(input) {
   return `+225${digits}`;
 }
 
+// ── CONTENU RÉEL DES IMAGES (magic bytes, 16/11) ─────────────────────────────
+// Une data-URI « bien formée » ne prouve rien : un fichier texte renommé photo.jpg
+// passait la validation et se retrouvait en base. On lit donc les premiers octets
+// du binaire décodé — la signature du format — avant d'accepter l'image :
+//   • JPEG : FF D8 FF
+//   • PNG  : 89 50 4E 47 (« ‰PNG »)
+//   • WEBP : conteneur RIFF (« RIFF » octets 0-3) + codec « WEBP » octets 8-11
+// Les URL http(s) ne sont pas téléchargées (coût réseau, SSRF) : on fait confiance
+// au service de stockage (Cloudinary), comme pour le plafond de poids.
+const SIGNATURE_JPEG = [0xff, 0xd8, 0xff];
+const SIGNATURE_PNG = [0x89, 0x50, 0x4e, 0x47];
+
+/** Le buffer commence-t-il exactement par ces octets ? */
+function commencePar(buffer, octets) {
+  if (buffer.length < octets.length) return false;
+  return octets.every((valeur, i) => buffer[i] === valeur);
+}
+
+/**
+ * Le contenu d'une data-URI est-il RÉELLEMENT une image JPEG, PNG ou WEBP ?
+ * @param {string} dataUri « data:image/...;base64,... »
+ * @returns {boolean} false si ce n'est pas une data-URI, si le base64 est illisible
+ *   ou si la signature binaire ne correspond à aucun des trois formats acceptés.
+ */
+export function verifierMagicBytes(dataUri) {
+  const v = String(dataUri ?? '').trim();
+  if (!/^data:image\/[a-z0-9.+-]+;base64,/i.test(v)) return false;
+
+  const separateur = v.indexOf(',');
+  if (separateur === -1) return false;
+
+  let binaire;
+  try {
+    binaire = Buffer.from(v.slice(separateur + 1), 'base64');
+  } catch {
+    return false;
+  }
+  if (!binaire || binaire.length < 3) return false;
+
+  if (commencePar(binaire, SIGNATURE_JPEG)) return true;
+  if (commencePar(binaire, SIGNATURE_PNG)) return true;
+  if (
+    binaire.length >= 12 &&
+    binaire.toString('latin1', 0, 4) === 'RIFF' &&
+    binaire.toString('latin1', 8, 12) === 'WEBP'
+  ) {
+    return true;
+  }
+  return false;
+}
+
 /**
  * Une valeur de photo est-elle exploitable ? (bloc F)
  *  - URL http(s) : oui, sans limite de poids (l'image n'est pas stockée chez nous) ;
- *  - data-URI d'image : oui, à condition de ne pas dépasser 300 Ko ;
+ *  - data-URI d'image : oui, à condition de ne pas dépasser 300 Ko ET que les
+ *    magic bytes confirment une vraie image (JPEG/PNG/WEBP) ;
  *  - toute autre valeur : non.
  */
 export function isValidPhoto(value) {
@@ -65,7 +117,8 @@ export function isValidPhoto(value) {
   const v = value.trim();
   if (IMAGE_URL.test(v)) return true;
   if (v.length > MAX_IMAGE_CHARS) return false;
-  return IMAGE_DATA_URI.test(v);
+  if (!IMAGE_DATA_URI.test(v)) return false;
+  return verifierMagicBytes(v);
 }
 
 /**
@@ -172,6 +225,7 @@ export function escapeRegex(str) {
 export default {
   normalizePhone,
   isValidPhoto,
+  verifierMagicBytes,
   validateEstablishmentPhotos,
   validatePhoto,
   sanitizeTags,

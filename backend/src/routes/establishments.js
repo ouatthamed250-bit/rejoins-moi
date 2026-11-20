@@ -18,6 +18,7 @@ import Establishment from '../models/Establishment.js';
 import { protect, optionalAuth } from '../middleware/auth.js';
 import { requireDb } from '../config/db.js';
 import { asyncHandler, ApiError } from '../middleware/errorHandler.js';
+import { limiteurAuth } from '../middleware/rateLimit.js';
 import {
   validateEstablishmentPhotos,
   sanitizeTags,
@@ -635,6 +636,9 @@ router.get(
 router.post(
   '/',
   protect,
+  // Anti-spam de fiches : 8 créations par minute et par IP + numéro
+  // (même middleware que /login et /register — voir middleware/rateLimit.js).
+  limiteurAuth(),
   asyncHandler(async (req, res) => {
     const {
       nom,
@@ -1052,6 +1056,8 @@ router.get(
 router.post(
   '/:id/reviews',
   protect,
+  // Anti-spam d'avis : même limiteur que les inscriptions (8/minute par IP + numéro).
+  limiteurAuth(),
   asyncHandler(async (req, res) => {
     const note = clampNote(req.body?.note);
     if (note == null) throw new ApiError(400, 'La note doit être un entier entre 1 et 5.');

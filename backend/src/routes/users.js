@@ -62,8 +62,8 @@ router.post(
     if (!telephone) {
       throw new ApiError(400, 'Numéro de téléphone ivoirien invalide (ex. 07 07 12 34 56).');
     }
-    if (!motDePasse || String(motDePasse).length < 6) {
-      throw new ApiError(400, 'Le mot de passe doit contenir au moins 6 caractères.');
+    if (!motDePasse || String(motDePasse).length < 8) {
+      throw new ApiError(400, 'Le mot de passe doit contenir au moins 8 caractères.');
     }
     // Plafond photo (bloc F) : 300 Ko, comme les photos d'établissement. Une photo de
     // profil en base64 non contrôlée pèserait plusieurs Mo par compte.

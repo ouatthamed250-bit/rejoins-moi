@@ -28,6 +28,7 @@ import Subscription from '../models/Subscription.js';
 import { protect, optionalAuth } from '../middleware/auth.js';
 import { requireDb } from '../config/db.js';
 import { asyncHandler, ApiError } from '../middleware/errorHandler.js';
+import { limiteurAuth } from '../middleware/rateLimit.js';
 import { escapeRegex } from '../utils/validators.js';
 import { getDistanceKm, parseCoords } from '../utils/geo.js';
 import {
@@ -144,6 +145,9 @@ router.get(
 router.post(
   '/',
   protect,
+  // Anti-spam d'annonces : 8 publications par minute et par IP + numéro
+  // (même middleware que /login et /register — voir middleware/rateLimit.js).
+  limiteurAuth(),
   asyncHandler(async (req, res) => {
     const {
       metier,

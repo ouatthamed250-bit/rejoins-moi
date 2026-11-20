@@ -107,7 +107,8 @@ router.patch(
   asyncHandler(async (req, res) => {
     const ancien = String(req.body?.ancienMotDePasse ?? '');
     const nouveau = String(req.body?.nouveauMotDePasse ?? '');
-    if (nouveau.length < 6) throw new ApiError(400, 'Le nouveau mot de passe doit contenir au moins 6 caractères.');
+    if (nouveau.length < 8)
+      throw new ApiError(400, 'Le nouveau mot de passe doit contenir au moins 8 caractères.');
 
     const user = await User.findById(req.user._id).select('+motDePasseHash');
     if (!(await user.verifierMotDePasse(ancien))) {
@@ -668,7 +669,8 @@ router.post(
   protectAdmin,
   asyncHandler(async (req, res) => {
     const motDePasse = String(req.body?.motDePasse ?? '');
-    if (motDePasse.length < 6) throw new ApiError(400, 'Le mot de passe doit contenir au moins 6 caractères.');
+    if (motDePasse.length < 8)
+      throw new ApiError(400, 'Le mot de passe doit contenir au moins 8 caractères.');
 
     const user = await User.findById(req.params.id).select('+motDePasseHash');
     if (!user) throw new ApiError(404, 'Compte introuvable.');

@@ -6,6 +6,8 @@
 //   • MongoDB local (développement) : mongodb://127.0.0.1:27017/rejoins-moi
 // Le nom de base est forcé à « rejoins-moi » (surchargeable par MONGODB_DB_NAME) :
 // sans cela, une URI Atlas sans nom de base créerait une base nommée « test ».
+// Depuis le 16/11, le nom est AUSSI écrit dans la chaîne de connexion (uriAvecBase)
+// quand elle n'en contient pas : plus de risque d'écrire dans une base vide.
 //
 // Note produit : le serveur Express démarre même si MongoDB est injoignable
 // (mode démo). Les routes répondront alors 503 avec un message explicite, et le
@@ -27,9 +29,41 @@ export function getMongoUri() {
  * Indispensable pour Atlas : beaucoup d'URI copiées depuis la console (« mongodb+srv://
  * user:pass@cluster0.xxxxx.mongodb.net/?retryWrites=true ») ne contiennent PAS de nom de
  * base ; Mongoose créerait alors une base nommée « test ». On impose donc « rejoins-moi ».
+ * Une valeur vide ou blanche dans MONGODB_DB_NAME est ignorée (bug « base vide » du 16/11).
  */
 export function getMongoDbName() {
-  return process.env.MONGODB_DB_NAME || DEFAULT_DB_NAME;
+  const nom = String(process.env.MONGODB_DB_NAME ?? '').trim();
+  return nom || DEFAULT_DB_NAME;
+}
+
+/**
+ * Force le nom de la base DANS la chaîne de connexion quand celle-ci n'en contient pas.
+ *
+ * Bug constaté (16/11) : avec une URI Atlas sans nom de base, l'application écrivait
+ * dans une base vide — le serveur répondait, mais aucune fiche n'était visible. On
+ * écrit donc la base dans l'URI elle-même, en plus de l'option `dbName` passée à
+ * Mongoose (double sécurité : les scripts et les journaux lisent la même base que
+ * l'application).
+ *
+ * @param {string} [uri] URI MongoDB d'origine
+ * @param {string} [nom] nom de base à forcer
+ * @returns {string} URI avec un nom de base explicite
+ */
+export function uriAvecBase(uri = getMongoUri(), nom = getMongoDbName()) {
+  const brute = String(uri).trim();
+  if (!/^mongodb(\+srv)?:\/\//i.test(brute)) return brute;
+
+  // On sépare les options (« ?retryWrites=true ») du reste de l'URI.
+  const [avantOptions, options] = brute.split('?');
+  const debutHote = avantOptions.indexOf('://') + 3;
+  const slashBase = avantOptions.indexOf('/', debutHote);
+  const baseIndiquee = slashBase === -1 ? '' : avantOptions.slice(slashBase + 1).trim();
+
+  // Une base est déjà indiquée : on ne touche à rien (le développeur a choisi).
+  if (baseIndiquee) return brute;
+
+  const avecBase = `${avantOptions.replace(/\/+$/, '')}/${nom}`;
+  return options === undefined ? avecBase : `${avecBase}?${options}`;
 }
 
 /** L'URI pointe-t-elle vers Atlas (mongodb+srv) ? Change le diagnostic d'erreur. */
@@ -177,7 +211,9 @@ function annulerReessai() {
  * @returns {Promise<boolean>}
  */
 export async function connectDB({ silencieux = false, reessais = true } = {}) {
-  const uri = getMongoUri();
+  // La base est forcée DANS l'URI (si absente) ET via l'option `dbName` : jamais de
+  // base « test » ni de base vide, même avec une URI Atlas copiée sans nom de base.
+  const uri = uriAvecBase(getMongoUri(), getMongoDbName());
   // `strictQuery` évite les filtres silencieusement ignorés (Mongoose 8).
   mongoose.set('strictQuery', true);
 

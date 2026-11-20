@@ -259,7 +259,7 @@ export default function RegisterEstablishment() {
       // une seule fois, plutôt que de renvoyer l'utilisateur vers un autre écran.
       if (!connecte) {
         if (!telephoneCompte.trim()) return 'Indiquez votre numéro de téléphone pour créer votre compte.';
-        if (String(motDePasse).length < 6) return 'Choisissez un mot de passe de 6 caractères minimum.';
+        if (String(motDePasse).length < 8) return 'Choisissez un mot de passe de 8 caractères minimum.';
       }
     }
     return '';
@@ -296,8 +296,8 @@ export default function RegisterEstablishment() {
         setErreur('Indiquez votre numéro de téléphone (ex. 07 07 12 34 56).');
         return;
       }
-      if (String(motDePasse).length < 6) {
-        setErreur('Le mot de passe doit contenir au moins 6 caractères.');
+      if (String(motDePasse).length < 8) {
+        setErreur('Le mot de passe doit contenir au moins 8 caractères.');
         return;
       }
     }
@@ -767,7 +767,7 @@ export default function RegisterEstablishment() {
               type="password"
               value={motDePasse}
               onChange={(e) => setMotDePasse(e.target.value)}
-              placeholder="6 caractères minimum"
+              placeholder="8 caractères minimum"
               className="w-full rounded-md border border-line px-3 py-3 text-sm outline-none focus:border-primary"
             />
           </label>
@@ -928,7 +928,7 @@ export default function RegisterEstablishment() {
                 type="password"
                 value={motDePasse}
                 onChange={(e) => setMotDePasse(e.target.value)}
-                placeholder="6 caractères minimum"
+                placeholder="8 caractères minimum"
                 className="w-full rounded-md border border-line px-3 py-3 text-sm outline-none focus:border-primary"
               />
             </label>

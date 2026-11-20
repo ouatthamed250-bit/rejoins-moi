@@ -12,7 +12,10 @@
 //   5. webhook CinetPay : REFUS par défaut sans clé secrète (fail-closed), refus d'une
 //      signature fausse, acceptation d'une signature HMAC correcte (contrôle positif) ;
 //   6. jeton administrateur : 12 h (et non 30 jours), vérifié sur un jeton signé ;
-//   7. plafond des photos : 300 Ko, refus côté serveur au-delà (établissement ET profil).
+//   7. plafond des photos : 300 Ko, refus côté serveur au-delà (établissement ET profil) ;
+//   8. magic bytes : le CONTENU d'une data-URI doit être une vraie image (JPEG, PNG ou
+//      WEBP) — un fichier texte renommé « photo.jpg » est refusé ; les URL https
+//      (Cloudinary) restent acceptées sans téléchargement.
 //
 // Lancement (depuis /backend) : npm run verifier:securite
 // Aucune écriture en base : les appels utilisés ne créent rien (connexions refusées,
@@ -30,9 +33,13 @@ const PORT = Number(process.env.PORT_VERIFICATION) || 4200;
 process.env.PORT = String(PORT);
 delete process.env.CINETPAY_SECRET_KEY;
 
-const { MAX_PHOTO_OCTETS, poidsPhotoOctets, validateEstablishmentPhotos, validatePhoto } = await import(
-  '../src/utils/validators.js'
-);
+const {
+  MAX_PHOTO_OCTETS,
+  poidsPhotoOctets,
+  validateEstablishmentPhotos,
+  validatePhoto,
+  verifierMagicBytes,
+} = await import('../src/utils/validators.js');
 const { DUREE_JETON_ADMIN, signToken } = await import('../src/middleware/auth.js');
 const { verifyNotifySignature } = await import('../src/services/cinetpay.js');
 
@@ -100,10 +107,18 @@ async function attendreServeur(maxMs = 25000) {
   return false;
 }
 
-/** Une base64 « factice » de la taille demandée (on ne mesure que le POIDS). */
+/** En-tête binaire d'un vrai JPEG (les 3 premiers octets suffisent au contrôle). */
+const ENTETE_JPEG = Buffer.from([0xff, 0xd8, 0xff]);
+
+/**
+ * Une data-URI JPEG de la taille demandée, avec un VRAI en-tête JPEG : le contenu
+ * doit désormais passer le contrôle des magic bytes (section 8), pas seulement le
+ * plafond de poids. On ne mesure ici que le POIDS.
+ */
 function dataUriDeTaille(octets) {
-  const base64 = Math.ceil(octets / 3) * 4;
-  return `data:image/jpeg;base64,${'A'.repeat(base64)}`;
+  const remplissage = Math.max(0, Math.round(octets) - ENTETE_JPEG.length);
+  const binaire = Buffer.concat([ENTETE_JPEG, Buffer.alloc(remplissage, 0x41)]);
+  return `data:image/jpeg;base64,${binaire.toString('base64')}`;
 }
 
 /** Corps JSON d'environ `octets` (une clé inutile, jamais utilisée par les routes appelées). */
@@ -378,6 +393,81 @@ verifier(
   'POST /api/users/register avec une photo de 310 Ko -> 400 (refus serveur)',
   inscriptionTropLourde.statut === 400,
   `statut ${inscriptionTropLourde.statut} | ${JSON.stringify(inscriptionTropLourde.donnees)}`
+);
+
+// ── 8. Magic bytes : le CONTENU doit être une vraie image ──
+titre('8. Magic bytes — un faux JPEG (fichier texte renommé) est refusé');
+
+/** Data-URI dont le contenu est du TEXTE (ce que produit un .jpg renommé). */
+function dataUriTexte(texte) {
+  return `data:image/jpeg;base64,${Buffer.from(texte, 'utf8').toString('base64')}`;
+}
+
+const base64Jpeg = Buffer.concat([ENTETE_JPEG, Buffer.alloc(2048, 0x00)]).toString('base64');
+const base64Png = Buffer.concat([
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  Buffer.alloc(2048, 0x00),
+]).toString('base64');
+const base64Webp = Buffer.concat([
+  Buffer.from('RIFF', 'latin1'),
+  Buffer.from([0x00, 0x08, 0x00, 0x00]),
+  Buffer.from('WEBP', 'latin1'),
+  Buffer.alloc(2048, 0x00),
+]).toString('base64');
+const base64RiffSansWebp = Buffer.concat([
+  Buffer.from('RIFF', 'latin1'),
+  Buffer.from([0x00, 0x08, 0x00, 0x00]),
+  Buffer.from('AVI ', 'latin1'),
+  Buffer.alloc(2048, 0x00),
+]).toString('base64');
+
+const fauxJpeg = dataUriTexte('ceci est un fichier texte renommé en .jpg — ce n’est pas une image');
+verifier(
+  'verifierMagicBytes() rejette un faux JPEG (contenu texte)',
+  verifierMagicBytes(fauxJpeg) === false,
+  fauxJpeg.slice(0, 60)
+);
+verifier(
+  'validateEstablishmentPhotos() rejette une devanture qui est un faux JPEG',
+  validateEstablishmentPhotos(fauxJpeg, '').ok === false
+);
+verifier(
+  'validatePhoto() rejette une photo de profil qui est un faux JPEG',
+  validatePhoto(fauxJpeg, 'La photo de profil').ok === false
+);
+verifier(
+  'un vrai en-tête JPEG (FF D8 FF) est accepté',
+  verifierMagicBytes(`data:image/jpeg;base64,${base64Jpeg}`) === true
+);
+verifier(
+  'un vrai en-tête PNG (89 50 4E 47) est accepté',
+  verifierMagicBytes(`data:image/png;base64,${base64Png}`) === true
+);
+verifier(
+  'un conteneur RIFF/WEBP est accepté',
+  verifierMagicBytes(`data:image/webp;base64,${base64Webp}`) === true
+);
+verifier(
+  'un conteneur RIFF qui n’est pas du WEBP est refusé',
+  verifierMagicBytes(`data:image/webp;base64,${base64RiffSansWebp}`) === false
+);
+verifier(
+  'une data-URI trop courte (2 octets) est refusée',
+  verifierMagicBytes(`data:image/jpeg;base64,${Buffer.from([0xff, 0xd8]).toString('base64')}`) === false
+);
+verifier(
+  'une URL https reste acceptée sans lecture du contenu (Cloudinary)',
+  validateEstablishmentPhotos('https://res.cloudinary.com/rejoins-moi/image/upload/v1/photo.jpg', '').ok === true
+);
+
+// Refus de bout en bout : le serveur refuse un faux JPEG avant toute écriture.
+const inscriptionFauxJpeg = await appel('POST', '/api/users/register', {
+  body: { telephone: '0700000003', motDePasse: 'motdepasse', photoProfil: fauxJpeg },
+});
+verifier(
+  'POST /api/users/register avec un faux JPEG -> 400 (refus serveur)',
+  inscriptionFauxJpeg.statut === 400,
+  `statut ${inscriptionFauxJpeg.statut} | ${JSON.stringify(inscriptionFauxJpeg.donnees)}`
 );
 
 // ───────────────────────────── Bilan ─────────────────────────────

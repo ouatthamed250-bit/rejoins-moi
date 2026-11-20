@@ -58,8 +58,8 @@ export default function Login() {
         if (resultat?.avertissement) setAvertissement(resultat.avertissement);
         navigate(destination, { replace: true });
       } else {
-        if (formulaire.motDePasse.length < 6) {
-          throw new Error('Le mot de passe doit contenir au moins 6 caractères.');
+        if (formulaire.motDePasse.length < 8) {
+          throw new Error('Le mot de passe doit contenir au moins 8 caractères.');
         }
         await inscription(formulaire);
         // Un compte tout neuf n'a pas encore d'établissement : on enchaîne sur l'inscription.
@@ -146,11 +146,11 @@ export default function Login() {
           <input
             type="password"
             required
-            minLength={6}
+            minLength={8}
             autoComplete={onglet === 'connexion' ? 'current-password' : 'new-password'}
             value={formulaire.motDePasse}
             onChange={(e) => maj('motDePasse', e.target.value)}
-            placeholder="Au moins 6 caractères"
+            placeholder="Au moins 8 caractères"
             className="w-full rounded-md border border-line px-3 py-3 text-sm font-semibold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
           />
         </label>

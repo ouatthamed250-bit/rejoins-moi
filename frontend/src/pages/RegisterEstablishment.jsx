@@ -49,6 +49,7 @@ import TagBadge from '../components/TagBadge.jsx';
 import { api } from '../utils/api/client.js';
 import { horairesParDefaut, resumerHoraires } from '../utils/statutHoraire.js';
 import { CATEGORIES, METIERS, TAGS_PAR_CATEGORIE } from '../data/demoData.js';
+import { sousCategoriesDe } from '../config/categories.js';
 import { useAuth } from '../hooks/useAuth.js';
 import { useGeolocation } from '../hooks/useGeolocation.js';
 
@@ -99,6 +100,20 @@ export default function RegisterEstablishment() {
   const [photos, setPhotos] = useState([]);
   const [nom, setNom] = useState('');
   const [categorie, setCategorie] = useState('alimentation');
+  // Précision locale (prompt 6) : « Garbadrom », « Clé minute », « WC public »… Le
+  // libellé est envoyé au serveur (il en déduit le slug) ; vide = pas de précision.
+  const [sousCategorie, setSousCategorie] = useState('');
+  // « Autre (précisez) » : champ libre. La proposition part en modération (collection
+  // DemandeCategorie) au lieu de polluer les filtres avec des libellés sauvages.
+  const [precisionLibre, setPrecisionLibre] = useState(false);
+  const [texteLibre, setTexteLibre] = useState('');
+  // Sous-catégories VALIDÉES par le back-office et proposées par d'autres gérants :
+  // elles viennent de l'API (personnalisees), pas du fichier de config, sinon valider
+  // une proposition ne changerait rien pour l'inscripteur suivant.
+  const [categoriesProposees, setCategoriesProposees] = useState([]);
+  // Renseigné quand la fiche a été créée avec un libellé inconnu : l'écran de
+  // confirmation remplace le formulaire, avec le lien vers la fiche.
+  const [proposition, setProposition] = useState(null);
   const [tags, setTags] = useState([]);
   const [description, setDescription] = useState('');
   const [quartier, setQuartier] = useState('');
@@ -213,6 +228,44 @@ export default function RegisterEstablishment() {
 
   const tagsDisponibles = useMemo(() => TAGS_PAR_CATEGORIE[categorie] || [], [categorie]);
 
+  // Sous-catégories proposées à l'inscripteur : celles du fichier de config (figées)
+  // + celles déjà validées par le back-office pour CETTE famille. `chipLibre` est
+  // toujours présent : même une famille sans sous-catégorie figée doit permettre de
+  // proposer un métier local (« Poissonnerie », « Cordonnier »…).
+  const { sousCategoriesFigees, chipLibre } = useMemo(() => {
+    const locales = sousCategoriesDe(categorie);
+    const figeesLocales = locales.filter((s) => !s.libre);
+    const dejaVues = new Set(figeesLocales.map((s) => s.slug));
+    const validees = categoriesProposees
+      .filter((p) => (p.famille || 'autre') === categorie && !dejaVues.has(p.slug))
+      .map((p) => ({ slug: p.slug, label: p.label, validee: true }));
+    return {
+      sousCategoriesFigees: [...figeesLocales, ...validees],
+      chipLibre: locales.find((s) => s.libre) || {
+        slug: 'a-precision',
+        label: 'Autre (précisez)',
+        libre: true,
+      },
+    };
+  }, [categorie, categoriesProposees]);
+
+  // Une seule requête au montage : pas de dépendance à la famille (la config locale
+  // couvre déjà les cas courants, l'API n'ajoute que les propositions validées).
+  useEffect(() => {
+    let annule = false;
+    api
+      .get('/establishments/categories', { auth: false })
+      .then((reponse) => {
+        if (!annule) setCategoriesProposees(reponse?.personnalisees || []);
+      })
+      .catch(() => {
+        // Hors ligne ou API indisponible : les sous-catégories figées suffisent.
+      });
+    return () => {
+      annule = true;
+    };
+  }, []);
+
   // Étapes du parcours « établissement » (le parcours « Non » n'en a qu'une).
   const etapes = ETAPES_ETABLISSEMENT;
   const roleChoisi = ROLES_SIMPLE.find((r) => r.valeur === roleSimple) || ROLES_SIMPLE[0];
@@ -250,6 +303,9 @@ export default function RegisterEstablishment() {
     if (aEtablissement && index === 1) {
       if (!categorie) return 'Choisissez la catégorie de votre établissement.';
       if (tags.length < 3) return 'Sélectionnez au moins 3 produits ou services.';
+      // « Autre (précisez) » : un champ vide ou un simple « a » ne dit rien à personne.
+      if (precisionLibre && texteLibre.trim().length < 3)
+        return 'Précisez votre activité en quelques lettres (3 caractères minimum).';
     }
     if (aEtablissement && index === 2) {
       if (!nom.trim()) return 'Indiquez le nom de votre établissement.';
@@ -349,6 +405,12 @@ export default function RegisterEstablishment() {
       const reponse = await api.post('/establishments', {
         nom: nom.trim(),
         categorie,
+        // Précision locale : le LIBELLÉ (pas le slug) part au serveur, qui le résout
+        // dans la taxonomie. Un libellé inconnu est conservé sur la fiche ET proposé
+        // en modération (`propositionCategorie` dans la réponse).
+        sousCategorie: precisionLibre
+          ? texteLibre.trim()
+          : sousCategoriesFigees.find((s) => s.slug === sousCategorie)?.label || '',
         description: description.trim(),
         photoDevanture,
         photoVendeur,
@@ -371,6 +433,17 @@ export default function RegisterEstablishment() {
       // profil, sinon la fiche s'ouvrirait sans le bouton « Modifier les photos »
       // jusqu'au prochain chargement de l'application.
       await rafraichirProfil().catch(() => {});
+      // Proposition de catégorie : on l'annonce AVANT de quitter l'écran. Naviguer
+      // directement ferait perdre l'information — le gérant croirait que son métier
+      // (« Poissonnerie ») n'a pas été pris en compte.
+      if (reponse?.propositionCategorie?.nom) {
+        setProposition({
+          id,
+          libelle: reponse.propositionCategorie.nom,
+          statut: reponse.propositionCategorie.statut,
+        });
+        return;
+      }
       navigate(id ? `/etablissement/${id}` : '/', { replace: true });
     } catch (err) {
       setErreur(err?.message || 'Inscription impossible pour le moment. Réessayez dans quelques instants.');
@@ -434,6 +507,11 @@ export default function RegisterEstablishment() {
                 onClick={() => {
                   setCategorie(c.slug);
                   setTags([]);
+                  // La liste de précisions dépend de la famille : on repart de zéro,
+                  // sinon on enregistrerait « Garbadrom » sur un salon de coiffure.
+                  setSousCategorie('');
+                  setPrecisionLibre(false);
+                  setTexteLibre('');
                 }}
                 className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-2 text-xs font-bold transition ${
                   actif ? 'border-primary bg-primary text-white' : 'border-line bg-white text-ink-muted'
@@ -445,6 +523,65 @@ export default function RegisterEstablishment() {
             );
           })}
         </div>
+
+        {/* Précision locale (prompt 6) : « Maquis », « Garbadrom », « Clé minute »…
+            Le gérant qui ne trouve pas son métier écrit le sien : le libellé part en
+            modération et n'apparaît pour les suivants qu'une fois validé. */}
+        <p className="mb-2 mt-4 text-sm font-bold text-ink">
+          Précisez votre activité <span className="font-normal text-ink-muted">(facultatif)</span>
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          {sousCategoriesFigees.map((s) => {
+            const actif = !precisionLibre && s.slug === sousCategorie;
+            return (
+              <button
+                key={s.slug}
+                type="button"
+                onClick={() => {
+                  setPrecisionLibre(false);
+                  setSousCategorie(actif ? '' : s.slug);
+                }}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                  actif ? 'border-primary bg-primary/10 text-primary' : 'border-line bg-white text-ink-muted'
+                }`}
+              >
+                {s.label}
+                {s.validee && <span className="text-[10px] font-bold uppercase text-ink-muted">proposée</span>}
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => {
+              setPrecisionLibre(true);
+              setSousCategorie('');
+            }}
+            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+              precisionLibre ? 'border-primary bg-primary/10 text-primary' : 'border-line bg-white text-ink-muted'
+            }`}
+          >
+            <Icon name="plus" size={13} />
+            {chipLibre.label}
+          </button>
+        </div>
+
+        {precisionLibre && (
+          <div className="mt-2">
+            <input
+              type="text"
+              value={texteLibre}
+              onChange={(e) => setTexteLibre(e.target.value.slice(0, 60))}
+              maxLength={60}
+              placeholder="Ex. Poissonnerie, Cordonnerie, Vente de garba…"
+              aria-label="Précisez votre activité"
+              className="w-full rounded-md border border-line bg-white px-3 py-2.5 text-sm font-semibold text-ink outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+            />
+            <p className="mt-1 text-[11px] leading-snug text-ink-muted">
+              Votre proposition est vérifiée par l’équipe avant d’être proposée aux autres commerçants.
+              Votre fiche l’affiche dès maintenant.
+            </p>
+          </div>
+        )}
       </div>
 
       <div>
@@ -796,6 +933,44 @@ export default function RegisterEstablishment() {
   // La question d'entrée n'a pas encore de réponse : on n'affiche ni formulaire
   // d'établissement, ni barre d'action (le choix se fait dans la carte).
   const question = aEtablissement === null;
+
+  // Fiche publiée avec un libellé de catégorie encore inconnu : on l'annonce AVANT de
+  // quitter l'écran, sinon le gérant ne saurait jamais que sa proposition est partie
+  // en modération (et il risque de la ressaisir sur une seconde fiche).
+  if (proposition) {
+    return (
+      <div className="ecran py-3">
+        <h1 className="text-xl font-bold text-ink">Votre établissement est en ligne</h1>
+        <p className="mb-3 text-sm text-ink-muted">
+          Merci ! Votre fiche est déjà visible par les habitants de votre quartier.
+        </p>
+
+        <div className="mb-4 rounded-md border border-primary/30 bg-primary/5 p-3">
+          <p className="text-sm font-bold text-ink">Votre activité « {proposition.libelle} »</p>
+          <p className="mt-1 text-[11px] leading-snug text-ink-muted">
+            {proposition.statut === 'validee'
+              ? 'Cette activité est déjà validée : les prochains commerçants la retrouvent dans leur liste.'
+              : 'Cette activité n’existait pas encore dans l’annuaire. Elle est enregistrée sur votre fiche dès maintenant et transmise à l’équipe : une fois validée, les prochains commerçants la retrouveront dans leur liste.'}
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <button
+            type="button"
+            className="bouton-principal w-full"
+            onClick={() =>
+              navigate(proposition.id ? `/etablissement/${proposition.id}` : '/', { replace: true })
+            }
+          >
+            Voir ma fiche
+          </button>
+          <button type="button" className="btn-ghost w-full" onClick={() => navigate('/', { replace: true })}>
+            Retour à l’accueil
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     /* L'espace sous le contenu (barre d'action incluse) n'est plus une classe de

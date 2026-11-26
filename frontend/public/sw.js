@@ -15,6 +15,18 @@
  *     quelle. Le serveur reste seul juge du paiement (règle de sécurité du projet).
  */
 
+// v22 : adaptation ivoirienne des catégories (20/11) — familles locales
+//       (Restauration et boissons, Commerces, Services de proximité, Lieux de culte
+//       et communautaires), sous-catégories de rue (maquis, koutoukoudrom,
+//       placalidrom, garbadrom, clé minute, lavage auto, WC publique…), raccourcis
+//       « Utile près de moi » sur l'accueil et la recherche, proposition libre d'un
+//       métier (« Autre (précisez) ») avec file de validation dans le back-office,
+//       et aucun encart de mise en avant pour les lieux publics et les cultes.
+//       Feed.jsx, Search.jsx, RegisterEstablishment.jsx, Profile.jsx, Admin.jsx,
+//       dessinsContexte.js et le CSS changent : empreintes index-*.js/css
+//       différentes, donc nouveau nom de cache — sinon un téléphone déjà installé
+//       garderait l'ancien filtre à 8 familles et ne verrait ni maquis ni raccourcis.
+//
 // v21 : passage en mode 100 % GRATUIT (20/11) — tous les prix disparaissent de
 //       l'interface, l'abonnement payant n'est plus proposé, une
 //       liste d'attente « Je veux être mis en avant » apparaît sur le profil et le
@@ -158,7 +170,7 @@
 //      index.html en secours, donc l'ANCIENNE app — médaillon toujours rogné.
 // Changer la version est indispensable dès que les fichiers « cache d'abord »
 // (icônes) ou l'app shell changent de façon visible.
-const VERSION = 'v21';
+const VERSION = 'v22';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

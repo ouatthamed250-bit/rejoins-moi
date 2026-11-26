@@ -103,6 +103,26 @@ attendreDessin({ categorie: 'Services', sousCategorie: 'Nettoyage a sec' }, 'boi
 attendreDessin({ categorie: 'Services', sousCategorie: 'Agences de telephonie' }, 'mobileMoney', 'Agences de telephonie');
 attendreDessin({ categorie: 'Alimentation', sousCategorie: 'Restaurant' }, 'marmite', 'Restaurant (repli catégorie)');
 
+console.log('3 bis. Familles locales (prompt 6) — chaque sous-catégorie a un dessin juste');
+attendreDessin({ categorie: 'restauration' }, 'marmite', 'restauration (repli famille)');
+attendreDessin({ categorie: 'restauration', sousCategorie: 'Maquis' }, 'barbecue', 'Maquis');
+attendreDessin({ categorie: 'restauration', sousCategorie: 'Garbadrom' }, 'barbecue', 'Garbadrom');
+attendreDessin({ categorie: 'restauration', sousCategorie: 'Koutoukoudrom' }, 'barbecue', 'Koutoukoudrom');
+attendreDessin({ categorie: 'restauration', sousCategorie: 'Placalidrom' }, 'barbecue', 'Placalidrom');
+attendreDessin({ categorie: 'restauration', sousCategorie: 'Market' }, 'etalMarche', 'Market');
+attendreDessin({ categorie: 'commerces' }, 'etalMarche', 'commerces (repli famille)');
+attendreDessin({ categorie: 'commerces', sousCategorie: 'Vêtements' }, 'etalMarche', 'Vêtements (boutique)');
+attendreDessin({ categorie: 'commerces', sousCategorie: 'Chaussures' }, 'etalMarche', 'Chaussures');
+attendreDessin({ categorie: 'proximite', sousCategorie: 'Clé minute' }, 'kiosque', 'Clé minute');
+attendreDessin({ categorie: 'proximite', sousCategorie: "Transfert d'argent" }, 'mobileMoney', "Transfert d'argent (proximité)");
+attendreDessin({ categorie: 'proximite', sousCategorie: 'Pressing' }, 'boiteOutils', 'Pressing');
+attendreDessin({ categorie: 'proximite', sousCategorie: 'Lavage auto' }, 'boiteOutils', 'Lavage auto');
+attendreDessin({ categorie: 'proximite', sousCategorie: 'Imprimerie' }, 'boiteOutils', 'Imprimerie (repli famille)');
+attendreDessin({ categorie: 'proximite', sousCategorie: 'WC publique' }, 'repere', 'WC publique');
+attendreDessin({ categorie: 'cultes', sousCategorie: 'Mosquée' }, 'mosquee', 'Mosquée (famille cultes)');
+attendreDessin({ categorie: 'cultes', sousCategorie: 'Église' }, 'eglise', 'Église (famille cultes)');
+attendreDessin({ categorie: 'cultes', sousCategorie: 'Association' }, 'paillote', 'Association (repli famille)');
+
 console.log('4. Cas réels — métiers des annonces de main-d’œuvre');
 attendreDessin({ metier: 'Plombier' }, 'plomberie', 'Plombier');
 attendreDessin({ metier: 'Électricien' }, 'electricite', 'Électricien (accent)');

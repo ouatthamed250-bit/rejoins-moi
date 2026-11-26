@@ -7,17 +7,13 @@
 // EstablishmentCard / pages). Les coordonnées sont de vraies coordonnées
 // d'Abidjan, donc le calcul de distance et le tri par proximité restent réalistes.
 
-export const CATEGORIES = [
-  { slug: 'tous', label: 'Tous', icone: 'grid' },
-  { slug: 'alimentation', label: 'Alimentation', icone: 'utensils' },
-  { slug: 'beaute', label: 'Beauté', icone: 'scissors' },
-  { slug: 'services', label: 'Services', icone: 'tools' },
-  { slug: 'artisanat', label: 'Artisanat', icone: 'hammer' },
-  { slug: 'commerce', label: 'Commerce', icone: 'store' },
-  { slug: 'sante', label: 'Santé', icone: 'heart' },
-  { slug: 'spiritualite', label: 'Spiritualité', icone: 'church' },
-  { slug: 'autre', label: 'Autre', icone: 'dot' },
-];
+import { CATEGORIES } from '../config/categories.js';
+
+// La taxonomie ne VIT PLUS ici : depuis le prompt 6 elle est dans
+// src/config/categories.js (familles locales + sous-catégories). On la ré-exporte pour
+// que les écrans qui importent `CATEGORIES` depuis demoData continuent de marcher —
+// sans dupliquer la liste, sinon un ajout de catégorie n'apparaîtrait que d'un côté.
+export { CATEGORIES };
 
 /**
  * Tags proposés en bulles cliquables à l'inscription (§5), dépendants de la

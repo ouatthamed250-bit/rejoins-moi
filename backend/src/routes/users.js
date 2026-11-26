@@ -22,6 +22,8 @@ import express from 'express';
 import User from '../models/User.js';
 import Subscription from '../models/Subscription.js';
 import ListeAttente from '../models/ListeAttente.js';
+import Establishment from '../models/Establishment.js';
+import { estSansPublicite } from '../config/categories.js';
 import { signToken, protect, optionalAuth } from '../middleware/auth.js';
 import { requireDb } from '../config/db.js';
 import { asyncHandler, ApiError } from '../middleware/errorHandler.js';
@@ -364,6 +366,30 @@ router.post(
       throw new ApiError(400, 'Identifiant d’établissement invalide.');
     }
     const etablissementId = brut ? String(brut) : null;
+
+    // ── Règle métier : PAS DE PUBLICITÉ POUR LES LIEUX PUBLICS ET LES CULTES ──
+    // Un WC public, une mosquée, une église ou une association ne sont jamais proposés
+    // à une option payante. On refuse ICI, côté serveur, même si la mise en avant est
+    // gratuite aujourd'hui : le jour où elle redevient payante, la règle tient déjà
+    // (le front masque la carte, mais le front ne décide pas).
+    if (etablissementId) {
+      const fiche = await Establishment.findById(etablissementId).select(
+        'categorie sousCategorie sousCategorieSlug'
+      );
+      if (
+        fiche &&
+        estSansPublicite({
+          categorie: fiche.categorie,
+          sousCategorie: fiche.sousCategorie,
+          sousCategorieSlug: fiche.sousCategorieSlug,
+        })
+      ) {
+        throw new ApiError(
+          400,
+          'Les lieux publics et les lieux de culte (WC public, mosquée, église, association) ne sont jamais mis en avant, gratuitement ou non.'
+        );
+      }
+    }
 
     let demande = await ListeAttente.findOne({
       userId: req.user._id,

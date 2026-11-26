@@ -19,6 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import CategoryFilter from '../components/CategoryFilter.jsx';
+import RaccourcisUtiles from '../components/RaccourcisUtiles.jsx';
 import ArtisansMisEnAvant from '../components/ArtisansMisEnAvant.jsx';
 import EstablishmentCard from '../components/EstablishmentCard.jsx';
 import EmptyState from '../components/EmptyState.jsx';
@@ -39,6 +40,8 @@ export default function Search() {
 
   const [terme, setTerme] = useState(parametres.get('q') || '');
   const [categorie, setCategorie] = useState(parametres.get('categorie') || 'tous');
+  // Raccourci « Utile près de moi » actif (vide = aucun) : sous-catégorie locale.
+  const [sousCategorie, setSousCategorie] = useState(parametres.get('sousCategorie') || '');
   const [resultats, setResultats] = useState([]);
   const [chargement, setChargement] = useState(false);
   const [horsLigne, setHorsLigne] = useState(false);
@@ -59,6 +62,8 @@ export default function Search() {
         requete.set('diversite', '0');
       }
       if (categorie !== 'tous') requete.set('categorie', categorie);
+      // Raccourci « Utile près de moi » : la sous-catégorie est filtrée par le serveur.
+      if (sousCategorie) requete.set('sousCategorie', sousCategorie);
       if (coords) {
         requete.set('lat', coords.lat);
         requete.set('lng', coords.lng);
@@ -73,7 +78,7 @@ export default function Search() {
     } finally {
       setChargement(false);
     }
-  }, [terme, categorie, position.position]);
+  }, [terme, categorie, sousCategorie, position.position]);
 
   // Débounce : on attend 350 ms après la dernière frappe avant d'appeler l'API.
   useEffect(() => {
@@ -87,9 +92,10 @@ export default function Search() {
     const params = {};
     if (terme.trim()) params.q = terme.trim();
     if (categorie !== 'tous') params.categorie = categorie;
+    if (sousCategorie) params.sousCategorie = sousCategorie;
     setParametres(params, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [terme, categorie]);
+  }, [terme, categorie, sousCategorie]);
 
   // Enregistre la recherche comme signal d'apprentissage (§3), une fois stabilisée.
   useEffect(() => {
@@ -139,7 +145,36 @@ export default function Search() {
         )}
       </div>
 
-      <CategoryFilter valeur={categorie} onChange={setCategorie} className="mb-3" />
+      <RaccourcisUtiles
+        actif={sousCategorie}
+        onChoisir={(raccourci) => {
+          if (!raccourci) {
+            setSousCategorie('');
+            return;
+          }
+          if (raccourci.route) {
+            navigate(raccourci.route);
+            return;
+          }
+          setCategorie(raccourci.famille || 'tous');
+          setSousCategorie(raccourci.slug);
+          // `relancer` repose la question au navigateur : sans coordonnées,
+          // « près de moi » n'a aucun sens dans les résultats.
+          position.relancer?.();
+        }}
+        className="mb-2"
+      />
+
+      <CategoryFilter
+        valeur={categorie}
+        onChange={(slug) => {
+          // Une famille choisie à la main annule le raccourci (deux filtres
+          // contradictoires à l'écran donneraient des résultats inexplicables).
+          setSousCategorie('');
+          setCategorie(slug);
+        }}
+        className="mb-3"
+      />
 
       {/* Les artisans abonnés remontent ici aussi : même liste que le feed (§3 ajout 29/09). */}
       <ArtisansMisEnAvant

@@ -124,6 +124,15 @@ export const adminApi = {
   reclamations: (statut = 'en_attente') => requeteAdmin(`/reclamations${chaineParametres({ statut })}`),
   deciderReclamation: (etablissementId, decision) =>
     requeteAdmin(`/reclamations/${etablissementId}`, { method: 'POST', body: { decision } }),
+  // Catégories PROPOSÉES par les gérants (« Autre (précisez) ») : file de modération.
+  // La taxonomie locale ne peut pas être inventée depuis un bureau — on valide ce que
+  // le terrain demande, famille par famille (prompt 6).
+  demandesCategories: (statut = 'en_attente') =>
+    requeteAdmin(`/demandes-categories${chaineParametres({ statut })}`),
+  validerDemandeCategorie: (id, famille = '') =>
+    requeteAdmin(`/demandes-categories/${id}/valider`, { method: 'POST', body: { famille } }),
+  refuserDemandeCategorie: (id, noteAdmin = '') =>
+    requeteAdmin(`/demandes-categories/${id}/refuser`, { method: 'POST', body: { noteAdmin } }),
 };
 
 export default adminApi;

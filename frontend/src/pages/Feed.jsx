@@ -22,6 +22,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import CategoryFilter from '../components/CategoryFilter.jsx';
+import RaccourcisUtiles from '../components/RaccourcisUtiles.jsx';
 import ArtisansMisEnAvant from '../components/ArtisansMisEnAvant.jsx';
 import EstablishmentCard from '../components/EstablishmentCard.jsx';
 import EmptyState from '../components/EmptyState.jsx';
@@ -61,6 +62,9 @@ export default function Feed() {
   const { profil, favoris, historique, ajouterInteraction } = useAuth();
   const position = useGeolocation();
   const [categorie, setCategorie] = useState('tous');
+  // Sous-catégorie locale d'un raccourci (« WC public », « Clé minute », « Marché »).
+  // Vide = pas de raccourci actif. Elle est filtrée par le SERVEUR, comme la catégorie.
+  const [sousCategorie, setSousCategorie] = useState('');
   const [bruts, setBruts] = useState([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -81,14 +85,19 @@ export default function Feed() {
    */
   const charger = useCallback(
     async (numeroPage = 1) => {
+      // Clé de mémoire locale commune aux lectures et écritures ci-dessous.
+      const cleCache = sousCategorie ? `${categorie}:${sousCategorie}` : categorie;
       if (numeroPage === 1) {
         setChargement(true);
         setMemoireAge(null);
+        // Clé de mémoire locale : un raccourci (« WC public ») est une liste DIFFÉRENTE
+        // de la famille « Services de proximité » complète — sans la sous-catégorie
+        // dans la clé, ouvrir un raccourci afficherait d'abord le cache de la famille.
         // Démarrage à froid : on affiche TOUT DE SUITE la dernière liste connue du
         // téléphone (fiches RÉELLES, jamais des données d'exemple) pendant que l'API
         // se réveille. Sans cela, l'utilisateur fixait un écran vide pendant une
         // minute le matin, puis croyait l'annuaire vide quand la requête expirait.
-        const memoire = lireCacheAnnuaire(categorie);
+        const memoire = lireCacheAnnuaire(cleCache);
         if (memoire) {
           setBruts(memoire.items);
           setTotal(memoire.total);
@@ -120,6 +129,10 @@ export default function Feed() {
           // pagination couvre alors l'intégralité de l'annuaire sans doublon ni trou.
           requete.set('diversite', '0');
         }
+        // Raccourci « Utile près de moi » : sous-catégorie locale (« wc-publique »,
+        // « cle-minute »…). Filtrée par le serveur, sur `sousCategorieSlug` pour les
+        // fiches migrées et sur le libellé pour les fiches importées jamais migrées.
+        if (sousCategorie) requete.set('sousCategorie', sousCategorie);
         if (coords) {
           requete.set('lat', coords.lat);
           requete.set('lng', coords.lng);
@@ -144,10 +157,10 @@ export default function Feed() {
         // le prochain démarrage à froid instantané. Périmètre strict : cette liste
         // PUBLIQUE d'annuaire, jamais un compte ni un paiement (voir cacheAnnuaire.js).
         if (numeroPage === 1) {
-          ecrireCacheAnnuaire(categorie, items, Number(reponse.total) || 0);
+          ecrireCacheAnnuaire(cleCache, items, Number(reponse.total) || 0);
         }
       } catch {
-        const memoire = lireCacheAnnuaire(categorie);
+        const memoire = lireCacheAnnuaire(cleCache);
         if (numeroPage === 1 && !memoire) {
           // Aucune liste mémorisée : repli sur les données de démonstration (jamais
           // d'écran vide, cf. tournée terrain) — mais le bandeau le dit clairement.
@@ -169,7 +182,7 @@ export default function Feed() {
         else setChargementPlus(false);
       }
     },
-    [position.position, categorie]
+    [position.position, categorie, sousCategorie]
   );
 
   /**
@@ -219,10 +232,16 @@ export default function Feed() {
   // Filet de sécurité côté client : la catégorie est déjà filtrée par l'API (et par
   // `filtrerEtablissementsDemo` en repli), mais pendant un changement d'onglet la
   // réponse précédente peut encore être affichée un instant.
-  const filtres = useMemo(
-    () => (categorie === 'tous' ? bruts : bruts.filter((e) => e.categorie === categorie)),
-    [bruts, categorie]
-  );
+  const filtres = useMemo(() => {
+    const liste =
+      categorie === 'tous' ? bruts : bruts.filter((e) => e.categorie === categorie);
+    if (!sousCategorie) return liste;
+    // Filet de sécurité pendant un changement de raccourci : la réponse précédente
+    // peut encore être affichée un instant. Une fiche SANS information de
+    // sous-catégorie (données de démonstration, anciennes fiches) n'est jamais
+    // écartée : mieux vaut une fiche en trop qu'une liste vide inexpliquée.
+    return liste.filter((e) => !e.sousCategorieSlug || e.sousCategorieSlug === sousCategorie);
+  }, [bruts, categorie, sousCategorie]);
 
   const { orderedEstablishments: ordonnesAlgo, personnalise } = useFeedAlgorithm(filtres, {
     userId: profil?.id,
@@ -241,6 +260,29 @@ export default function Feed() {
   // proximité pure (ordre total stable, départage `_id`), on peut demander les pages
   // suivantes jusqu'à avoir parcouru TOUTE la base — sans doublon ni fiche sautée.
   const peutChargerPlus = encore;
+
+  // ── Raccourcis « Utile près de moi » (prompt 6) ──
+  // Un raccourci n'est PAS un onglet : il applique une sous-catégorie (« wc-publique »)
+  // dans sa famille et relance la position, parce que « près de moi » sans coordonnées
+  // ne veut rien dire. `route` = raccourci servi par un autre écran (pharmacie de garde).
+  const relancerPosition = position.relancer;
+  const choisirRaccourci = useCallback(
+    (raccourci) => {
+      // Second appui sur le raccourci actif : on revient à la famille complète.
+      if (!raccourci) {
+        setSousCategorie('');
+        return;
+      }
+      if (raccourci.route) {
+        navigate(raccourci.route);
+        return;
+      }
+      setCategorie(raccourci.famille || 'tous');
+      setSousCategorie(raccourci.slug);
+      relancerPosition?.();
+    },
+    [navigate, relancerPosition]
+  );
 
   // ── Bouton d'action : « Aller chez <nom> » ──
   const ouvrirItineraire = useCallback(
@@ -382,7 +424,19 @@ export default function Feed() {
         </InfoBanner>
       )}
 
-      <CategoryFilter valeur={categorie} onChange={setCategorie} sticky className="mb-3" />
+      <RaccourcisUtiles actif={sousCategorie} onChoisir={choisirRaccourci} className="mb-2" />
+
+      <CategoryFilter
+        valeur={categorie}
+        onChange={(slug) => {
+          // Choisir une famille annule le raccourci : sinon la pastille active
+          // contredirait l'onglet sélectionné.
+          setSousCategorie('');
+          setCategorie(slug);
+        }}
+        sticky
+        className="mb-3"
+      />
 
       {/* Artisans mis en avant (abonnés) : contrepartie visible de l'abonnement. */}
       <ArtisansMisEnAvant className="mb-3" />
@@ -411,9 +465,19 @@ export default function Feed() {
       ) : orderedEstablishments.length === 0 ? (
         <EmptyState
           icone="grid"
-          titre="Aucun établissement dans cette catégorie"
+          titre={
+            sousCategorie
+              ? 'Rien à moins de quelques kilomètres'
+              : 'Aucun établissement dans cette catégorie'
+          }
           description="Essayez une autre catégorie : de nouveaux commerces s’inscrivent chaque semaine."
-          action={{ libelle: 'Voir tout', onClick: () => setCategorie('tous') }}
+          action={{
+            libelle: 'Voir tout',
+            onClick: () => {
+              setSousCategorie('');
+              setCategorie('tous');
+            },
+          }}
           illustration={
             // Le dessin suit la catégorie choisie (kiosque pour Commerce, croixSante
             // pour Santé…) : un état vide qui parle de la catégorie qu'il vide.

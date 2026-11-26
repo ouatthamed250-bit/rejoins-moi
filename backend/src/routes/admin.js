@@ -19,6 +19,9 @@
 //   POST   /api/admin/depots/:id/rejeter         -> REJETER un dépôt (motif optionnel)
 //   GET    /api/admin/activite                   -> journal de suivi (inscriptions, connexions, paiements)
 //   PATCH  /api/admin/utilisateurs/:id/statut    -> VALIDER (réactiver) ou SUSPENDRE un compte
+//   GET    /api/admin/demandes-categories        -> catégories proposées par les gérants (prompt 6)
+//   POST   /api/admin/demandes-categories/:id/valider -> VALIDER une proposition (elle devient proposée)
+//   POST   /api/admin/demandes-categories/:id/refuser -> REFUSER une proposition (elle reste sur les fiches)
 //
 // Suivi (ajout du 01/10) : le back-office n'est plus seulement une file de validation,
 // c'est l'écran de pilotage — d'où /activite (qui s'inscrit, qui se connecte, quels
@@ -35,6 +38,7 @@ import Establishment from '../models/Establishment.js';
 import Subscription from '../models/Subscription.js';
 import Depot from '../models/Depot.js';
 import ListeAttente from '../models/ListeAttente.js';
+import DemandeCategorie from '../models/DemandeCategorie.js';
 import { protectAdmin, signToken, DUREE_JETON_ADMIN } from '../middleware/auth.js';
 import { requireDb } from '../config/db.js';
 import { asyncHandler, ApiError } from '../middleware/errorHandler.js';
@@ -44,6 +48,7 @@ import { getUnlockFee, getCurrency } from '../services/cinetpay.js';
 import { anonymiserOuSupprimerCompte } from '../services/suppressionCompte.js';
 import { getDepots, getSupportWhatsapp } from '../config/paiement.js';
 import { estModeGratuit } from '../config/abonnement.js';
+import { libelleFamille } from '../config/categories.js';
 
 const router = express.Router();
 router.use(requireDb);
@@ -239,6 +244,13 @@ router.get(
         .lean(),
     ]);
 
+    // Catégories proposées par les gérants (« Autre (précisez) », prompt 6) : même
+    // logique de FILE — l'admin valide ce qui entrera dans la liste des choix.
+    const [demandesCategorie, recentesDemandeCategorie] = await Promise.all([
+      DemandeCategorie.countDocuments({ statut: 'en_attente' }),
+      DemandeCategorie.find({ statut: 'en_attente' }).sort({ demandes: -1, date: -1 }).limit(6),
+    ]);
+
     res.json({
       utilisateurs,
       artisans,
@@ -284,6 +296,12 @@ router.get(
               : null,
           };
         }),
+      },
+      // Catégories proposées par les gérants : le back-office doit voir une file
+      // courte (les plus demandées d'abord) pour trancher vite.
+      demandesCategorie: {
+        enAttente: demandesCategorie,
+        recentes: recentesDemandeCategorie.map((d) => d.toPublicJSON()),
       },
       // 0 pendant la gratuité : le back-office n'affiche aucun tarif non plus.
       fraisDeblocage: estModeGratuit() ? 0 : getUnlockFee(),
@@ -1046,6 +1064,117 @@ router.post(
     await depot.save();
 
     res.json({ depot: depot.toJSON(), message: 'Dépôt rejeté.' });
+  })
+);
+
+/**
+ * GET /api/admin/demandes-categories — catégories proposées par les gérants.
+ * Query : { statut? = 'en_attente' | 'validee' | 'refusee' | 'toutes', limit? }
+ *
+ * Pourquoi une file et pas une liste déroulante : un gérant qui choisit
+ * « Autre (précisez) » ne crée PAS de famille (l'enum reste fermé, sinon les
+ * 6 719 fiches importées et les liens `?categorie=` partagés casseraient). Sa
+ * proposition est stockée à part et c'est ici qu'on décide de l'exposer.
+ */
+router.get(
+  '/demandes-categories',
+  protectAdmin,
+  asyncHandler(async (req, res) => {
+    const statut = String(req.query.statut || 'en_attente');
+    const autorises = ['en_attente', 'validee', 'refusee'];
+    const limite = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+
+    const filtre = statut === 'toutes' ? {} : { statut: autorises.includes(statut) ? statut : 'en_attente' };
+
+    const [demandes, compteurs] = await Promise.all([
+      DemandeCategorie.find(filtre)
+        // Les plus réclamées d'abord : un libellé demandé 12 fois passe avant
+        // celui d'un seul gérant, c'est le signal le plus honnête.
+        .sort({ demandes: -1, date: -1 })
+        .limit(limite)
+        .populate('userId', 'nom prenom telephone')
+        .populate('etablissementId', 'nom'),
+      Promise.all([
+        DemandeCategorie.countDocuments({ statut: 'en_attente' }),
+        DemandeCategorie.countDocuments({ statut: 'validee' }),
+        DemandeCategorie.countDocuments({ statut: 'refusee' }),
+      ]),
+    ]);
+
+    res.json({
+      demandes: demandes.map((d) => ({
+        ...d.toPublicJSON(),
+        // Combien de gérants ont écrit ce même libellé (toPublicJSON ne le publie pas :
+        // c'est un signal de pilotage, pas une information de fiche).
+        demandes: d.demandes || 1,
+        // Motif de refus : visible uniquement en back-office (jamais dans toPublicJSON).
+        noteAdmin: d.noteAdmin || '',
+        utilisateur: d.userId
+          ? {
+              id: d.userId._id,
+              nom: [d.userId.prenom, d.userId.nom].filter(Boolean).join(' ') || null,
+              telephone: d.userId.telephone || null,
+            }
+          : null,
+        etablissement: d.etablissementId
+          ? { id: d.etablissementId._id, nom: d.etablissementId.nom || '' }
+          : null,
+      })),
+      compteurs: { enAttente: compteurs[0], validees: compteurs[1], refusees: compteurs[2] },
+    });
+  })
+);
+
+/**
+ * POST /api/admin/demandes-categories/:id/valider — la catégorie devient proposée.
+ * body: { famille? } — famille d'accueil ; par défaut celle proposée par le gérant
+ * (l'admin ne peut pas changer l'enum des familles, seulement rattacher la
+ * sous-catégorie à l'une d'elles).
+ */
+router.post(
+  '/demandes-categories/:id/valider',
+  protectAdmin,
+  asyncHandler(async (req, res) => {
+    const demande = await DemandeCategorie.findById(req.params.id);
+    if (!demande) throw new ApiError(404, 'Demande introuvable.');
+    if (demande.statut === 'validee') {
+      throw new ApiError(409, 'Cette catégorie est déjà validée.');
+    }
+
+    demande.statut = 'validee';
+    const famille = String(req.body?.famille || demande.famille || 'autre').trim();
+    if (famille) demande.famille = famille;
+    demande.traiteLe = new Date();
+    demande.traiteParUserId = req.user._id;
+    await demande.save();
+
+    res.json({
+      demande: demande.toPublicJSON(),
+      message: `« ${demande.nom} » est désormais proposée comme sous-catégorie de « ${libelleFamille(
+        demande.famille
+      )} ».`,
+    });
+  })
+);
+
+/** POST /api/admin/demandes-categories/:id/refuser — reste hors de la liste (motif libre). */
+router.post(
+  '/demandes-categories/:id/refuser',
+  protectAdmin,
+  asyncHandler(async (req, res) => {
+    const demande = await DemandeCategorie.findById(req.params.id);
+    if (!demande) throw new ApiError(404, 'Demande introuvable.');
+    if (demande.statut === 'refusee') throw new ApiError(409, 'Cette demande est déjà refusée.');
+
+    demande.statut = 'refusee';
+    demande.noteAdmin = String(req.body?.noteAdmin || '').trim().slice(0, 300);
+    demande.traiteLe = new Date();
+    demande.traiteParUserId = req.user._id;
+    await demande.save();
+
+    // Le libellé reste sur les fiches qui l'ont saisi : refuser une proposition
+    // n'efface pas le travail du gérant, ça évite juste de le proposer aux suivants.
+    res.json({ demande: demande.toPublicJSON(), message: 'Proposition refusée.' });
   })
 );
 

@@ -45,6 +45,15 @@ const establishmentSchema = new mongoose.Schema(
           'commerce',
           'sante',
           'spiritualite',
+          // ── Familles locales (20/11) : maquis, garbadrom, clé minute… ──
+          // Les 8 slugs ci-dessus sont CONSERVÉS tels quels : les fiches importées et
+          // les liens partagés (`?categorie=beaute`) continuent de fonctionner. Les
+          // nouvelles familles viennent de backend/src/config/categories.js et sont
+          // alimentées par scripts/migrer-categories.js, jamais à la main.
+          'restauration',
+          'commerces',
+          'proximite',
+          'cultes',
           'autre',
         ],
         message: 'Catégorie inconnue : {VALUE}',
@@ -52,9 +61,18 @@ const establishmentSchema = new mongoose.Schema(
       index: true,
     },
 
-    // Sous-catégorie issue de la source publique (ex. « Restaurant », « Coiffeurs(ses) »).
-    // Sert au filtrage fin ; reste vide pour les fiches créées dans l'application.
+    // Sous-catégorie issue de la source publique (ex. « Restaurant », « Coiffeurs(ses) »)
+    // OU précisée par le gérant à l'inscription (« Garbadrom », « Clé minute »).
+    // Sert au filtrage fin.
     sousCategorie: { type: String, trim: true, maxlength: 60, default: '' },
+
+    // Clé STABLE de filtrage, dérivée du libellé ci-dessus (« Clé minute » → « cle-minute »).
+    // Pourquoi un doublon : le libellé est ce qu'on AFFICHE (accents, apostrophes, casse
+    // libres), le slug est ce qu'on COMPARE. Filtrer sur le texte ferait rater
+    // « Clé minute » saisi « cle minute » ; filtrer sur le slug ne rate rien.
+    // Vide pour les fiches importées d'avant le 20/11 tant que la migration n'est pas
+    // appliquée — la route GET / retombe alors sur le libellé (voir establishments.js).
+    sousCategorieSlug: { type: String, trim: true, maxlength: 80, default: '', index: true },
 
     description: { type: String, trim: true, maxlength: 500, default: '' },
 
@@ -320,6 +338,9 @@ establishmentSchema.methods.toCardJSON = function toCardJSON({ distanceKm, base 
     nom: this.nom,
     categorie: this.categorie,
     sousCategorie: this.sousCategorie || '',
+    // Slug de filtre (« cle-minute »). Vide sur une fiche importée jamais migrée :
+    // le frontend et la recherche retombent alors sur le libellé.
+    sousCategorieSlug: this.sousCategorieSlug || '',
     description: this.description,
     photoDevanture: devanture.valeur,
     photoVendeur: vendeur.valeur,

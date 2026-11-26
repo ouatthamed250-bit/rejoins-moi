@@ -34,6 +34,12 @@ export const DESSIN_PAR_CATEGORIE = {
   sante: 'croixSante',
   spiritualite: 'paillote',
   autre: 'maison',
+  // ── Familles locales (prompt 6) : chaque famille ajoutée doit avoir SON repli,
+  // sinon ses fiches tombent sur la maison du quartier, hors sujet.
+  restauration: 'marmite',
+  commerces: 'etalMarche',
+  proximite: 'boiteOutils',
+  cultes: 'paillote',
 };
 
 /** Repli universel : la maison du quartier (trace prévue pour l'accueil). */
@@ -57,6 +63,15 @@ export const REGLES_DESSIN = [
   { motif: /pharmaci/, dessin: 'pharmacie' },
   { motif: /clinique|dispensaire|hopital|medical|cabinet de soin|sante/, dessin: 'croixSante' },
 
+  // ── Adaptation ivoirienne (prompt 6) : la rue se mange et se boit debout.
+  // Maquis, garbadrom, koutoukoudrom, placalidrom = braises et grillades, pas une
+  // salle de restaurant : le barbecue dit mieux le lieu que la marmite.
+  { motif: /maquis|garba|koutoukou|placali|braise|grillade|barbecue|street food/, dessin: 'barbecue' },
+
+  // WC public : ce n'est pas une devanture qu'on montre, c'est un endroit qu'on
+  // cherche. L'épingle de carte est plus juste que la maison (et jamais payante).
+  { motif: /\bwc\b|toilette|latrine/, dessin: 'repere' },
+
   { motif: /paroisse|eglise|cathedral|chapelle|culte chretien|catech|chorale|messe/, dessin: 'eglise' },
   { motif: /mosqu|islam|minaret|coran|ablution|ramadan|imam/, dessin: 'mosquee' },
 
@@ -64,6 +79,13 @@ export const REGLES_DESSIN = [
     motif: /coiffeur|coiffure|coiffeuse|salon|tresses|beaute|cosmetique|onglerie|barbier|manucure|capillaire/,
     dessin: 'salonBeaute',
   },
+  // Boutiques de la famille « Commerces » : un étal, pas un atelier de couture
+  // (« Vêtements » est un lieu de vente ; « Couturier », lui, reste à la machine).
+  {
+    motif: /^(vetements?|chaussures?|bijouterie|papeterie|accessoires? telephone)$/,
+    dessin: 'etalMarche',
+  },
+
   { motif: /coutur|couture|tailleur|retouche|vetement|pagne|tissu|wax/, dessin: 'atelierCouture' },
 
   { motif: /plomb|sanitaire|robinet|fuite/, dessin: 'plomberie' },
@@ -72,11 +94,19 @@ export const REGLES_DESSIN = [
 
   { motif: /taxi|transport|chauffeur|livraison|deplacement/, dessin: 'taxiMoto' },
 
-  { motif: /kiosque|boutique|epicerie|alimentation generale|commodite|petit commerce/, dessin: 'kiosque' },
+  // Le marché et ses étals : « Marché », « Market », « Supermarché » de quartier.
+  { motif: /marche|market|etal|panier/, dessin: 'etalMarche' },
+
+  // Le kiosque de rue : boutique, et le « clé minute » (le plus petit commerce de
+  // la rue ivoirienne — ni atelier, ni boutique : un comptoir sous un auvent).
+  {
+    motif: /kiosque|boutique|epicerie|alimentation generale|commodite|petit commerce|cle minute|serrur/,
+    dessin: 'kiosque',
+  },
 
   // Métiers de l'atelier et du dépannage : la boîte à outils, pas un lieu de vente.
   {
-    motif: /quincaillerie|menuiser|mobilier|reparation|depannage|nettoyage|pneumatique|garage|soudure|mecanique|lavage/,
+    motif: /quincaillerie|menuiser|mobilier|reparation|depannage|nettoyage|pressing|pneumatique|garage|soudure|mecanique|lavage/,
     dessin: 'boiteOutils',
   },
 

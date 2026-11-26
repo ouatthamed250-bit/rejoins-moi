@@ -17,7 +17,10 @@
 //      débloqués), puis VALIDER ou SUSPENDRE. La suspension coupe la connexion ET les
 //      jetons déjà émis (middleware/auth.js côté serveur) : elle reste réversible.
 //   4. ACTIVITÉ : le journal fusionné des inscriptions, des connexions et des paiements.
-//   5. MON PROFIL : identité administrateur, changement de mot de passe, déconnexion.
+//   5. CATÉGORIES PROPOSÉES : les métiers locaux que les gérants ont saisis faute de
+//      les trouver dans la liste (« Poissonnerie », « Cordonnerie »). Valider l'ajoute
+//      aux choix des prochains inscrits, refuser le laisse sur la fiche sans le proposer.
+//   6. MON PROFIL : identité administrateur, changement de mot de passe, déconnexion.
 //
 // Aucun déblocage « automatique » : valider un dépôt écrit `viaDepot: true` dans
 // Job.contactDebloquePar côté serveur. Le front déclenche, il ne décide pas.
@@ -26,6 +29,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { Icon } from '../components/Icons.jsx';
 import { adminApi, getAdminToken, setAdminToken } from '../utils/api/admin.js';
+import { libelleFamille } from '../config/categories.js';
 import { formatDateRelative, formatFcfa, formatTelephone, initiales } from '../utils/format.js';
 
 /* ─────────────────────────── Repères de navigation ─────────────────────────── */
@@ -64,6 +68,13 @@ const SECTIONS = [
     libelle: 'Réclamations',
     icone: 'mapPin',
     sous: 'Fiches importées : valider ou refuser « c’est mon établissement »',
+    groupe: 'Suivi',
+  },
+  {
+    cle: 'categories',
+    libelle: 'Catégories proposées',
+    icone: 'grid',
+    sous: 'Métiers saisis par les gérants (« Autre (précisez) ») à valider ou refuser',
     groupe: 'Suivi',
   },
   {
@@ -734,6 +745,15 @@ export default function Admin() {
             />
           ) : null}
 
+          {section === 'categories' ? (
+            <VueDemandesCategories
+              cle={cle}
+              onMessage={setMessage}
+              onGererErreur={gererErreur}
+              onRafraichir={rafraichir}
+            />
+          ) : null}
+
           {section === 'profil' ? (
             <VueProfil
               admin={admin}
@@ -942,6 +962,14 @@ function VueTableauDeBord({
           note="Demandes « Je veux être mis en avant »"
           icone="star"
           couleur={(stats.listeAttente?.enAttente || 0) > 0 ? 'accent' : ''}
+        />
+        <Tuile
+          libelle="Catégories proposées"
+          valeur={stats.demandesCategorie?.enAttente || 0}
+          note="Métiers locaux saisis par les gérants, à valider"
+          icone="grid"
+          couleur={(stats.demandesCategorie?.enAttente || 0) > 0 ? 'accent' : ''}
+          onClick={() => onNaviguer('categories')}
         />
       </div>
 
@@ -2651,6 +2679,241 @@ function VueReclamations({ cle, onMessage, onGererErreur, onRafraichir }) {
                       >
                         {ligne.statut === 'acceptee' ? 'Acceptée' : 'Refusée'}
                       </Badge>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Panneau>
+  );
+}
+
+/* ─── Catégories proposées (prompt 6) ─────────────────────────────────────────
+   La taxonomie locale (maquis, garbadrom, clé minute…) ne se devine pas depuis un
+   bureau : quand un gérant ne trouve pas son métier, il l'écrit (« Poissonnerie »,
+   « Cordonnerie »). Sa fiche l'affiche tout de suite ; c'est ICI qu'on décide si ce
+   libellé doit être PROPOSÉ aux gérants suivants.
+   Valider = la sous-catégorie rejoint la famille d'origine dans le formulaire
+   d'inscription. Refuser = elle reste sur la fiche (on n'efface pas le travail du
+   gérant) mais n'est plus proposée. Un libellé demandé plusieurs fois remonte en
+   premier : `demandes` compte les fiches qui l'ont saisi. */
+const ONGLETS_CATEGORIES = [
+  { cle: 'en_attente', libelle: 'À trancher' },
+  { cle: 'validee', libelle: 'Validées' },
+  { cle: 'refusee', libelle: 'Refusées' },
+  { cle: 'toutes', libelle: 'Toutes' },
+];
+
+function VueDemandesCategories({ cle, onMessage, onGererErreur, onRafraichir }) {
+  const [statut, setStatut] = useState('en_attente');
+  const [donnees, setDonnees] = useState(null);
+  const [chargement, setChargement] = useState(true);
+  const [erreur, setErreur] = useState('');
+  const [idEnCours, setIdEnCours] = useState('');
+  // Refus : le motif est facultatif, mais il explique pourquoi le métier n'est pas
+  // proposé aux autres. Un seul formulaire ouvert à la fois.
+  const [refusOuvert, setRefusOuvert] = useState('');
+  const [motif, setMotif] = useState('');
+
+  useEffect(() => {
+    let vivant = true;
+    setChargement(true);
+    adminApi
+      .demandesCategories(statut)
+      .then((reponse) => {
+        if (!vivant) return;
+        setDonnees(reponse);
+        setErreur('');
+      })
+      .catch((err) => {
+        if (!vivant || onGererErreur(err)) return;
+        setErreur(err?.message || 'Catégories proposées indisponibles pour le moment.');
+      })
+      .finally(() => {
+        if (vivant) setChargement(false);
+      });
+    return () => {
+      vivant = false;
+    };
+  }, [statut, cle, onGererErreur]);
+
+  const lignes = donnees?.demandes || [];
+  const compteurs = donnees?.compteurs || {};
+
+  async function valider(ligne) {
+    setIdEnCours(ligne.id);
+    try {
+      await adminApi.validerDemandeCategorie(ligne.id);
+      onRafraichir();
+      onMessage(`« ${ligne.nom} » est désormais proposée dans « ${libelleFamille(ligne.famille)} ».`);
+    } catch (err) {
+      if (!onGererErreur(err)) setErreur(err?.message || 'Validation impossible sur cette proposition.');
+    } finally {
+      setIdEnCours('');
+    }
+  }
+
+  async function refuser(ligne) {
+    setIdEnCours(ligne.id);
+    try {
+      await adminApi.refuserDemandeCategorie(ligne.id, motif.trim());
+      setRefusOuvert('');
+      setMotif('');
+      onRafraichir();
+      onMessage(`« ${ligne.nom} » ne sera plus proposée (elle reste affichée sur les fiches concernées).`);
+    } catch (err) {
+      if (!onGererErreur(err)) setErreur(err?.message || 'Refus impossible sur cette proposition.');
+    } finally {
+      setIdEnCours('');
+    }
+  }
+
+  return (
+    <Panneau
+      titre="Catégories proposées"
+      sous="Quand un gérant ne trouve pas son métier, il écrit le sien. Valider l’ajoute aux choix des prochains inscrits, dans sa famille ; refuser le laisse sur sa fiche sans le proposer."
+      actions={
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {ONGLETS_CATEGORIES.map((onglet) => (
+            <button
+              key={onglet.cle}
+              type="button"
+              className={`bo-btn${statut === onglet.cle ? ' bo-btn--principal' : ''}`}
+              onClick={() => setStatut(onglet.cle)}
+            >
+              {onglet.libelle}
+              {onglet.cle === 'en_attente' && compteurs.enAttente ? (
+                <span className="bo-onglet-compte">{compteurs.enAttente}</span>
+              ) : null}
+            </button>
+          ))}
+        </div>
+      }
+    >
+      {erreur ? (
+        <Alerte variante="erreur" icone="alert" onFermer={() => setErreur('')}>
+          {erreur}
+        </Alerte>
+      ) : null}
+
+      {chargement ? (
+        <EtatChargement texte="Chargement des catégories proposées…" />
+      ) : lignes.length === 0 ? (
+        <EtatVide
+          texte={
+            statut === 'en_attente'
+              ? 'Aucune proposition en attente : tous les métiers saisis sont déjà connus.'
+              : 'Aucune proposition dans cette liste.'
+          }
+          icone="check"
+        />
+      ) : (
+        <div className="bo-tableau-enveloppe">
+          <table className="bo-tableau">
+            <thead>
+              <tr>
+                <th>Activité proposée</th>
+                <th>Famille</th>
+                <th>Demandes</th>
+                <th>Proposée par</th>
+                <th>Date</th>
+                <th>{statut === 'en_attente' ? 'Décision' : 'Statut'}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lignes.map((ligne) => (
+                <tr key={ligne.id}>
+                  <td>
+                    <strong>{ligne.nom}</strong>
+                    <div className="bo-petit bo-doux">/{ligne.slug}</div>
+                  </td>
+                  <td>{libelleFamille(ligne.famille)}</td>
+                  <td>{ligne.demandes || 1}</td>
+                  <td>
+                    {ligne.utilisateur ? (
+                      <>
+                        {ligne.utilisateur.nom || 'Compte sans nom'}
+                        {ligne.utilisateur.telephone ? (
+                          <div className="bo-petit bo-doux">{formatTelephone(ligne.utilisateur.telephone)}</div>
+                        ) : null}
+                      </>
+                    ) : (
+                      'compte supprimé'
+                    )}
+                    {ligne.etablissement ? (
+                      <div className="bo-petit bo-doux">fiche : {ligne.etablissement.nom}</div>
+                    ) : null}
+                  </td>
+                  <td>{ligne.date ? formatDateRelative(ligne.date) : '—'}</td>
+                  <td className="bo-tableau-actions">
+                    {statut !== 'en_attente' ? (
+                      <>
+                        <Badge
+                          variante={ligne.statut === 'validee' ? 'ok' : 'ko'}
+                          icone={ligne.statut === 'validee' ? 'check' : 'ban'}
+                        >
+                          {ligne.statut === 'validee' ? 'Proposée' : 'Refusée'}
+                        </Badge>
+                        {ligne.noteAdmin ? (
+                          <span className="bo-sous-ligne bo-petit bo-doux" title={ligne.noteAdmin}>
+                            motif : {ligne.noteAdmin}
+                          </span>
+                        ) : null}
+                      </>
+                    ) : refusOuvert === ligne.id ? (
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <input
+                          className="bo-entree"
+                          style={{ minWidth: 140 }}
+                          value={motif}
+                          onChange={(e) => setMotif(e.target.value.slice(0, 300))}
+                          placeholder="Motif (facultatif)"
+                          aria-label={`Motif du refus pour ${ligne.nom}`}
+                        />
+                        <button
+                          type="button"
+                          className="bo-btn bo-btn--danger"
+                          disabled={idEnCours === ligne.id}
+                          onClick={() => refuser(ligne)}
+                        >
+                          Confirmer
+                        </button>
+                        <button
+                          type="button"
+                          className="bo-btn"
+                          onClick={() => {
+                            setRefusOuvert('');
+                            setMotif('');
+                          }}
+                        >
+                          Annuler
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          className="bo-btn bo-btn--ok"
+                          disabled={idEnCours === ligne.id}
+                          onClick={() => valider(ligne)}
+                        >
+                          Valider
+                        </button>
+                        <button
+                          type="button"
+                          className="bo-btn bo-btn--danger"
+                          disabled={idEnCours === ligne.id}
+                          onClick={() => {
+                            setRefusOuvert(ligne.id);
+                            setMotif('');
+                          }}
+                        >
+                          Refuser
+                        </button>
+                      </>
                     )}
                   </td>
                 </tr>

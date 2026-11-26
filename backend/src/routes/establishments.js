@@ -35,6 +35,14 @@ import {
 } from '../utils/rapprochement.js';
 import { decoderPhoto, estImageIntegree, estUrlDistante } from '../utils/photos.js';
 import CompteurJournalier from '../models/CompteurJournalier.js';
+import DemandeCategorie from '../models/DemandeCategorie.js';
+import {
+  CATEGORIES,
+  CATEGORIES_FILTRABLES,
+  SOUS_CATEGORIES,
+  resoudreSousCategorie,
+  slugifier,
+} from '../config/categories.js';
 
 const router = express.Router();
 router.use(requireDb);
@@ -284,25 +292,15 @@ const SCORE_POPULARITE = { $add: [{ $multiply: ['$compteurUtilisateurs', 3] }, '
 
 /**
  * Catégories du feed (§4 : Tous / Alimentation / Beauté / Services / Artisanat, extensible).
- * Décision produit (à valider) : j'ai ajouté « commerce », « santé », « spiritualité »
- * et « autre » pour couvrir les exemples cités dans le cahier des charges
- * (kiosque, église, clinique, pharmacie) sans créer un établissement « fourre-tout ».
- * Le frontend consomme GET /api/establishments/categories pour rester synchronisé.
+ *
+ * Depuis le prompt 6, la liste ne vit PLUS ici : elle est dans
+ * backend/src/config/categories.js, avec les sous-catégories locales (maquis,
+ * koutoukoudrom, garbadrom, clé minute…) et la règle « pas de pub pour les lieux
+ * publics et cultes ». On la ré-exporte pour ne pas casser les scripts existants
+ * (verifier-base.js interroge la route, verifier-pagination-proximite.js lit les slugs).
  */
-export const CATEGORIES = [
-  { slug: 'tous', label: 'Tous', icone: 'grid' },
-  { slug: 'alimentation', label: 'Alimentation', icone: 'utensils' },
-  { slug: 'beaute', label: 'Beauté', icone: 'scissors' },
-  { slug: 'services', label: 'Services', icone: 'tools' },
-  { slug: 'artisanat', label: 'Artisanat', icone: 'hammer' },
-  { slug: 'commerce', label: 'Commerce', icone: 'store' },
-  { slug: 'sante', label: 'Santé', icone: 'heart' },
-  { slug: 'spiritualite', label: 'Spiritualité', icone: 'church' },
-  { slug: 'autre', label: 'Autre', icone: 'dot' },
-];
+export { CATEGORIES };
 
-/** Slug des catégories utilisables comme filtre (tout sauf le pseudo-onglet « tous »). */
-const CATEGORIES_FILTRABLES = CATEGORIES.filter((cat) => cat.slug !== 'tous').map((cat) => cat.slug);
 
 /**
  * Profondeur maximale du mélange équilibré (onglet « Tous »), en nombre de fiches.
@@ -449,15 +447,49 @@ async function melangeParCategorie(mode, filtre, coords, profondeur) {
   ]);
 }
 
-/** GET /api/establishments/categories — liste extensible des catégories (utilisée par CategoryFilter). */
-router.get('/categories', (req, res) => {
-  res.json({ categories: CATEGORIES });
-});
+/**
+ * GET /api/establishments/categories — taxonomie servie au client.
+ *
+ * Réponse :
+ *   categories      = familles (onglets du feed) ;
+ *   sousCategories  = précisions locales par famille (« Garbadrom », « Clé minute »…) ;
+ *   personnalisees  = catégories PROPOSÉES par des utilisateurs et VALIDÉES par le
+ *                     back-office (modèle DemandeCategorie). Elles n'ajoutent pas de
+ *                     famille (l'enum reste fermé) : elles apparaissent comme
+ *                     sous-catégories de leur famille d'origine au moment de
+ *                     l'inscription d'un nouveau gérant (`famille` permet de les y placer).
+ *
+ * Les fiches déjà en bases gardent leur `categorie` / `sousCategorie` : cette route
+ * décrit ce que l'application PROPOSE, elle ne réécrit rien.
+ */
+router.get(
+  '/categories',
+  asyncHandler(async (req, res) => {
+    let personnalisees = [];
+    try {
+      const docs = await DemandeCategorie.find({ statut: 'validee' })
+        .sort({ nom: 1 })
+        .select('nom slug famille')
+        .lean();
+      personnalisees = docs.map((d) => ({
+        slug: d.slug,
+        label: d.nom,
+        famille: d.famille || 'autre',
+        personnalisee: true,
+      }));
+    } catch {
+      // Une lecture de confort ne doit jamais casser l'annuaire : si la collection
+      // n'existe pas encore (première mise en service), on sert la taxonomie de base.
+      personnalisees = [];
+    }
+    res.json({ categories: CATEGORIES, sousCategories: SOUS_CATEGORIES, personnalisees });
+  })
+);
 
 /**
  * GET /api/establishments
- * Query : q, categorie, tags (séparés par virgule), lat, lng, radiusKm, sort, page,
- *         limit, diversite
+ * Query : q, categorie, sousCategorie, tags (séparés par virgule), lat, lng, radiusKm,
+ *         sort, page, limit, diversite
  * sort : proximity (défaut si lat/lng fournis) | note | popular | recent
  *         (défaut SANS coordonnées : recent — « popular » favorisait de fait une
  *         seule catégorie, voir la note dans le corps de la route)
@@ -498,11 +530,34 @@ router.get(
         .filter(Boolean);
       if (liste.length) filtre.tags = { $in: liste };
     }
+
+    // Sous-catégorie locale (« Garbadrom », « Clé minute », « WC publique »).
+    //    - fiches migrées ou créées depuis le 20/11 → `sousCategorieSlug` (comparaison exacte) ;
+    //    - fiches importées jamais migrées → `sousCategorie` (libellé, insensible à la casse).
+    // On n'écrit PAS dans `filtre.$or` (réservé au texte `q`) : les deux conditions
+    // cohabitent dans `$and`, sinon la seconde écraserait la première et le raccourci
+    // « WC public » renverrait tout l'annuaire.
+    const conditions = [];
+    const sousCategorie = String(req.query.sousCategorie || '').trim();
+    if (sousCategorie && sousCategorie !== 'toutes') {
+      const cle = slugifier(sousCategorie);
+      const libelle = resoudreSousCategorie(sousCategorie)?.label || sousCategorie;
+      conditions.push({
+        $or: [
+          { sousCategorieSlug: cle },
+          { sousCategorie: new RegExp(`^${escapeRegex(libelle)}$`, 'i') },
+        ],
+      });
+    }
+
     if (q) {
       // Recherche insensible à la casse sur nom / tags / quartier / description (§4)
       const rx = new RegExp(escapeRegex(String(q).trim()), 'i');
-      filtre.$or = [{ nom: rx }, { tags: rx }, { quartier: rx }, { commune: rx }, { description: rx }];
+      conditions.push({
+        $or: [{ nom: rx }, { tags: rx }, { quartier: rx }, { commune: rx }, { description: rx }],
+      });
     }
+    if (conditions.length) filtre.$and = conditions;
 
     // 1) Ordre demandé. Sans coordonnées, « proximité » n'a aucun point de
     //    référence : on retombe sur les fiches les plus récentes.
@@ -643,6 +698,9 @@ router.post(
     const {
       nom,
       categorie,
+      // Précision locale : « Garbadrom », « Clé minute »… ou le libellé libre proposé
+      // par un gérant qui a choisi « Autre (précisez) ».
+      sousCategorie = '',
       description = '',
       photoDevanture,
       photoVendeur,
@@ -721,9 +779,34 @@ router.post(
       );
     }
 
+    // ── Sous-catégorie locale + proposition de catégorie (prompt 6) ──
+    // La liste déroulante « Autre (précisez) » existe dans TOUTES les familles : un
+    // gérant d'alimentation peut proposer « Poissonnerie », un « proximite » peut
+    // proposer « Cordonnerie ». On enregistre TOUJOURS le libellé sur la fiche (rien ne
+    // se perd) ; s'il n'existe pas encore dans la taxonomie, il part en modération
+    // (DemandeCategorie) : c'est l'admin qui décide ce que verront les suivants.
+    const categorieFiche = String(categorie || '').trim();
+    if (!CATEGORIES_FILTRABLES.includes(categorieFiche)) {
+      // 400 explicite plutôt qu'une ValidationError Mongoose en 500 : le formulaire
+      // peut afficher la liste des familles autorisées et garder la saisie.
+      throw new ApiError(400, 'Catégorie inconnue : choisissez une famille de la liste.', {
+        champCategorie: true,
+      });
+    }
+    const sousCategorieSaisie = String(sousCategorie || '').trim().slice(0, 60);
+    const sousCategorieConnue = sousCategorieSaisie
+      ? resoudreSousCategorie(sousCategorieSaisie, categorieFiche)
+      : null;
+    const sousCategorieLabel = sousCategorieConnue?.label || sousCategorieSaisie;
+    const sousCategorieSlug = sousCategorieConnue?.slug || slugifier(sousCategorieSaisie);
+    // Un libellé non répertorié = une proposition à modérer, quelle que soit la famille.
+    const categorieLibre = Boolean(sousCategorieLabel) && !sousCategorieConnue;
+
     const doc = new Establishment({
       nom: String(nom).trim(),
-      categorie,
+      categorie: categorieFiche,
+      sousCategorie: sousCategorieLabel,
+      sousCategorieSlug,
       description: String(description).trim(),
       // Chaîne vide autorisée (photo ajoutée plus tard) ; trim pour éviter un
       // espace qui ferait croire à une photo fournie.
@@ -762,7 +845,44 @@ router.post(
       await req.user.save();
     }
 
-    res.status(201).json({ etablissement: doc.toCardJSON({ base: basePublique(req) }) });
+    // Proposition de catégorie : écrite APRÈS la fiche, et jamais bloquante — une
+    // inscription ne doit pas échouer parce que la modération n'a pas pu être écrite.
+    // Dédoublonnée par slug : trois « Poissonnerie » = une demande avec compteur 3.
+    let propositionCategorie = null;
+    if (categorieLibre) {
+      try {
+        const existante = await DemandeCategorie.findOne({
+          slug: sousCategorieSlug,
+          statut: { $in: ['en_attente', 'validee'] },
+        });
+        if (existante?.statut === 'en_attente') {
+          existante.demandes += 1;
+          await existante.save();
+          propositionCategorie = existante.toPublicJSON();
+        } else if (existante?.statut === 'validee') {
+          // Déjà validée : rien à modérer, la fiche la portera simplement.
+          propositionCategorie = existante.toPublicJSON();
+        } else {
+          const creee = await DemandeCategorie.create({
+            nom: sousCategorieLabel,
+            slug: sousCategorieSlug,
+            // La famille d'origine sert à regrouper la proposition dans le formulaire
+            // d'inscription des gérants suivants (et dans le back-office).
+            famille: categorieFiche,
+            userId: req.user?._id || null,
+            etablissementId: doc._id,
+          });
+          propositionCategorie = creee.toPublicJSON();
+        }
+      } catch {
+        propositionCategorie = null;
+      }
+    }
+
+    res.status(201).json({
+      etablissement: doc.toCardJSON({ base: basePublique(req) }),
+      propositionCategorie,
+    });
   })
 );
 

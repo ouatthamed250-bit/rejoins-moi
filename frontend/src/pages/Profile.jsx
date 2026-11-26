@@ -27,6 +27,7 @@ import { formatFcfa, formatTelephone, initiales } from '../utils/format.js';
 import { METIERS, ETABLISSEMENTS_DEMO } from '../data/demoData.js';
 import { TEXTE_DONNEES, LIEN_DONNEES } from '../config/legal.js';
 import { TEXTE_GRATUIT, libelleGratuitJusquAu } from '../config/abonnement.js';
+import { estSansPublicite } from '../config/categories.js';
 
 const FORMULAIRE_VIDE = {
   // Photo de profil (ajout du 16/11) : elle était affichée depuis le début
@@ -370,6 +371,18 @@ export default function Profile() {
   }
 
   const etablissementsFavoris = ETABLISSEMENTS_DEMO.filter((e) => favoris.includes(String(e.id)));
+  // Lieu public / culte (prompt 6) : jamais de mise en avant, gratuite ou non.
+  // On lit la fiche chargée pour « Cette semaine » (`statsFiche`), qui porte la
+  // catégorie ET la sous-catégorie ; tant qu'elle n'est pas là, la carte reste
+  // affichée et le serveur tranche (il refuse, avec un message clair).
+  const sansPublicite = Boolean(
+    statsFiche &&
+      estSansPublicite({
+        categorie: statsFiche.categorie,
+        sousCategorie: statsFiche.sousCategorie,
+        sousCategorieSlug: statsFiche.sousCategorieSlug,
+      })
+  );
   // Compte unifié : le libellé se déduit des CAPACITÉS, pas d'un type de compte.
   const libelleType = [
     profil.estArtisan ? `Artisan · ${profil.metier || 'métier à préciser'}` : null,
@@ -458,11 +471,24 @@ export default function Profile() {
         </section>
       )}
 
-      <section className="carte mt-3 p-3">
-        <p className="flex items-center gap-2 text-sm font-bold text-ink">
-          <Icon name="star" size={16} className="text-primary" />
-          Être mis en avant
-        </p>
+      {sansPublicite ? (
+        <section className="carte mt-3 p-3">
+          <p className="flex items-center gap-2 text-sm font-bold text-ink">
+            <Icon name="shield" size={16} className="text-primary" />
+            Pas de mise en avant
+          </p>
+          <p className="mt-1 text-[11px] leading-snug text-ink-muted">
+            Votre fiche est un lieu public ou un lieu de culte : elle reste gratuite et visible
+            dans les résultats, mais n’est jamais mise en avant — aucune option payante ne vous
+            sera proposée, même après la période gratuite.
+          </p>
+        </section>
+      ) : (
+        <section className="carte mt-3 p-3">
+          <p className="flex items-center gap-2 text-sm font-bold text-ink">
+            <Icon name="star" size={16} className="text-primary" />
+            Être mis en avant
+          </p>
         <p className="mt-1 text-[11px] leading-snug text-ink-muted">
           {TEXTE_GRATUIT} Laissez votre demande : elle est enregistrée dès maintenant
           (gratuit jusqu’au {libelleGratuitJusquAu()}).
@@ -490,7 +516,8 @@ export default function Profile() {
             {miseEnAvant.erreur}
           </p>
         )}
-      </section>
+        </section>
+      )}
 
       {message && !edition && (
         <InfoBanner variante="succes" className="mt-3" action={{ libelle: 'OK', onClick: () => setMessage('') }}>

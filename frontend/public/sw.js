@@ -15,6 +15,16 @@
  *     quelle. Le serveur reste seul juge du paiement (règle de sécurité du projet).
  */
 
+// v24 : migration complète des sous-catégories + barre d'onglets nettoyée (26/11)
+//       — les 6 419 fiches restantes rejoignent la taxonomie locale (Restauration
+//       et boissons, Commerces, Services de proximité), ce qui vide « Alimentation »
+//       (2 fiches), « Commerce » au singulier, « Santé », « Spiritualité »,
+//       « Lieux de culte » et « Autre » (2 fiches de test). Ces onglets sont
+//       masqués via FAMILLES_VISIBLES (categories.js + CategoryFilter.jsx) ;
+//       Beauté (893), Services (305) et Artisanat (200) restent visibles.
+//       Nouvelles empreintes index-*.js : nouveau nom de cache, sinon un
+//       téléphone déjà installé garderait les 13 onglets et les anciens libellés.
+//
 // v23 : libellés de famille (20/11) — la carte du feed et la fiche affichaient
 //       « Autre » ou un slug brut (« restauration ») pour les fiches rangées dans
 //       une famille locale : elles lisent désormais config/categories.js
@@ -177,7 +187,7 @@
 //      index.html en secours, donc l'ANCIENNE app — médaillon toujours rogné.
 // Changer la version est indispensable dès que les fichiers « cache d'abord »
 // (icônes) ou l'app shell changent de façon visible.
-const VERSION = 'v23';
+const VERSION = 'v24';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

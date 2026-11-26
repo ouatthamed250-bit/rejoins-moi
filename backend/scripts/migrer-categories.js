@@ -1,9 +1,14 @@
 // migrer-categories.js — Migration des sous-catégories importées vers la taxonomie locale.
 //
 // Usage :
-//   node scripts/migrer-categories.js            -> DRY-RUN (par défaut, n'écrit RIEN)
-//   node scripts/migrer-categories.js --apply    -> écrit réellement en base
-//   node scripts/migrer-categories.js --limit 50 -> limite le nombre de fiches traitées
+//   node scripts/migrer-categories.js               -> DRY-RUN (par défaut, n'écrit RIEN)
+//   node scripts/migrer-categories.js --apply       -> écrit réellement en base
+//   node scripts/migrer-categories.js --limit 50    -> limite le nombre de fiches traitées
+//   node scripts/migrer-categories.js --echantillon 300
+//       -> prélève 300 fiches RÉPARTIES sur toutes les sous-catégories sources.
+//          Utile pour une première validation visuelle : `--limit` prend les fiches
+//          dans l'ordre des _id, qui est groupé par import (300 fiches « Accessoires
+//          de beaute » d'affilée), donc un lot non représentatif.
 //
 // POURQUOI CE SCRIPT
 // Les 6 719 fiches importées (data.gouv.ci + OpenStreetMap) portent une sous-catégorie
@@ -43,6 +48,16 @@ const LIMITE = (() => {
   const n = i > -1 ? Number(process.argv[i + 1]) : 0;
   return Number.isFinite(n) && n > 0 ? n : 0;
 })();
+/**
+ * `--echantillon N` : N fiches réparties sur les sous-catégories sources, pour une
+ * première validation visuelle représentative (un Restaurant, un Transfert d'argent,
+ * un WC public…). Sans cette option, `--limit` suit l'ordre des `_id`, groupé par import.
+ */
+const ECHANTILLON = (() => {
+  const i = process.argv.indexOf('--echantillon');
+  const n = i > -1 ? Number(process.argv[i + 1]) : 0;
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+})();
 
 /** Petite barre de progression : 6 719 fiches, on veut voir que ça avance. */
 let traitees = 0;
@@ -50,6 +65,41 @@ function point() {
   traitees += 1;
   if (traitees % 1000 === 0) process.stdout.write(`  … ${traitees} fiches examinées\n`);
 }
+
+/**
+ * Prélève `n` fiches en round-robin sur les sous-catégories sources.
+ *
+ * POURQUOI : les fiches importées sont stockées par blocs (les 300 premiers `_id`
+ * sont tous « Accessoires de beaute »). Un lot `--limit` ne montrerait qu'un seul
+ * métier ; ce tirage donne un panel vérifiable à l'écran sans hasard (même entrée =
+ * même échantillon, l'appelant trie par `_id`).
+ *
+ * @param {Array<{sousCategorie: string}>} fiches fiches triées par `_id`
+ * @param {number} n taille voulue
+ * @returns {{echantillon: Array, groupes: number}}
+ */
+function preleverEchantillon(fiches, n) {
+  const groupes = new Map();
+  for (const fiche of fiches) {
+    const cle = normaliserTexte(fiche.sousCategorie);
+    if (!groupes.has(cle)) groupes.set(cle, []);
+    groupes.get(cle).push(fiche);
+  }
+  const listes = [...groupes.values()];
+  const echantillon = [];
+  for (let tour = 0; echantillon.length < n; tour += 1) {
+    let ajout = false;
+    for (const liste of listes) {
+      if (tour >= liste.length) continue;
+      echantillon.push(liste[tour]);
+      ajout = true;
+      if (echantillon.length >= n) break;
+    }
+    if (!ajout) break;
+  }
+  return { echantillon, groupes: listes.length };
+}
+
 
 const parFamille = new Map(); // famille -> nombre de fiches à déplacer
 const parLigne = new Map(); // « ancienne → nouvelle » -> nombre
@@ -68,7 +118,11 @@ async function main() {
       ? '  Mode APPLY : les fiches vont être modifiées (categorie / sousCategorie / sousCategorieSlug).'
       : '  Mode DRY-RUN : aucune écriture. Relancer avec --apply pour appliquer.'
   );
-  if (LIMITE) console.log(`  Limite : ${LIMITE} fiche(s).`);
+  if (ECHANTILLON) {
+    console.log(`  Échantillon : ${ECHANTILLON} fiche(s) réparties sur les sous-catégories (--limit ignoré).`);
+  } else if (LIMITE) {
+    console.log(`  Limite : ${LIMITE} fiche(s).`);
+  }
   console.log('');
 
   const filtre = { sousCategorie: { $nin: ['', null] } };
@@ -76,10 +130,23 @@ async function main() {
     .select('_id categorie sousCategorie sousCategorieSlug')
     .sort({ _id: 1 })
     .lean();
-  if (LIMITE) requete = requete.limit(LIMITE);
+  // Le tirage a besoin de TOUTES les fiches pour répartir les sous-catégories.
+  if (LIMITE && !ECHANTILLON) requete = requete.limit(LIMITE);
 
-  const fiches = await requete;
-  console.log(`  ${fiches.length} fiche(s) avec une sous-catégorie à examiner.\n`);
+  let fiches = await requete;
+  const examinees = fiches.length;
+  let groupes = 0;
+  if (ECHANTILLON) {
+    const tirage = preleverEchantillon(fiches, ECHANTILLON);
+    fiches = tirage.echantillon;
+    groupes = tirage.groupes;
+  }
+
+  console.log(`  ${examinees} fiche(s) avec une sous-catégorie à examiner.`);
+  if (ECHANTILLON) {
+    console.log(`  Échantillon retenu : ${fiches.length} fiche(s) sur ${groupes} sous-catégorie(s) source.`);
+  }
+  console.log('');
 
   const operations = [];
 
@@ -95,7 +162,16 @@ async function main() {
     //         et on se contente de remplir le slug de filtre s'il manque.
     let cible;
     if (ligne) {
-      cible = { famille: ligne.famille, label: ligne.sousCategorie, slug: slugifier(ligne.sousCategorie) };
+      // Le slug de filtre est celui DÉCLARÉ dans la taxonomie, pas forcément
+      // `slugifier(libellé)` : « Transfert d'argent » → « transfert-argent » (et non
+      // « transfert-d-argent »). Sinon la clé stockée divergerait de celle qu'utilisent
+      // les raccourcis, les filtres du feed et l'inscription d'un nouveau gérant.
+      const declaree = resoudreSousCategorie(ligne.sousCategorie, ligne.famille);
+      cible = {
+        famille: ligne.famille,
+        label: ligne.sousCategorie,
+        slug: declaree?.slug || slugifier(ligne.sousCategorie),
+      };
       parFamille.set(ligne.famille, (parFamille.get(ligne.famille) || 0) + 1);
       const cle = `${ancienne} → ${ligne.sousCategorie}`;
       parLigne.set(cle, (parLigne.get(cle) || 0) + 1);

@@ -1,12 +1,19 @@
-// CategoryFilter.jsx — Filtres horizontaux par catégorie (Tous / Alimentation / Beauté / Services / Artisanat)
+// CategoryFilter.jsx — Filtres horizontaux par catégorie (Tous / Restauration et boissons / Commerces / …)
 // La liste est EXTENSIBLE (§4) : elle est définie une seule fois dans
-// src/data/demoData.js (CATEGORIES) et reflétée par l'API
+// src/config/categories.js (FAMILLES) et reflétée par l'API
 // (GET /api/establishments/categories). Pour ajouter une catégorie, il faut :
-//   1. l'ajouter dans CATEGORIES (frontend) ET dans backend/src/routes/establishments.js ;
+//   1. l'ajouter dans FAMILLES (frontend) ET dans backend/src/config/categories.js ;
 //   2. vérifier qu'elle figure dans l'enum du modèle Establishment.
 // Les icônes sont des SVG maison (voir Icons.jsx).
+//
+// ONGLETS AFFICHÉS = FAMILLES_VISIBLES, et non toutes les familles : depuis la
+// migration complète des 6 719 fiches (26/11), des familles historiques ne portent
+// plus que 0 à 2 fiches (alimentation, commerce au singulier, sante, spiritualite,
+// cultes, autre) et encombraient la barre pour rien. Elles restent déclarées dans
+// la taxonomie (libellés, inscription, fiches anciennes) mais n'ont plus d'onglet.
+// Ne JAMAIS y inclure beaute / services / artisanat : encore 1 398 fiches réelles.
 
-import { CATEGORIES } from '../data/demoData.js';
+import { FAMILLES_VISIBLES } from '../config/categories.js';
 import { Icon } from './Icons.jsx';
 
 /**
@@ -21,7 +28,7 @@ export default function CategoryFilter({
   categories = null,
   sticky = false,
 }) {
-  const liste = categories?.length ? categories : CATEGORIES;
+  const liste = categories?.length ? categories : FAMILLES_VISIBLES;
   // La section santé est verte (§6) : on ne réutilise jamais l'orange ici.
   const actif =
     variante === 'health'

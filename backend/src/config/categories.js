@@ -128,7 +128,14 @@ export function resoudreSousCategorie(valeur, famille) {
   const cle = slugifier(valeur);
   if (!cle) return null;
   const candidates = famille ? sousCategoriesDe(famille) : SOUS_CATEGORIES_PLATES;
-  const trouvee = candidates.find((s) => s.slug === cle);
+  // Correspondance par SLUG ou par LIBELLÉ : le slug déclaré n'est pas toujours
+  // `slugifier(label)` (« Transfert d'argent » → « transfert-argent », et non
+  // « transfert-d-argent »). Sans la comparaison de libellé, ce cas serait pris
+  // pour une sous-catégorie libre et dupliqué en demande de catégorie.
+  const libelle = normaliserTexte(valeur);
+  const trouvee = candidates.find(
+    (s) => s.slug === cle || normaliserTexte(s.label) === libelle
+  );
   if (!trouvee) return null;
   return { slug: trouvee.slug, label: trouvee.label, famille: famille || trouvee.famille };
 }
@@ -175,6 +182,9 @@ export const MIGRATION_SOUS_CATEGORIES = [
   { ancienne: 'Fast-Food', famille: 'restauration', sousCategorie: 'Fast-food', propre: true },
   { ancienne: 'Restauration', famille: 'restauration', sousCategorie: 'Restauration', propre: true },
   { ancienne: 'Ice-Cream', famille: 'restauration', sousCategorie: 'Glacier', propre: true },
+  // Cible de la ligne ci-dessus : sans elle, une re-exécution du script prendrait
+  // « Glacier » pour un libellé inconnu et le signalerait à tort comme non migré.
+  { ancienne: 'Glacier', famille: 'restauration', sousCategorie: 'Glacier', propre: true },
   { ancienne: 'Produits de la mer', famille: 'restauration', sousCategorie: 'Boutique alimentaire' },
   { ancienne: 'Commodites', famille: 'restauration', sousCategorie: 'Boutique alimentaire' },
   // ── Commerces ──
@@ -197,6 +207,8 @@ export const MIGRATION_SOUS_CATEGORIES = [
   { ancienne: 'Accessoires de beaute', famille: 'beaute', sousCategorie: 'Accessoires de beauté' },
   { ancienne: 'Cosmetiques', famille: 'beaute', sousCategorie: 'Cosmétiques' },
   { ancienne: 'Mobiliers', famille: 'artisanat', sousCategorie: 'Mobilier', propre: true },
+  // Cible de la ligne ci-dessus (idempotence d'une re-exécution), comme « Glacier ».
+  { ancienne: 'Mobilier', famille: 'artisanat', sousCategorie: 'Mobilier', propre: true },
   { ancienne: 'Artisanat', famille: 'artisanat', sousCategorie: 'Artisanat', propre: true },
   { ancienne: 'Hôtel', famille: 'services', sousCategorie: 'Hôtel', propre: true },
 ];

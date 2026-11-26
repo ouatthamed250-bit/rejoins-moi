@@ -15,29 +15,57 @@
 // Quatre familles locales s'y ajoutent, et la migration (backend/scripts/
 // migrer-categories.js) y bascule les sous-catégories concernées.
 //
+// DEPUIS LA MIGRATION COMPLÈTE (26/11), certaines familles sont VIDES ou presque :
+// `masquee: true` les retire de la BARRE D'ONGLETS seulement (FAMILLES_VISIBLES).
+// Elles restent déclarées ici parce que des fiches et des liens partagés les
+// portent encore, et parce que `libelleFamille('alimentation')` doit continuer à
+// répondre « Alimentation » (et non le slug brut). Un gérant peut toujours
+// s'inscrire dans une famille masquée : cacher un onglet n'est pas interdire un
+// métier. Ne JAMAIS masquer « beaute », « services » ou « artisanat » : elles
+// contiennent encore des centaines de fiches réelles (coiffeurs, hôtels, artisans).
+//
 // Le miroir serveur est backend/src/config/categories.js : toute famille ou
 // sous-catégorie ajoutée ici doit y être ajoutée aussi (l'API valide l'enum).
 
 /**
  * Familles affichées dans les filtres. `icone` = clé de components/Icons.jsx.
  * `historique: true` = famille présente AVANT le passage aux catégories locales.
+ * `masquee: true` = retirée de la barre d'onglets (voir FAMILLES_VISIBLES) ;
+ * le libellé reste résolu et la famille reste proposée à l'inscription.
  */
 export const FAMILLES = [
   { slug: 'tous', label: 'Tous', icone: 'grid' },
-  { slug: 'alimentation', label: 'Alimentation', icone: 'utensils', historique: true },
-  { slug: 'beaute', label: 'Beauté', icone: 'scissors', historique: true },
-  { slug: 'services', label: 'Services', icone: 'tools', historique: true },
-  { slug: 'artisanat', label: 'Artisanat', icone: 'hammer', historique: true },
-  { slug: 'commerce', label: 'Commerce', icone: 'store', historique: true },
-  { slug: 'sante', label: 'Santé', icone: 'heart', historique: true },
-  { slug: 'spiritualite', label: 'Spiritualité', icone: 'church', historique: true },
-  // ── Familles locales (adaptation ivoirienne) ──
+  // ── Familles locales (adaptation ivoirienne) : elles portent l'essentiel des fiches,
+  //    donc elles passent EN PREMIER — sur un téléphone, un onglet relégué à droite
+  //    n'est jamais vu.
   { slug: 'restauration', label: 'Restauration et boissons', icone: 'utensils' },
   { slug: 'commerces', label: 'Commerces', icone: 'store' },
   { slug: 'proximite', label: 'Services de proximité', icone: 'tools' },
-  { slug: 'cultes', label: 'Lieux de culte et communautaires', icone: 'church' },
-  { slug: 'autre', label: 'Autre', icone: 'dot', historique: true },
+  // ── Familles historiques encore PEUPLÉES (ne jamais les masquer) ──
+  { slug: 'beaute', label: 'Beauté', icone: 'scissors', historique: true },
+  { slug: 'services', label: 'Services', icone: 'tools', historique: true },
+  { slug: 'artisanat', label: 'Artisanat', icone: 'hammer', historique: true },
+  // ── Familles historiques VIDES ou presque : conservées pour les libellés et
+  //    l'inscription, mais sans onglet (voir FAMILLES_VISIBLES). ──
+  // 2 fiches, sans sous-catégorie (« Hhhh », « Boulangerie l'épi royal ») : elles
+  // restent visibles dans « Tous » et via leur fiche partagée.
+  { slug: 'alimentation', label: 'Alimentation', icone: 'utensils', historique: true, masquee: true },
+  // Singulier historique, doublon de « commerces » : la migration n'a laissé
+  // aucune fiche derrière lui.
+  { slug: 'commerce', label: 'Commerce', icone: 'store', historique: true, masquee: true },
+  { slug: 'sante', label: 'Santé', icone: 'heart', historique: true, masquee: true },
+  { slug: 'spiritualite', label: 'Spiritualité', icone: 'church', historique: true, masquee: true },
+  { slug: 'cultes', label: 'Lieux de culte et communautaires', icone: 'church', masquee: true },
+  // Deux fiches de test laissées par les scripts de vérification (ZZ-TEST-…).
+  { slug: 'autre', label: 'Autre', icone: 'dot', historique: true, masquee: true },
 ];
+
+/**
+ * Onglets réellement affichés (CategoryFilter) : « Tous » + les familles qui
+ * portent encore des fiches. Figé au 26/11 après la migration des 6 719 fiches.
+ * Pour réafficher une famille, retirer son `masquee: true` — rien d'autre.
+ */
+export const FAMILLES_VISIBLES = FAMILLES.filter((famille) => !famille.masquee);
 
 /** Alias historique : les écrans importaient `CATEGORIES` depuis demoData.js. */
 export const CATEGORIES = FAMILLES;
@@ -174,6 +202,7 @@ export function estSansPublicite({ categorie, sousCategorie, sousCategorieSlug }
 
 export default {
   FAMILLES,
+  FAMILLES_VISIBLES,
   CATEGORIES,
   SOUS_CATEGORIES,
   RACCOURCIS_UTILES,

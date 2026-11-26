@@ -30,8 +30,8 @@ import Illustration from '../components/illustrations/Illustration.jsx';
 import { dessinDeContexte } from '../components/illustrations/dessinsContexte.js';
 import { api } from '../utils/api/client.js';
 import { paiementDisponible, FRAIS_DEBLOCAGE } from '../utils/payment.js';
-import { chargerFormules, libellePrix, abonnementLocalActif, lireAbonnementLocal } from '../utils/abonnement.js';
-import { ABONNEMENT as MIROIR } from '../config/abonnement.js';
+import { abonnementLocalActif, lireAbonnementLocal } from '../utils/abonnement.js';
+import { ABONNEMENT as MIROIR, libelleGratuitJusquAu } from '../config/abonnement.js';
 import { distanceDepuis, formatDistanceKm } from '../utils/distance.js';
 import { formatDateRelative, formatFcfa, formatTelephone, formaterNomPublic, initiales } from '../utils/format.js';
 import { filtrerBesoinsDemo, METIERS } from '../data/demoData.js';
@@ -77,7 +77,6 @@ export default function Jobs() {
     libelle: profil?.abonnement?.libelle || lireAbonnementLocal()?.libelle || MIROIR.libelle,
     finAt: profil?.abonnement?.finAt || lireAbonnementLocal()?.finAt || null,
   }));
-  const [formule, setFormule] = useState(MIROIR);
 
   const {
     enCours,
@@ -143,15 +142,10 @@ export default function Jobs() {
     charger();
   }, [charger]);
 
-  // Prix/périodicité de l'abonnement : toujours lus depuis le serveur (source de
-  // vérité = backend/src/config/abonnement.js) ; le miroir ne sert qu'hors ligne.
+  // Paiement : le serveur dit si la gratuité court (`modeGratuit`). Aucun catalogue
+  // d'abonnement n'est chargé ici : plus aucun prix n'est affiché sur cette page.
   useEffect(() => {
     let annule = false;
-    chargerFormules().then((catalogue) => {
-      if (annule) return;
-      const serveur = catalogue.formules?.[0];
-      if (serveur) setFormule({ ...MIROIR, ...serveur });
-    });
     paiementDisponible().then((info) => {
       if (!annule) setPaiementInfo(info);
     });
@@ -192,7 +186,7 @@ export default function Jobs() {
         <h1 className="text-xl font-bold text-ink">Jobs</h1>
         <p className="text-sm text-ink-muted">
           Les offres de boulot et les demandes de main-d’œuvre autour de vous, dans deux
-          sous-onglets. Publier est gratuit ; avec un abonnement, les contacts sont inclus.
+          sous-onglets. Publier et contacter sont gratuits pendant la période de lancement.
         </p>
       </header>
 
@@ -217,38 +211,13 @@ export default function Jobs() {
         ))}
       </div>
 
-      {/* Abonnement : ce qu'il change pour l'utilisateur, dit franchement. */}
-      {abonnement.actif ? (
-        <InfoBanner variante="succes" titre={`${abonnement.libelle} actif`} className="mb-3">
-          Les contacts de cette page sont inclus : plus de frais à l’unité
-          {abonnement.finAt ? ` jusqu’au ${new Date(abonnement.finAt).toLocaleDateString('fr-FR')}` : ''}.
-        </InfoBanner>
-      ) : (
-        <div className="mb-3 rounded-md border border-primary/30 bg-primary/5 p-3">
-          <p className="flex items-center gap-2 text-xs font-bold text-ink">
-            <Icon name="wallet" size={16} className="text-primary" />
-            {formule.libelle} — {libellePrix(formule)}
-            {formule.aConfirmer ? ' (tarif provisoire)' : ''}
-          </p>
-          <p className="mt-1 text-[11px] leading-snug text-ink-muted">
-            Sans abonnement, chaque contact reste à {formatFcfa(paiementInfo.frais)}. Avec, les
-            offres de boulot et les demandes sont incluses, et votre profil d’artisan est mis en
-            avant.
-          </p>
-          <button
-            type="button"
-            className="bouton-principal mt-2 w-full py-2 text-xs"
-            onClick={() =>
-              navigate(connecte ? '/profil?section=abonnement' : '/connexion', {
-                state: { depuis: '/jobs' },
-              })
-            }
-          >
-            <Icon name="unlock" size={16} />
-            {connecte ? 'Voir l’abonnement' : 'Se connecter pour s’abonner'}
-          </button>
-        </div>
-      )}
+      {/* MODE 100 % GRATUIT : plus aucun tarif ni abonnement affiché sur cette page.
+          Le bloc payant reste dans le code (components/AbonnementArtisan.jsx,
+          utils/payment.js) pour la fin de la période gratuite, mais il n'est plus monté. */}
+      <InfoBanner variante="succes" titre="Tout est gratuit" className="mb-3">
+        Publier une annonce, chercher du travail et voir les contacts sont gratuits
+        jusqu’au {libelleGratuitJusquAu()}. Aucun paiement n’est demandé.
+      </InfoBanner>
 
       {horsLigne && (
         <InfoBanner variante="demo" titre="Annonces d’exemple" className="mb-3" illustration="horsLigne">
@@ -257,7 +226,7 @@ export default function Jobs() {
         </InfoBanner>
       )}
 
-      {paiementInfo.configure === false && !horsLigne && !abonnement.actif && (
+      {paiementInfo.gratuit === false && paiementInfo.configure === false && !horsLigne && !abonnement.actif && (
         <InfoBanner variante="info" titre="Payer par dépôt mobile money" className="mb-3" illustration="mobileMoney">
           La passerelle automatique n’est pas encore branchée : envoyez les{' '}
           {formatFcfa(paiementInfo.frais)} au numéro Wave / Orange Money / MTN MoMo affiché sur
@@ -368,8 +337,9 @@ export default function Jobs() {
               enCours={enCours === String(annonce.id)}
               frais={paiementInfo.frais}
               abonnementActif={abonnement.actif}
+              gratuit={paiementInfo.gratuit !== false}
               indisponible={horsLigne || estDemo}
-              modeDepot={paiementInfo.mode === 'depot' && !abonnement.actif}
+              modeDepot={paiementInfo.mode === 'depot' && paiementInfo.gratuit === false && !abonnement.actif}
               depots={paiementInfo.depots}
               support={paiementInfo.support}
               demande={maDemande(annonce.id)}
@@ -414,6 +384,7 @@ function CarteAnnonce({
   enCours,
   frais,
   abonnementActif,
+  gratuit,
   indisponible,
   modeDepot,
   depots,
@@ -523,12 +494,24 @@ function CarteAnnonce({
         <div className="mt-2">
           <p className="flex items-center gap-2 rounded-md border border-line bg-soft px-2 py-2 text-[11px] font-semibold text-ink-muted">
             <Icon name="lock" size={16} />
-            {abonnementActif
-              ? 'Inclus dans votre abonnement : débloquez sans payer'
-              : `Numéro masqué : ${formatFcfa(frais)} pour le révéler`}
+            {gratuit
+              ? 'Numéro masqué : cliquez pour voir le contact, gratuitement'
+              : abonnementActif
+                ? 'Inclus dans votre abonnement : débloquez sans payer'
+                : `Numéro masqué : ${formatFcfa(frais)} pour le révéler`}
           </p>
 
-          {modeDepot ? (
+          {gratuit ? (
+            <button
+              type="button"
+              className="bouton-principal mt-2 w-full text-sm"
+              onClick={onDebloquer}
+              disabled={enCours || indisponible}
+            >
+              <Icon name="unlock" size={17} />
+              {enCours ? 'Ouverture du contact…' : 'Voir le contact (Gratuit)'}
+            </button>
+          ) : modeDepot ? (
             <BlocDepot
               montant={frais}
               depots={depots}
@@ -560,9 +543,11 @@ function CarteAnnonce({
           )}
 
           <p className="mt-1 text-center text-[10px] text-ink-muted">
-            {modeDepot
-              ? 'Le déblocage est vérifié par notre équipe avant toute révélation du numéro.'
-              : 'Wave · Orange Money · MTN MoMo · Moov. Le déblocage est vérifié côté serveur avant toute révélation du numéro.'}
+            {gratuit
+              ? 'Aucun paiement, aucune carte bancaire : le contact est offert pendant la période de lancement.'
+              : modeDepot
+                ? 'Le déblocage est vérifié par notre équipe avant toute révélation du numéro.'
+                : 'Wave · Orange Money · MTN MoMo · Moov. Le déblocage est vérifié côté serveur avant toute révélation du numéro.'}
           </p>
         </div>
       )}

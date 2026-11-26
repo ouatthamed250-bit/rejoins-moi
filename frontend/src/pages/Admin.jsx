@@ -926,7 +926,7 @@ function VueTableauDeBord({
         <Tuile
           libelle="Encaissé (validé)"
           valeur={formatFcfa(stats.depots?.montantEncaisseFcfa || 0)}
-          note={`${stats.depots?.valides || 0} dépôt(s) validé(s) · contact à ${formatFcfa(stats.fraisDeblocage)}`}
+          note={`${stats.depots?.valides || 0} dépôt(s) validé(s) · contact gratuit (100 % gratuit)`}
           icone="chart"
         />
         <Tuile
@@ -935,6 +935,13 @@ function VueTableauDeBord({
           note="Connexion coupée immédiatement, même avec un jeton déjà émis"
           icone="ban"
           couleur={stats.suspendus > 0 ? 'rouge' : ''}
+        />
+        <Tuile
+          libelle="Mises en avant demandées"
+          valeur={stats.listeAttente?.enAttente || 0}
+          note="Demandes « Je veux être mis en avant »"
+          icone="star"
+          couleur={(stats.listeAttente?.enAttente || 0) > 0 ? 'accent' : ''}
         />
       </div>
 
@@ -1007,6 +1014,41 @@ function VueTableauDeBord({
         </Panneau>
       </div>
 
+      <Panneau
+        titre="Demandes de mise en avant"
+        sous="« Je veux être mis en avant » — personnes à rappeler pour les options de visibilité"
+      >
+        {(stats.listeAttente?.recentes || []).length === 0 ? (
+          <EtatVide texte="Aucune demande pour l’instant." icone="star" />
+        ) : (
+          <div className="bo-journal">
+            {(stats.listeAttente?.recentes || []).map((demande) => (
+              <div key={String(demande.id)} className="bo-journal-item">
+                <span className="bo-journal-icone">
+                  <Icon name="star" size={15} />
+                </span>
+                <div className="bo-journal-texte">
+                  <p className="bo-journal-titre">
+                    {demande.utilisateur?.nom || 'Compte utilisateur'}
+                  </p>
+                  <p className="bo-journal-detail">
+                    {demande.etablissement?.nom
+                      ? `Fiche : ${demande.etablissement.nom}`
+                      : 'Profil artisan'}
+                    {demande.utilisateur?.telephone
+                      ? ` · ${formatTelephone(demande.utilisateur.telephone)}`
+                      : ''}
+                  </p>
+                </div>
+                <span className="bo-journal-date" title={formatDateHeure(demande.date)}>
+                  {formatDateRelative(demande.date) || '—'}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panneau>
+
       <Panneau titre="Le reste du parc" sous="Ce que les tuiles du haut ne montrent pas">
         <div className="bo-mini-tuiles">
           {[
@@ -1018,6 +1060,7 @@ function VueTableauDeBord({
             { libelle: 'Annonces publiées', valeur: stats.jobs?.total || 0 },
             { libelle: 'Offres d’emploi', valeur: stats.jobs?.offres || 0 },
             { libelle: 'Demandes d’emploi', valeur: stats.jobs?.demandes || 0 },
+            { libelle: 'Demandes de mise en avant', valeur: stats.listeAttente?.enAttente || 0 },
             { libelle: 'Abonnements actifs', valeur: stats.abonnementsActifs || 0 },
             { libelle: 'Dépôts validés', valeur: stats.depots?.valides || 0 },
             { libelle: 'Dépôts rejetés', valeur: stats.depots?.rejetes || 0 },

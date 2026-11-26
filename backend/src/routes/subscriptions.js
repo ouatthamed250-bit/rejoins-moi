@@ -26,7 +26,7 @@ import Subscription from '../models/Subscription.js';
 import { protect } from '../middleware/auth.js';
 import { requireDb } from '../config/db.js';
 import { asyncHandler, ApiError } from '../middleware/errorHandler.js';
-import { getFormule, getFormules, getDeviseAbonnement, dureeJoursFormule, getFormuleStricte, estFormuleActive, PERIODICITES_ACTIVES, CATALOGUE, FORMULE_PAR_DEFAUT } from '../config/abonnement.js';
+import { getFormule, getFormules, getFormulesPubliques, getDeviseAbonnement, dureeJoursFormule, getFormuleStricte, estFormuleActive, PERIODICITES_ACTIVES, CATALOGUE, FORMULE_PAR_DEFAUT, GRATUIT_JUSQU_AU, estModeGratuit, getMessageModeGratuit } from '../config/abonnement.js';
 import {
   initiatePayment,
   confirmPayment,
@@ -58,12 +58,18 @@ function metadataAbonnement(formule, userId) {
  */
 router.get('/formules', (req, res) => {
   res.json({
-    formules: getFormules(),
+    // Prix masqués pendant la gratuité (0 partout, aucune mention « provisoire »).
+    formules: getFormulesPubliques(),
     formuleParDefaut: FORMULE_PAR_DEFAUT.cle,
     periodicitesActives: PERIODICITES_ACTIVES,
     catalogue: CATALOGUE,
     devise: getDeviseAbonnement(),
-    paiementConfigure: isPaymentConfigured(),
+    paiementConfigure: estModeGratuit() ? false : isPaymentConfigured(),
+    // MODE 100 % GRATUIT : le frontend lit ces champs pour afficher « Gratuit » et
+    // n'ouvre jamais la page CinetPay tant que la gratuité court.
+    modeGratuit: estModeGratuit(),
+    gratuitJusquAu: GRATUIT_JUSQU_AU.toISOString(),
+    messageGratuit: estModeGratuit() ? getMessageModeGratuit() : '',
     operateurs: OPERATEURS,
   });
 });
@@ -111,12 +117,15 @@ router.get(
       abonnement: actif ? actif.toPublicJSON() : null,
       abonnementActif: Boolean(actif),
       historique: derniers.map((d) => d.toPublicJSON()),
-      formules: getFormules(),
+      formules: getFormulesPubliques(),
       formuleParDefaut: FORMULE_PAR_DEFAUT.cle,
       periodicitesActives: PERIODICITES_ACTIVES,
       catalogue: CATALOGUE,
       devise: getDeviseAbonnement(),
-      paiementConfigure: isPaymentConfigured(),
+      paiementConfigure: estModeGratuit() ? false : isPaymentConfigured(),
+      modeGratuit: estModeGratuit(),
+      gratuitJusquAu: GRATUIT_JUSQU_AU.toISOString(),
+      messageGratuit: estModeGratuit() ? getMessageModeGratuit() : '',
       operateurs: OPERATEURS,
     });
   })
@@ -139,6 +148,10 @@ router.post(
   requireDb,
   protect,
   asyncHandler(async (req, res) => {
+    // MODE 100 % GRATUIT : toute tentative de souscription est refusée AVANT de
+    // toucher à CinetPay. Aucun prélèvement, aucun abonnement activé, aucun débit.
+    if (estModeGratuit()) throw new ApiError(400, getMessageModeGratuit());
+
     // `resoudreFormule` refuse (400/409) une clé inconnue ou une formule retirée de
     // la vente : le montant envoyé à CinetPay est donc toujours celui affiché.
     const formule = resoudreFormule(req.body?.formule);

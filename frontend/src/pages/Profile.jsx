@@ -19,7 +19,6 @@ import { Link, useNavigate } from 'react-router-dom';
 
 import EmptyState from '../components/EmptyState.jsx';
 import InfoBanner from '../components/InfoBanner.jsx';
-import AbonnementArtisan from '../components/AbonnementArtisan.jsx';
 import PhotoUploadField from '../components/PhotoUploadField.jsx';
 import { Icon } from '../components/Icons.jsx';
 import { api } from '../utils/api/client.js';
@@ -27,6 +26,7 @@ import { useAuth } from '../hooks/useAuth.js';
 import { formatFcfa, formatTelephone, initiales } from '../utils/format.js';
 import { METIERS, ETABLISSEMENTS_DEMO } from '../data/demoData.js';
 import { TEXTE_DONNEES, LIEN_DONNEES } from '../config/legal.js';
+import { TEXTE_GRATUIT, libelleGratuitJusquAu } from '../config/abonnement.js';
 
 const FORMULAIRE_VIDE = {
   // Photo de profil (ajout du 16/11) : elle était affichée depuis le début
@@ -135,6 +135,17 @@ export default function Profile() {
   const [motDePasseSuppression, setMotDePasseSuppression] = useState('');
   const [erreurSuppression, setErreurSuppression] = useState('');
   const [suppressionEnCours, setSuppressionEnCours] = useState(false);
+  // ── Mode 100 % gratuit (20/11) ──
+  // « Cette semaine » : deux compteurs LUS sur la fiche du propriétaire (aucun
+  // calcul local, aucune estimation). Et la liste d'attente « Je veux être mis en
+  // avant », qui enregistre la demande côté serveur (POST /users/mise-en-avant).
+  const [statsFiche, setStatsFiche] = useState(null);
+  const [miseEnAvant, setMiseEnAvant] = useState({
+    chargement: false,
+    message: '',
+    erreur: '',
+    deja: false,
+  });
 
   useEffect(() => {
     if (!profil) return;
@@ -205,6 +216,52 @@ export default function Profile() {
       annule = true;
     };
   }, [visites]);
+
+  // Compteurs de MA fiche (« Cette semaine ») : relus auprès de l'API, jamais
+  // devinés. Une fiche retirée (ou une API endormie) laisse simplement la carte
+  // masquée — on n'affiche pas de chiffres faux.
+  useEffect(() => {
+    if (!profil?.etablissementId) {
+      setStatsFiche(null);
+      return undefined;
+    }
+    let annule = false;
+    api
+      .get(`/establishments/${profil.etablissementId}`)
+      .then((reponse) => {
+        if (!annule) setStatsFiche(reponse.etablissement || null);
+      })
+      .catch(() => {
+        if (!annule) setStatsFiche(null);
+      });
+    return () => {
+      annule = true;
+    };
+  }, [profil?.etablissementId]);
+
+  /** Enregistre « Je veux être mis en avant » (gratuit : aucun paiement). */
+  async function demanderMiseEnAvant() {
+    if (miseEnAvant.chargement) return;
+    setMiseEnAvant((prec) => ({ ...prec, chargement: true, erreur: '', message: '' }));
+    try {
+      const reponse = await api.post('/users/mise-en-avant', {
+        etablissementId: profil?.etablissementId || undefined,
+      });
+      setMiseEnAvant({
+        chargement: false,
+        message: reponse?.message || 'Votre demande a bien été enregistrée.',
+        erreur: '',
+        deja: Boolean(reponse?.dejaDemande),
+      });
+    } catch (err) {
+      setMiseEnAvant({
+        chargement: false,
+        message: '',
+        erreur: err?.message || 'Demande impossible pour le moment. Réessayez.',
+        deja: false,
+      });
+    }
+  }
 
   async function enregistrer(evt) {
     evt.preventDefault();
@@ -370,11 +427,70 @@ export default function Profile() {
         </section>
       )}
 
-      {/* Abonnement (ajout du 29/09) : l'option qui débloque en une fois les offres de
-          boulot, les demandes de main-d'œuvre et la mise en avant du profil artisan. */}
-      <div className="mt-3">
-        <AbonnementArtisan />
-      </div>
+      {/* MODE 100 % GRATUIT (20/11) : l'abonnement payant n'est plus proposé — ni ici,
+          ni sur la page Jobs. À la place, deux cartes utiles :
+            • « Cette semaine » pour le propriétaire d'une fiche (compteurs réels) ;
+            • la liste d'attente « Je veux être mis en avant », qui enregistre l'intérêt
+              pour les futures options de visibilité (aucun paiement, aucun débit). */}
+      {profil.etablissementId && (
+        <section className="carte mt-3 p-3">
+          <p className="flex items-center gap-2 text-sm font-bold text-ink">
+            <Icon name="chart" size={16} className="text-primary" />
+            Cette semaine
+          </p>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <div className="rounded-md border border-line bg-soft px-3 py-2">
+              <p className="text-lg font-bold text-ink">
+                {statsFiche ? Number(statsFiche.compteurVisites) || 0 : '—'}
+              </p>
+              <p className="text-[11px] font-semibold text-ink-muted">Visites de la fiche</p>
+            </div>
+            <div className="rounded-md border border-line bg-soft px-3 py-2">
+              <p className="text-lg font-bold text-ink">
+                {statsFiche ? Number(statsFiche.compteurUtilisateurs) || 0 : '—'}
+              </p>
+              <p className="text-[11px] font-semibold text-ink-muted">Clics vers votre contact</p>
+            </div>
+          </div>
+          <p className="mt-1 text-[10px] leading-snug text-ink-muted">
+            Compteurs de votre fiche, mis à jour à chaque visite ou clic. Privé : vous seul les voyez.
+          </p>
+        </section>
+      )}
+
+      <section className="carte mt-3 p-3">
+        <p className="flex items-center gap-2 text-sm font-bold text-ink">
+          <Icon name="star" size={16} className="text-primary" />
+          Être mis en avant
+        </p>
+        <p className="mt-1 text-[11px] leading-snug text-ink-muted">
+          {TEXTE_GRATUIT} Laissez votre demande : elle est enregistrée dès maintenant
+          (gratuit jusqu’au {libelleGratuitJusquAu()}).
+        </p>
+        <button
+          type="button"
+          className="btn-ghost mt-2 w-full text-xs"
+          onClick={demanderMiseEnAvant}
+          disabled={miseEnAvant.chargement || miseEnAvant.deja}
+        >
+          <Icon name="star" size={15} />
+          {miseEnAvant.chargement
+            ? 'Enregistrement…'
+            : miseEnAvant.deja
+              ? 'Demande déjà enregistrée'
+              : 'Je veux être mis en avant'}
+        </button>
+        {miseEnAvant.message && (
+          <p className="mt-2 rounded-md border border-health/40 bg-health-light px-2 py-1.5 text-[11px] font-semibold text-health-dark">
+            {miseEnAvant.message}
+          </p>
+        )}
+        {miseEnAvant.erreur && (
+          <p className="mt-2 rounded-md border border-danger/40 bg-danger/10 px-2 py-1.5 text-[11px] font-semibold text-danger">
+            {miseEnAvant.erreur}
+          </p>
+        )}
+      </section>
 
       {message && !edition && (
         <InfoBanner variante="succes" className="mt-3" action={{ libelle: 'OK', onClick: () => setMessage('') }}>

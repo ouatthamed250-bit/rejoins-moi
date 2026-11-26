@@ -34,6 +34,7 @@ import Job from '../models/Job.js';
 import Establishment from '../models/Establishment.js';
 import Subscription from '../models/Subscription.js';
 import Depot from '../models/Depot.js';
+import ListeAttente from '../models/ListeAttente.js';
 import { protectAdmin, signToken, DUREE_JETON_ADMIN } from '../middleware/auth.js';
 import { requireDb } from '../config/db.js';
 import { asyncHandler, ApiError } from '../middleware/errorHandler.js';
@@ -42,6 +43,7 @@ import { normalizePhone, escapeRegex } from '../utils/validators.js';
 import { getUnlockFee, getCurrency } from '../services/cinetpay.js';
 import { anonymiserOuSupprimerCompte } from '../services/suppressionCompte.js';
 import { getDepots, getSupportWhatsapp } from '../config/paiement.js';
+import { estModeGratuit } from '../config/abonnement.js';
 
 const router = express.Router();
 router.use(requireDb);
@@ -224,6 +226,19 @@ router.get(
       };
     });
 
+    // Demandes « Je veux être mis en avant » (mode 100 % gratuit) : le back-office
+    // doit voir une FILE, pas seulement un compteur — c'est la liste des personnes
+    // à rappeler quand les options de visibilité arriveront.
+    const [demandesMiseEnAvant, recentesMiseEnAvant] = await Promise.all([
+      ListeAttente.countDocuments({ statut: 'en_attente' }),
+      ListeAttente.find({ statut: 'en_attente' })
+        .sort({ date: -1 })
+        .limit(6)
+        .populate('userId', 'nom prenom telephone metier')
+        .populate('etablissementId', 'nom')
+        .lean(),
+    ]);
+
     res.json({
       utilisateurs,
       artisans,
@@ -245,7 +260,33 @@ router.get(
         montantEncaisseFcfa: encaisse?.[0]?.total || 0,
         serie7j,
       },
-      fraisDeblocage: getUnlockFee(),
+      listeAttente: {
+        enAttente: demandesMiseEnAvant,
+        recentes: recentesMiseEnAvant.map((demande) => {
+          const nom = [demande.userId?.prenom, demande.userId?.nom]
+            .filter(Boolean)
+            .join(' ')
+            .trim();
+          return {
+            id: demande._id,
+            date: demande.date,
+            statut: demande.statut,
+            utilisateur: demande.userId
+              ? {
+                  id: demande.userId._id,
+                  nom: nom || null,
+                  telephone: demande.userId.telephone || null,
+                  metier: demande.userId.metier || '',
+                }
+              : null,
+            etablissement: demande.etablissementId
+              ? { id: demande.etablissementId._id, nom: demande.etablissementId.nom || '' }
+              : null,
+          };
+        }),
+      },
+      // 0 pendant la gratuité : le back-office n'affiche aucun tarif non plus.
+      fraisDeblocage: estModeGratuit() ? 0 : getUnlockFee(),
       devise: getCurrency(),
       depotsConfig: getDepots(),
       support: getSupportWhatsapp(),

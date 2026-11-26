@@ -21,6 +21,7 @@
 import express from 'express';
 import User from '../models/User.js';
 import Subscription from '../models/Subscription.js';
+import ListeAttente from '../models/ListeAttente.js';
 import { signToken, protect, optionalAuth } from '../middleware/auth.js';
 import { requireDb } from '../config/db.js';
 import { asyncHandler, ApiError } from '../middleware/errorHandler.js';
@@ -342,6 +343,48 @@ router.post(
     // doit pas peser sur l'apprentissage public du classement (§3).
     await req.user.save();
     res.json({ visites: req.user.visites.map(String), estVisite: !dejaVisite });
+  })
+);
+
+/**
+ * POST /api/users/mise-en-avant — « Je veux être mis en avant » (mode gratuit).
+ * body: { etablissementId?, note? }
+ *
+ * Pendant la gratuité, il n'y a rien à payer : on ne fait qu'ENREGISTRER l'intérêt
+ * pour les futures options de visibilité (modèle ListeAttente). Une seule demande
+ * en attente par utilisateur et par fiche : un second clic renvoie la demande
+ * existante au lieu d'en créer une deuxième (la file du back-office reste lisible).
+ */
+router.post(
+  '/mise-en-avant',
+  protect,
+  asyncHandler(async (req, res) => {
+    const brut = req.body?.etablissementId || req.user.etablissementId || null;
+    if (brut && !/^[a-f\d]{24}$/i.test(String(brut))) {
+      throw new ApiError(400, 'Identifiant d’établissement invalide.');
+    }
+    const etablissementId = brut ? String(brut) : null;
+
+    let demande = await ListeAttente.findOne({
+      userId: req.user._id,
+      etablissementId,
+      statut: 'en_attente',
+    });
+    const dejaDemande = Boolean(demande);
+    if (!demande) {
+      demande = await ListeAttente.create({
+        userId: req.user._id,
+        etablissementId,
+        note: String(req.body?.note || '').slice(0, 500),
+        statut: 'en_attente',
+      });
+    }
+
+    res.status(dejaDemande ? 200 : 201).json({
+      demande: demande.toPublicJSON(),
+      dejaDemande,
+      message: 'Votre demande a bien été enregistrée.',
+    });
   })
 );
 

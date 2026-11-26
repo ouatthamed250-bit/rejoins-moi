@@ -42,6 +42,7 @@ import PhotoUploadField from '../components/PhotoUploadField.jsx';
 import GaleriePhotos from '../components/GaleriePhotos.jsx';
 import EditeurHoraires from '../components/EditeurHoraires.jsx';
 import InfoBanner from '../components/InfoBanner.jsx';
+import { TEXTE_GRATUIT } from '../config/abonnement.js';
 import BarreActionFixe from '../components/BarreActionFixe.jsx';
 import { Icon } from '../components/Icons.jsx';
 import TagBadge from '../components/TagBadge.jsx';
@@ -812,6 +813,11 @@ export default function RegisterEstablishment() {
           : aEtablissement
             ? 'Gratuit. Photos facultatives (ajoutables plus tard), vos produits, votre numéro.'
             : 'Gratuit. Votre profil suffit pour être contacté : aucune photo d’établissement.'}
+      </p>
+
+      {/* Mode 100 % gratuit : la phrase est identique sur les mentions légales. */}
+      <p className="mb-3 rounded-md border border-line bg-soft px-3 py-2 text-[11px] leading-snug text-ink-muted">
+        {TEXTE_GRATUIT}
       </p>
 
       {/* Barre de progression : uniquement pour le parcours « Oui » (3 étapes). */}

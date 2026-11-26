@@ -12,6 +12,44 @@
 // Le prix et la périodicité ne sont PAS tranchés (voir cahier des charges) : la
 // mention « tarif provisoire » est affichée tant que `aConfirmer` vaut true.
 
+// ── MODE 100 % GRATUIT ──────────────────────────────────────────────────────
+// Miroir EXACT de backend/src/config/abonnement.js : la source de vérité reste le
+// serveur, mais le frontend doit pouvoir afficher « Gratuit » même hors ligne
+// (tournée terrain). Aucun montant n'est donc plus écrit ici : les formules
+// valent 0 pendant la gratuité. Le jour où la date sera dépassée, le serveur
+// renverra ses propres prix et l'interface les affichera de nouveau.
+export const GRATUIT_JUSQU_AU = new Date('2027-05-20T00:00:00.000Z');
+
+const MOIS_EN_FRANCAIS = [
+  'janvier',
+  'février',
+  'mars',
+  'avril',
+  'mai',
+  'juin',
+  'juillet',
+  'août',
+  'septembre',
+  'octobre',
+  'novembre',
+  'décembre',
+];
+
+/** « 20 mai 2027 » — date de fin de la gratuité, en clair. */
+export function libelleGratuitJusquAu(date = GRATUIT_JUSQU_AU) {
+  const d = new Date(date);
+  return `${d.getUTCDate()} ${MOIS_EN_FRANCAIS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+
+/** Le mode gratuit est-il actif à l'instant `maintenant` ? */
+export function estModeGratuit(maintenant = new Date()) {
+  return new Date(maintenant).getTime() < GRATUIT_JUSQU_AU.getTime();
+}
+
+/** Phrase affichée dans les mentions légales et à l'inscription. */
+export const TEXTE_GRATUIT =
+  "Gratuit aujourd'hui. Des options de visibilité payantes arriveront plus tard ; la fiche de base reste gratuite.";
+
 /** Périodicités possibles, en clair pour l'interface. */
 export const PERIODICITES = {
   hebdomadaire: { libelle: 'par semaine', jours: 7 },
@@ -52,10 +90,11 @@ export const FORMULE_HEBDOMADAIRE = {
   libelle: 'Artisan — 1 semaine',
   libelleCourt: 'Semaine',
   sousTitre: CATALOGUE.sousTitre,
-  prixFcfa: 700,
+  // Gratuit : aucun montant n'est affiché tant que la gratuité court.
+  prixFcfa: 0,
   periodicite: 'hebdomadaire',
   dureeJours: 7,
-  aConfirmer: true,
+  aConfirmer: false,
   avantages: AVANTAGES,
   avantagesCles: CLES_AVANTAGES,
 };
@@ -66,10 +105,11 @@ export const FORMULE_MENSUELLE = {
   libelle: 'Artisan — 1 mois',
   libelleCourt: 'Mois',
   sousTitre: CATALOGUE.sousTitre,
-  prixFcfa: 2500,
+  // Gratuit : aucun montant n'est affiché tant que la gratuité court.
+  prixFcfa: 0,
   periodicite: 'mensuel',
   dureeJours: 30,
-  aConfirmer: true,
+  aConfirmer: false,
   avantages: AVANTAGES,
   avantagesCles: CLES_AVANTAGES,
 };
@@ -91,8 +131,11 @@ export function getFormule(cle) {
   return FORMULES.find((f) => f.cle === cle) || ABONNEMENT;
 }
 
-/** « 700 FCFA par semaine » — libellé prêt à afficher. */
+/** « Gratuit » (ou le prix réel après la période de gratuité) — prêt à afficher. */
 export function libellePrix(formule = ABONNEMENT) {
+  // Aucun montant tant que la gratuité court, ni pour une formule à 0 (miroir hors
+  // ligne) : on n'affiche jamais « 0 FCFA », qui ressemblerait à une erreur.
+  if (estModeGratuit() || !Number(formule.prixFcfa)) return 'Gratuit';
   const sep = Math.round(Number(formule.prixFcfa) || 0)
     .toString()
     .replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
@@ -102,7 +145,21 @@ export function libellePrix(formule = ABONNEMENT) {
 
 /** « 700 FCFA par semaine ou 2 500 FCFA par mois » — pour les résumés. */
 export function libellePrixListe(formules = FORMULES) {
+  if (estModeGratuit()) return 'Gratuit';
   return formules.map((f) => libellePrix(f)).join(' ou ');
 }
 
-export default { ABONNEMENT, CATALOGUE, FORMULES, CLES_FORMULES, PERIODICITES, getFormule, libellePrix, libellePrixListe };
+export default {
+  ABONNEMENT,
+  CATALOGUE,
+  FORMULES,
+  CLES_FORMULES,
+  PERIODICITES,
+  GRATUIT_JUSQU_AU,
+  TEXTE_GRATUIT,
+  libelleGratuitJusquAu,
+  estModeGratuit,
+  getFormule,
+  libellePrix,
+  libellePrixListe,
+};

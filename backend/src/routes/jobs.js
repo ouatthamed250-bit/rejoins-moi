@@ -43,9 +43,25 @@ import {
 } from '../services/cinetpay.js';
 import Depot from '../models/Depot.js';
 import { getDepots, getSupportWhatsapp } from '../config/paiement.js';
+import {
+  GRATUIT_JUSQU_AU,
+  estModeGratuit,
+  getMessageModeGratuit,
+  libelleGratuitJusquAu,
+} from '../config/abonnement.js';
 
 const router = express.Router();
 router.use(requireDb);
+
+/** Frais AFFICHÉS : 0 pendant la gratuité (le code CinetPay reste intact). */
+function fraisDeblocageAffiche() {
+  return estModeGratuit() ? 0 : getUnlockFee();
+}
+
+/** La passerelle est-elle active ? Jamais pendant la gratuité. */
+function paiementActif() {
+  return estModeGratuit() ? false : isPaymentConfigured();
+}
 
 export const METIERS = [
   'Électricien',
@@ -72,12 +88,14 @@ export const METIERS = [
 router.get('/metiers', (req, res) => {
   res.json({
     metiers: METIERS,
-    fraisDeblocage: getUnlockFee(),
+    fraisDeblocage: fraisDeblocageAffiche(),
     devise: getCurrency(),
-    paiementConfigure: isPaymentConfigured(),
+    paiementConfigure: paiementActif(),
+    modeGratuit: estModeGratuit(),
+    gratuitJusquAu: GRATUIT_JUSQU_AU.toISOString(),
     // Paiement MANUEL par dépôt mobile money (passerelle CinetPay non branchée) :
     // numéros à créditer + support. Voir config/paiement.js et routes/admin.js.
-    depots: getDepots(),
+    depots: estModeGratuit() ? [] : getDepots(),
     support: getSupportWhatsapp(),
   });
 });
@@ -128,9 +146,11 @@ router.get(
       items,
       total: items.length,
       centre: coords,
-      fraisDeblocage: getUnlockFee(),
+      fraisDeblocage: fraisDeblocageAffiche(),
       devise: getCurrency(),
-      paiementConfigure: isPaymentConfigured(),
+      paiementConfigure: paiementActif(),
+      modeGratuit: estModeGratuit(),
+      gratuitJusquAu: GRATUIT_JUSQU_AU.toISOString(),
       abonnementActif: Boolean(abonnement),
       abonnement: abonnement ? abonnement.toPublicJSON() : null,
     });
@@ -293,6 +313,33 @@ router.post(
       });
     }
 
+    // ── Cas B (bis) : MODE 100 % GRATUIT ──
+    // Aucun paiement n'est demandé : le contact est révélé immédiatement et
+    // l'interaction est tracée comme un déblocage (montant 0). Si un client envoie
+    // malgré tout un `transactionId`, c'est une TENTATIVE DE PAIEMENT : on refuse en
+    // 400 au lieu d'appeler CinetPay — jamais de débit, même involontaire.
+    if (estModeGratuit()) {
+      if (req.body?.transactionId) throw new ApiError(400, getMessageModeGratuit());
+      job.contactDebloquePar.push({
+        userId,
+        montant: 0,
+        devise,
+        moyenPaiement: 'GRATUIT',
+        statutPaiement: 'ACCEPTED',
+      });
+      await job.save();
+      req.user.ajouterInteraction({ type: 'contact', terme: `job:${job._id}` });
+      await req.user.save().catch(() => {});
+      return res.json({
+        debloque: true,
+        telephoneContact: job.telephoneContact,
+        montantPaye: 0,
+        gratuit: true,
+        modeGratuit: true,
+        message: `Contact débloqué gratuitement (offert jusqu'au ${libelleGratuitJusquAu()}).`,
+      });
+    }
+
     // ── Cas B : abonnement actif -> contacts inclus, 0 FCFA ──
     const abonnement = await Subscription.trouverActif(userId);
     if (abonnement) {
@@ -428,6 +475,10 @@ router.post(
 
     const userId = req.user._id;
 
+    // Paiement MANUEL désactivé pendant la gratuité : aucune demande de dépôt n'a
+    // de sens, et on refuse un « j'ai payé » alors que rien n'est dû.
+    if (estModeGratuit()) throw new ApiError(400, getMessageModeGratuit());
+
     // Déjà débloqué (abonnement, mission journalière, paiement vérifié, dépôt validé) ?
     if (job.dejaDebloquePar(userId)) {
       return res.json({
@@ -497,7 +548,7 @@ router.get(
       debloque,
       telephoneContact: debloque ? job.telephoneContact : null,
       depot: depot ? depot.toJSON() : null,
-      montant: getUnlockFee(),
+      montant: fraisDeblocageAffiche(),
       devise: getCurrency(),
       depots: getDepots(),
       support: getSupportWhatsapp(),
@@ -528,7 +579,7 @@ router.post(
       job: job.toJSONFor({ userId: req.user._id }),
       message:
         job.segment === 'journalier'
-          ? 'Mission confirmée. Les frais de mise en relation (500 FCFA) deviennent exigibles pour l’ouvrier.'
+          ? 'Mission confirmée. La mise en relation est gratuite : aucun frais n’est dû.'
           : 'Mission confirmée.',
     });
   })
@@ -568,9 +619,11 @@ router.get(
     const abonnement = req.user ? await Subscription.trouverActif(req.user._id) : null;
     res.json({
       job: { ...job.toJSONFor({ userId: req.user?._id }), distanceKm },
-      fraisDeblocage: getUnlockFee(),
+      fraisDeblocage: fraisDeblocageAffiche(),
       devise: getCurrency(),
-      paiementConfigure: isPaymentConfigured(),
+      paiementConfigure: paiementActif(),
+      modeGratuit: estModeGratuit(),
+      gratuitJusquAu: GRATUIT_JUSQU_AU.toISOString(),
       abonnementActif: Boolean(abonnement),
       abonnement: abonnement ? abonnement.toPublicJSON() : null,
     });

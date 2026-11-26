@@ -15,6 +15,14 @@
  *     quelle. Le serveur reste seul juge du paiement (règle de sécurité du projet).
  */
 
+// v21 : passage en mode 100 % GRATUIT (20/11) — tous les prix disparaissent de
+//       l'interface, l'abonnement payant n'est plus proposé, une
+//       liste d'attente « Je veux être mis en avant » apparaît sur le profil et le
+//       back-office affiche les demandes. Jobs.jsx, JobBoard.jsx, Profile.jsx,
+//       Admin.jsx, MentionsLegales.jsx et RegisterEstablishment.jsx changent : les
+//       empreintes index-*.js/css changent, donc nouveau nom de cache — sinon un
+//       téléphone déjà installé continuerait d'afficher les anciens prix.
+//
 // v20 : même publication que v19 (droit à l'effacement), texte corrigé — la zone
 //       DANGER du profil et le tiroir d'administration annoncent désormais ce qui
 //       arrive VRAIMENT aux fiches d'établissement : celles créées par la personne
@@ -150,7 +158,7 @@
 //      index.html en secours, donc l'ANCIENNE app — médaillon toujours rogné.
 // Changer la version est indispensable dès que les fichiers « cache d'abord »
 // (icônes) ou l'app shell changent de façon visible.
-const VERSION = 'v20';
+const VERSION = 'v21';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

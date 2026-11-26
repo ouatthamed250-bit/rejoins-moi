@@ -34,6 +34,7 @@ import Illustration from '../components/illustrations/Illustration.jsx';
 import { dessinDeContexte } from '../components/illustrations/dessinsContexte.js';
 import { api } from '../utils/api/client.js';
 import { paiementDisponible, FRAIS_DEBLOCAGE } from '../utils/payment.js';
+import { libelleGratuitJusquAu } from '../config/abonnement.js';
 import { distanceDepuis, formatDistanceKm } from '../utils/distance.js';
 import { formatDateRelative, formatFcfa, formatTelephone, formaterNomPublic, initiales } from '../utils/format.js';
 import { METIERS, filtrerBesoinsDemo } from '../data/demoData.js';
@@ -65,7 +66,8 @@ export default function JobBoard() {
   const [metier, setMetier] = useState('tous');
   const [terme, setTerme] = useState('');
   const [urgentsSeulement, setUrgentsSeulement] = useState(false);
-  const [paiementInfo, setPaiementInfo] = useState({ configure: null, frais: FRAIS_DEBLOCAGE });
+  // Mode gratuit par défaut : aucun montant n'est affiché avant la réponse du serveur.
+  const [paiementInfo, setPaiementInfo] = useState({ gratuit: true, configure: null, frais: 0 });
 
   // Déblocage du contact : logique PARTAGÉE avec la page Jobs (hooks/useDeblocageContact.js),
   // pour que les deux écrans appliquent exactement les mêmes règles de paiement.
@@ -179,10 +181,9 @@ export default function JobBoard() {
         ))}
       </div>
 
-      <InfoBanner variante="info" titre="Chercher est gratuit ; seul le contact coûte" className="mb-3">
-        Poster un besoin et consulter les offres sont gratuits. Les {formatFcfa(paiementInfo.frais)} ne
-        servent qu’à débloquer le numéro : c’est ce qui limite les appels inutiles. Pour les missions
-        journalières, le premier contact est offert.
+      <InfoBanner variante="succes" titre="Tout est gratuit pendant le lancement" className="mb-3">
+        Poster un besoin, consulter les offres et voir le numéro de contact sont gratuits
+        jusqu’au {libelleGratuitJusquAu()}. Aucun paiement n’est demandé.
       </InfoBanner>
 
       {horsLigne && (
@@ -192,7 +193,7 @@ export default function JobBoard() {
         </InfoBanner>
       )}
 
-      {paiementInfo.configure === false && !horsLigne && (
+      {paiementInfo.gratuit === false && paiementInfo.configure === false && !horsLigne && (
         <InfoBanner variante="info" titre="Payer par dépôt mobile money" className="mb-3" illustration="mobileMoney">
           La passerelle automatique n’est pas encore branchée : envoyez les{' '}
           {formatFcfa(paiementInfo.frais)} au numéro Wave / Orange Money / MTN MoMo affiché sur le
@@ -340,8 +341,9 @@ export default function JobBoard() {
                   telephone={telephoneDebloque(b.id)}
                   verifEnAttente={Boolean(contacts[String(b.id)]?.transactionId)}
                   enCours={enCours === String(b.id)}
+                  gratuit={paiementInfo.gratuit !== false}
                   indisponible={horsLigne || estDemo}
-                  modeDepot={paiementInfo.mode === 'depot'}
+                  modeDepot={paiementInfo.mode === 'depot' && paiementInfo.gratuit === false}
                   depots={paiementInfo.depots}
                   support={paiementInfo.support}
                   demande={maDemande(b.id)}
@@ -383,6 +385,7 @@ function CarteBesoin({
   telephone,
   verifEnAttente,
   enCours,
+  gratuit,
   indisponible,
   modeDepot,
   depots,
@@ -490,10 +493,22 @@ function CarteBesoin({
         <div className="mt-2">
           <p className="flex items-center gap-2 rounded-md border border-line bg-soft px-2 py-2 text-[11px] font-semibold text-ink-muted">
             <Icon name="lock" size={16} />
-            Numéro masqué : {formatFcfa(FRAIS_DEBLOCAGE)} pour le révéler
+            {gratuit
+              ? 'Numéro masqué : cliquez pour voir le contact, gratuitement'
+              : `Numéro masqué : ${formatFcfa(FRAIS_DEBLOCAGE)} pour le révéler`}
           </p>
 
-          {modeDepot ? (
+          {gratuit ? (
+            <button
+              type="button"
+              className="bouton-principal mt-2 w-full text-sm"
+              onClick={onDebloquer}
+              disabled={enCours || indisponible}
+            >
+              <Icon name="unlock" size={17} />
+              {enCours ? 'Ouverture du contact…' : 'Voir le contact (Gratuit)'}
+            </button>
+          ) : modeDepot ? (
             <BlocDepot
               montant={FRAIS_DEBLOCAGE}
               depots={depots}
@@ -528,9 +543,11 @@ function CarteBesoin({
           )}
 
           <p className="mt-1 text-center text-[10px] text-ink-muted">
-            {modeDepot
-              ? 'Le déblocage est vérifié par notre équipe avant toute révélation du numéro.'
-              : 'Wave · Orange Money · MTN MoMo · Moov. Le paiement est vérifié côté serveur avant toute révélation du numéro.'}
+            {gratuit
+              ? 'Aucun paiement, aucune carte bancaire : le contact est offert pendant la période de lancement.'
+              : modeDepot
+                ? 'Le déblocage est vérifié par notre équipe avant toute révélation du numéro.'
+                : 'Wave · Orange Money · MTN MoMo · Moov. Le paiement est vérifié côté serveur avant toute révélation du numéro.'}
           </p>
         </div>
       )}
@@ -694,8 +711,8 @@ function FormulaireBesoin({
         />
       </label>
       <InfoBanner variante="succes" titre="Publier un besoin est gratuit">
-        Rejoins’Moi ne prend rien sur la publication : vous ne payez que si vous débloquez un
-        contact, et les artisans ne paient que le contact qu’ils choisissent.
+        Rejoins’Moi ne prend rien, ni sur la publication ni sur les contacts : tout est
+        gratuit pendant la période de lancement.
       </InfoBanner>
 
       {!position && (
@@ -823,7 +840,7 @@ function FormulaireBesoin({
           <span>
             Prestation spécialisée
             <span className="block text-[10px] font-normal text-ink-muted">
-              Le contact coûte {formatFcfa(FRAIS_DEBLOCAGE)} à la personne qui le débloque.
+              Le contact est gratuit pour la personne qui le débloque.
             </span>
           </span>
         </label>

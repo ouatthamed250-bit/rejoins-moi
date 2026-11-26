@@ -35,6 +35,55 @@
 // « commercial », « établissement »... ne demandera qu'une entrée supplémentaire,
 // sans toucher aux routes.
 
+// ── MODE 100 % GRATUIT (modèle économique) ───────────────────────────────────
+// Décision produit : l'application est ENTIÈREMENT GRATUITE jusqu'au 20 mai 2027.
+// Aucun déblocage de contact ni abonnement n'est facturé pendant cette période ; le
+// code CinetPay reste en place mais n'est JAMAIS appelé (voir routes/jobs.js et
+// routes/subscriptions.js). Le paiement redeviendra possible tout seul après la
+// date : aucune ligne de code n'est à modifier le jour venu. Pour décaler la date
+// sans redéployer, définir GRATUIT_JUSQU_AU dans backend/.env (format ISO).
+export const GRATUIT_JUSQU_AU = new Date(
+  process.env.GRATUIT_JUSQU_AU || '2027-05-20T00:00:00.000Z'
+);
+
+const MOIS_EN_FRANCAIS = [
+  'janvier',
+  'février',
+  'mars',
+  'avril',
+  'mai',
+  'juin',
+  'juillet',
+  'août',
+  'septembre',
+  'octobre',
+  'novembre',
+  'décembre',
+];
+
+/** « 20 mai 2027 » — date de fin de la gratuité, en clair (UTC, comme Abidjan). */
+export function libelleGratuitJusquAu(date = GRATUIT_JUSQU_AU) {
+  const d = new Date(date);
+  return `${d.getUTCDate()} ${MOIS_EN_FRANCAIS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+
+/** Le mode gratuit est-il actif à l'instant `maintenant` ? */
+export function estModeGratuit(maintenant = new Date()) {
+  return new Date(maintenant).getTime() < GRATUIT_JUSQU_AU.getTime();
+}
+
+/**
+ * Message UNIQUE renvoyé à un client qui tente de payer pendant la gratuité.
+ * Formulation imposée par le cahier des charges : on ne cherche pas à l'adoucir.
+ */
+export function getMessageModeGratuit() {
+  return `Le déblocage et les abonnements sont gratuits jusqu'au ${libelleGratuitJusquAu()}. Aucun paiement n'est nécessaire.`;
+}
+
+/** Phrase affichée aux utilisateurs (miroir de frontend/src/config/abonnement.js). */
+export const TEXTE_GRATUIT =
+  "Gratuit aujourd'hui. Des options de visibilité payantes arriveront plus tard ; la fiche de base reste gratuite.";
+
 /** Périodicités acceptées (utils pour les validations). */
 export const PERIODICITES = ['hebdomadaire', 'mensuel'];
 
@@ -218,12 +267,32 @@ export function getFormules() {
   return FORMULES_ACTIVES.map((f) => ({ ...f }));
 }
 
+/**
+ * Catalogue PUBLIC (API/health, /subscriptions/formules, /moi) : pendant la
+ * gratuité, tous les montants sont remis à 0 et la mention « tarif provisoire »
+ * disparaît. Les prix réels restent dans FORMULES (le jour où la date sera
+ * dépassée, ils réapparaîtront tout seuls) et dans CinetPay, jamais dans l'UI.
+ */
+export function getFormulesPubliques() {
+  const gratuit = estModeGratuit();
+  return getFormules().map((f) => ({
+    ...f,
+    prixFcfa: gratuit ? 0 : f.prixFcfa,
+    aConfirmer: gratuit ? false : f.aConfirmer,
+  }));
+}
+
 /** Formules désactivées mais toujours lisibles (support / diagnostic). */
 export function getFormulesInactives() {
   return FORMULES.filter((f) => !FORMULES_ACTIVES.includes(f)).map((f) => ({ ...f }));
 }
 
 export default {
+  GRATUIT_JUSQU_AU,
+  TEXTE_GRATUIT,
+  libelleGratuitJusquAu,
+  estModeGratuit,
+  getMessageModeGratuit,
   PERIODICITES,
   PERIODICITES_ACTIVES,
   CATALOGUE,
@@ -242,5 +311,6 @@ export default {
   dureeJoursFormule,
   calculerFinPeriode,
   getFormules,
+  getFormulesPubliques,
   getFormulesInactives,
 };

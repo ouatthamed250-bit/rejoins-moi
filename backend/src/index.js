@@ -25,7 +25,15 @@ import subscriptionsRouter from './routes/subscriptions.js';
 import healthFacilitiesRouter from './routes/healthFacilities.js';
 import adminRouter from './routes/admin.js';
 import { isPaymentConfigured, getUnlockFee } from './services/cinetpay.js';
-import { ABONNEMENT, getFormules, PERIODICITES_ACTIVES, CATALOGUE } from './config/abonnement.js';
+import {
+  ABONNEMENT,
+  getFormules,
+  PERIODICITES_ACTIVES,
+  CATALOGUE,
+  getFormulesPubliques,
+  GRATUIT_JUSQU_AU,
+  estModeGratuit,
+} from './config/abonnement.js';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
@@ -168,15 +176,24 @@ app.get('/api/health', (req, res) => {
     // PUBLIQUE : on n'expose que ces champs — jamais l'URI, jamais un identifiant.
     baseDetails: etatBase(),
     paiement: {
-      configure: isPaymentConfigured(),
-      fraisDeblocageFcfa: getUnlockFee(),
-      passerelle: 'CinetPay (Wave, Orange Money, MTN MoMo, Moov Money)',
+      // MODE 100 % GRATUIT : tant que la date n'est pas dépassée, `configure` est
+      // volontairement false — même si des clés CinetPay existent, elles ne doivent
+      // pas être utilisées. `modeGratuit` permet au frontend d'afficher « Gratuit »
+      // sans recalculer la règle de son côté.
+      configure: estModeGratuit() ? false : isPaymentConfigured(),
+      modeGratuit: estModeGratuit(),
+      gratuitJusquAu: GRATUIT_JUSQU_AU.toISOString(),
+      fraisDeblocageFcfa: estModeGratuit() ? 0 : getUnlockFee(),
+      passerelle: estModeGratuit()
+        ? 'Désactivée (100 % gratuit)'
+        : 'CinetPay (Wave, Orange Money, MTN MoMo, Moov Money)',
     },
     // Prix/périodicité PROVISOIRES : ils vivent uniquement dans config/abonnement.js.
     // Deux formules en parallèle (semaine + mois) pour trancher sur le terrain.
     abonnement: {
       titre: CATALOGUE.titre,
-      formules: getFormules().map((f) => ({
+      // Prix MASQUÉS pendant la gratuité : 0 partout (voir getFormulesPubliques).
+      formules: getFormulesPubliques().map((f) => ({
         cle: f.cle,
         libelle: f.libelle,
         prixFcfa: f.prixFcfa,
@@ -186,7 +203,7 @@ app.get('/api/health', (req, res) => {
       })),
       periodicitesActives: PERIODICITES_ACTIVES,
       formuleParDefaut: ABONNEMENT.cle,
-      prixAConfirmer: ABONNEMENT.aConfirmer,
+      prixAConfirmer: estModeGratuit() ? false : ABONNEMENT.aConfirmer,
     },
     horodatage: new Date().toISOString(),
   });
@@ -214,7 +231,11 @@ async function demarrer() {
     console.log(`  ▸ http://localhost:${PORT}/api`);
     console.log(`  ▸ MongoDB : ${ok ? 'connectée' : 'INDISPONIBLE (mode démo côté frontend)'}`);
     console.log(
-      `  ▸ Paiement : ${isPaymentConfigured() ? 'CinetPay configuré' : 'non configuré (déblocage contact -> HTTP 501)'}`
+      `  ▸ Paiement : ${estModeGratuit()
+        ? 'désactivé (100 % gratuit)'
+        : isPaymentConfigured()
+          ? 'CinetPay configuré'
+          : 'non configuré (déblocage contact -> HTTP 501)'}`
     );
     console.log('');
   });

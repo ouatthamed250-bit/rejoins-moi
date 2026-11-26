@@ -15,6 +15,7 @@
 
 import { api, ApiError } from './api/client.js';
 import { getDepots, getSupportWhatsapp } from '../config/paiement.js';
+import { estModeGratuit, libelleGratuitJusquAu } from '../config/abonnement.js';
 
 export const FRAIS_DEBLOCAGE = Number(import.meta.env.VITE_CONTACT_UNLOCK_FEE || 500);
 export const DEVISE = import.meta.env.VITE_CURRENCY || 'XOF';
@@ -146,25 +147,51 @@ export function ouvrirPaiement(paymentUrl) {
 export async function paiementDisponible() {
   try {
     const info = await api.get('/jobs/metiers', { auth: false });
-    const configure = Boolean(info?.paiementConfigure);
+    // MODE 100 % GRATUIT : le serveur dit `modeGratuit: true` tant que la date de
+    // fin de gratuité n'est pas dépassée. On n'affiche alors AUCUN montant, aucun
+    // numéro de dépôt et aucun bouton de paiement : le déblocage est offert et
+    // immédiat. Un serveur plus ancien (champ absent) retombe sur la date locale.
+    const gratuit =
+      typeof info?.modeGratuit === 'boolean' ? info.modeGratuit : estModeGratuit();
     const depots = Array.isArray(info?.depots) && info.depots.length ? info.depots : DEPOTS_MANUELS;
+    if (gratuit) {
+      return {
+        gratuit: true,
+        configure: false,
+        mode: 'gratuit',
+        frais: 0,
+        devise: info?.devise || DEVISE,
+        depots: [],
+        support: info?.support || SUPPORT_MANUEL,
+        message: `Déblocage gratuit jusqu'au ${libelleGratuitJusquAu()} : aucun paiement n'est demandé.`,
+      };
+    }
+    const configure = Boolean(info?.paiementConfigure);
     return {
+      gratuit: false,
       configure,
       mode: configure ? 'cinetpay' : depots.length ? 'depot' : 'indisponible',
       frais: Number(info?.fraisDeblocage || FRAIS_DEBLOCAGE),
       devise: info?.devise || DEVISE,
       depots,
       support: info?.support || SUPPORT_MANUEL,
+      message: '',
     };
   } catch {
-    // Serveur injoignable : on garde les numéros du miroir (tournée terrain, panne réseau).
+    // Serveur injoignable : la date locale décide. Pendant la gratuité, on ne
+    // propose évidemment pas de paiement ; après, on garde les numéros du miroir.
+    const gratuit = estModeGratuit();
     return {
+      gratuit,
       configure: false,
-      mode: 'depot',
-      frais: FRAIS_DEBLOCAGE,
+      mode: gratuit ? 'gratuit' : 'depot',
+      frais: gratuit ? 0 : FRAIS_DEBLOCAGE,
       devise: DEVISE,
-      depots: DEPOTS_MANUELS,
+      depots: gratuit ? [] : DEPOTS_MANUELS,
       support: SUPPORT_MANUEL,
+      message: gratuit
+        ? `Déblocage gratuit jusqu'au ${libelleGratuitJusquAu()} : aucun paiement n'est demandé.`
+        : '',
     };
   }
 }

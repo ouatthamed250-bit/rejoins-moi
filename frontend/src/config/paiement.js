@@ -8,6 +8,13 @@
 
 const env = import.meta.env || {};
 
+// MODE 100 % GRATUIT : plus aucun montant n'est affiché et la passerelle n'est
+// jamais ouverte. Les numéros de dépôt restent dans ce fichier (code conservé)
+// pour la réactivation des paiements après la période gratuite.
+export const MODE_GRATUIT = true;
+/** Libellé unique remplaçant tous les prix dans l'interface. */
+export const LIBELLE_GRATUIT = 'Gratuit';
+
 /** Numéro du support WhatsApp (format local). */
 export const SUPPORT_WHATSAPP = env.VITE_SUPPORT_WHATSAPP || '0554233234';
 

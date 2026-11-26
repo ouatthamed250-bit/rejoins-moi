@@ -30,6 +30,21 @@ const TRACES = {
   message: (
     <path d="M21 12a7.5 7.5 0 0 1-7.5 7.5H8.2L4 22v-4.4A7.5 7.5 0 0 1 4.5 12 7.5 7.5 0 0 1 12 4.5h1.5A7.5 7.5 0 0 1 21 12Z" />
   ),
+  // Assistant virtuel (26/11) : petit robot — tête, antenne, yeux, bouche et
+  // « oreilles ». Dessiné sur la même grille que les autres, il porte le bouton
+  // flottant de la FAQ (components/AssistantBot.jsx).
+  robot: (
+    <>
+      <rect x="3.6" y="8" width="16.8" height="11" rx="3.4" />
+      <path d="M12 8V5.2" />
+      <circle cx="12" cy="3.8" r="1.2" />
+      <path d="M9.2 12.4v1.4" />
+      <path d="M14.8 12.4v1.4" />
+      <path d="M9.6 16.2h4.8" />
+      <path d="M2.4 11.6v3.8" />
+      <path d="M21.6 11.6v3.8" />
+    </>
+  ),
   user: (
     <>
       <circle cx="12" cy="8" r="3.6" />
@@ -41,6 +56,21 @@ const TRACES = {
       <path d="M4 7h16" />
       <path d="M4 12h16" />
       <path d="M4 17h16" />
+    </>
+  ),
+  // Réglages (curseurs) : trois rails avec leur poignée. Utilisé par la FAQ
+  // (« Gérer ma fiche ») — plus lisible qu'un engrenage à cette taille.
+  settings: (
+    <>
+      <path d="M4 7h7.2" />
+      <path d="M16.8 7H20" />
+      <circle cx="14" cy="7" r="2.2" />
+      <path d="M4 12h2.2" />
+      <path d="M11.8 12H20" />
+      <circle cx="9" cy="12" r="2.2" />
+      <path d="M4 17h7.2" />
+      <path d="M16.8 17H20" />
+      <circle cx="14" cy="17" r="2.2" />
     </>
   ),
   chevronLeft: <path d="m14.5 6-6 6 6 6" />,

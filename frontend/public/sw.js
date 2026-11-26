@@ -15,6 +15,15 @@
  *     quelle. Le serveur reste seul juge du paiement (règle de sécurité du projet).
  */
 
+// v29 : assistant virtuel — FAQ interactive (26/11).
+//       • Nouveau components/AssistantBot.jsx (bulle flottante sur toutes les
+//         pages sauf le back-office, trois niveaux : sujets → questions →
+//         réponse) alimenté par config/faq.js, en dur dans le bundle. Aucun appel
+//         réseau : ce que la personne cherche ne sort pas du téléphone.
+//       • App.jsx et Icons.jsx changent (nouvelle empreinte index-*.js) : nouveau
+//         nom de cache — sinon un téléphone déjà installé continuerait d'afficher
+//         l'application sans l'assistant, et sans les icônes « robot »/« réglages ».
+//
 // v28 : finitions de sécurité et refonte du back-office (26/11).
 //       • Côté serveur, un document utilisateur sérialisé sans route explicite
 //         (res.json(doc), populate renvoyé tel quel) sort désormais sous sa forme
@@ -233,7 +242,7 @@
 //       plus de bandeau ni de bouton « gratuit » : le contact s'obtient
 //       naturellement (« Voir le contact »). Même publication que le correctif
 //       backend qui acceptait « GRATUIT » dans l'enum moyenPaiement.
-const VERSION = 'v28';
+const VERSION = 'v29';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

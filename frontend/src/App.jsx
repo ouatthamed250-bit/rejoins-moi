@@ -27,6 +27,10 @@
 //    alors que le déploiement était bien en ligne : le worker changeait, la page
 //    restait en mémoire. Il est monté ici, hors des routes, pour couvrir aussi
 //    les écrans plein écran (fiche établissement, /admin).
+//  - <AssistantBot /> (26/11) est la FAQ interactive : une bulle flottante qui
+//    ouvre les réponses écrites de config/faq.js. Montée elle aussi hors des
+//    routes (donc sur toutes les pages, sauf le back-office), elle ne fait aucun
+//    appel réseau et se pose sur la hauteur mesurée du bloc du bas.
 
 import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
@@ -38,6 +42,7 @@ import InfoBanner from './components/InfoBanner.jsx';
 import InstallAppButton from './components/InstallAppButton.jsx';
 import MiseAJourPWA from './components/MiseAJourPWA.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
+import AssistantBot from './components/AssistantBot.jsx';
 import { useAuth } from './hooks/useAuth.js';
 
 import Feed from './pages/Feed.jsx';
@@ -57,6 +62,16 @@ const NotFound = lazy(() => import('./pages/NotFound.jsx'));
 
 /** Routes affichées en plein écran : ni TopBar ni BottomNav. */
 const ROUTES_PLEIN_ECRAN = [/^\/etablissement\//, /^\/admin\/?$/];
+
+/**
+ * Routes où l'assistant virtuel n'est pas monté : le BACK-OFFICE. C'est un outil
+ * interne (tableaux, densité) qui a sa propre coquille et ses propres actions ;
+ * une bulle d'aide y masquerait des boutons. Partout ailleurs — y compris la
+ * fiche établissement, en plein écran, où la question « comment vous contacter »
+ * se pose vraiment — l'assistant reste disponible. Sa position est calculée sur
+ * la hauteur MESURÉE du bloc du bas (voir components/AssistantBot.jsx).
+ */
+const ROUTES_SANS_ASSISTANT = [/^\/admin\/?$/];
 
 /**
  * Base de déploiement de l'app, telle que Vite l'a compilée :
@@ -96,6 +111,7 @@ function Structure() {
   const { pathname } = useLocation();
   const { modeDemo } = useAuth();
   const pleinEcran = ROUTES_PLEIN_ECRAN.some((rx) => rx.test(pathname));
+  const sansAssistant = ROUTES_SANS_ASSISTANT.some((rx) => rx.test(pathname));
 
   // Conteneur général : VOLONTAIREMENT sans fond opaque (v2 du 30/09). L'ivoire
   // vient du `body` et le motif « traits fins » des pages se place DERRIÈRE le
@@ -150,6 +166,12 @@ function Structure() {
       </main>
 
       {!pleinEcran && <BottomNav />}
+
+      {/* Assistant virtuel (26/11) : monté HORS des routes, en dernier, pour
+          qu'il flotte au-dessus de tout le contenu de n'importe quelle page.
+          Il lit config/faq.js en dur — aucun appel réseau — et se pose sur la
+          hauteur mesurée du bloc du bas, jamais sur une valeur devinée. */}
+      {!sansAssistant && <AssistantBot />}
     </div>
   );
 }

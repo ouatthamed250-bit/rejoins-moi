@@ -130,6 +130,20 @@ export default function EstablishmentProfile() {
   const [erreurHoraires, setErreurHoraires] = useState('');
   const [messageGestion, setMessageGestion] = useState('');
 
+  // ── Correction de la position depuis « Gérer mon établissement » (26/11) ──
+  // Une fiche créée sur un réseau capricieux a reçu un point réseau à 2 km du
+  // commerce (une boulangerie). La correction existait déjà, mais cachée dans
+  // « Modifier la fiche », mêlée aux textes et soumise au bouton « Enregistrer » :
+  // un gérant qui veut juste réparer son épingle ne la trouvait pas. Ici, c'est un
+  // geste unique et IMMÉDIAT — la carte s'ouvre sur la position publiée, le repère
+  // se déplace, et le PATCH part à la validation (`localisation` est accepté par
+  // la route PATCH /establishments/:id, bornes comprises côté serveur).
+  // Aucun brouillon : pas d'« Enregistrer » à oublier derrière.
+  const [carteGestionOuverte, setCarteGestionOuverte] = useState(false);
+  const [enregistrementLocalisation, setEnregistrementLocalisation] = useState(false);
+  const [erreurLocalisationGestion, setErreurLocalisationGestion] = useState('');
+  const [messageLocalisation, setMessageLocalisation] = useState('');
+
   // ── Édition des informations de la fiche (ajout du 16/11) ──
   // Une fiche publiée avec un nom mal orthographié, une description vide ou un
   // ancien numéro restait figée : le serveur accepte pourtant ces champs
@@ -501,6 +515,11 @@ export default function EstablishmentProfile() {
     setErreurFermeture('');
     setErreurHoraires('');
     setMessageGestion('');
+    // La carte de correction de position ne doit jamais rester ouverte d'une
+    // ouverture du panneau à l'autre, ni afficher un message d'une session passée.
+    setCarteGestionOuverte(false);
+    setErreurLocalisationGestion('');
+    setMessageLocalisation('');
     setGestionOuverte(true);
   }
 
@@ -680,6 +699,56 @@ export default function EstablishmentProfile() {
     setErreurLocalisation('');
     setPositionGps(null);
     setCartePositionOuverte(true);
+  }
+
+  /**
+   * Enregistre IMMÉDIATEMENT la position désignée sur la carte depuis « Gérer mon
+   * établissement » (26/11).
+   *
+   * Différence avec le panneau « Modifier la fiche » : ici, pas de bouton
+   * « Enregistrer ». Le gérant vient pour UNE chose ; l'écrire tout de suite évite
+   * de laisser la fiche fausse parce qu'il a refermé la feuille. On n'envoie QUE
+   * `localisation` : le serveur réécrit alors le miroir GeoJSON (`position`), donc
+   * distance affichée, tri par proximité et carte de la fiche suivent sans
+   * rechargement — `setEtablissement` avec la réponse suffit.
+   */
+  async function enregistrerPositionGestion(lat, lng) {
+    if (!etablissement || !estProprietaire || enregistrementLocalisation) return;
+    const nouvelle = { lat: Number(lat), lng: Number(lng) };
+    if (!Number.isFinite(nouvelle.lat) || !Number.isFinite(nouvelle.lng)) {
+      setErreurLocalisationGestion('Position invalide : recommencez en touchant la carte.');
+      return;
+    }
+    setErreurLocalisationGestion('');
+    setMessageLocalisation('');
+    setEnregistrementLocalisation(true);
+    try {
+      const reponse = await api.patch(`/establishments/${etablissement.id}`, {
+        localisation: nouvelle,
+      });
+      // On prend la fiche renvoyée par le serveur (elle porte le point réellement
+      // stocké) ; à défaut, le point validé suffit à rafraîchir l'écran.
+      if (reponse?.etablissement) {
+        setEtablissement((prec) => ({ ...(prec || {}), ...reponse.etablissement }));
+      } else {
+        setEtablissement((prec) => (prec ? { ...prec, localisation: nouvelle } : prec));
+      }
+      setCarteGestionOuverte(false);
+      setMessageLocalisation(
+        `Position corrigée : ${nouvelle.lat.toFixed(5)}, ${nouvelle.lng.toFixed(
+          5
+        )}. Les clients sont désormais guidés vers ce point.`
+      );
+    } catch (err) {
+      // La carte RESTE ouverte : le gérant peut réessayer sans avoir à replacer
+      // son repère — perdre le point choisi serait une punition pour un réseau
+      // qui a hoqueté.
+      setErreurLocalisationGestion(
+        err?.message || 'Position non enregistrée. Vérifiez la connexion, puis réessayez.'
+      );
+    } finally {
+      setEnregistrementLocalisation(false);
+    }
   }
 
   /**
@@ -1508,15 +1577,19 @@ export default function EstablishmentProfile() {
       )}
 
       {/* ── Panneau « Gérer mon établissement » (gérant uniquement, 16/11) ─────
-          Une seule feuille du bas, deux gestes du quotidien :
+          Une seule feuille du bas, trois gestes du quotidien :
             a) FERMER / ROUVRIR — « rupture de stock », panne, maladie. La raison
                est facultative et s'affiche telle quelle sur la fiche
                (« Fermé (Rupture de stock) »). La grille d'horaires n'est PAS
                touchée : demain, la boutique rouvre à son heure habituelle.
             b) HORAIRES — la grille de sept jours, corrigeable après publication.
-           Rien n'est écrit avant validation : le panneau travaille sur des
-           brouillons (`raisonFermeture`, `horairesEdition`), et un appui à côté
-           annule tout (sauf pendant un enregistrement). */}
+            c) LOCALISATION (26/11) — réparer un point GPS qui a dérivé, en
+               déplaçant le repère sur la carte. Seul réglage SANS brouillon :
+               la validation écrit en base, parce que c'est ce qu'est venu faire
+               le gérant.
+           Pour a) et b), rien n'est écrit avant validation : le panneau travaille
+           sur des brouillons (`raisonFermeture`, `horairesEdition`), et un appui à
+           côté annule tout (sauf pendant un enregistrement). */}
       {gestionOuverte && estProprietaire && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 p-3"
@@ -1524,7 +1597,12 @@ export default function EstablishmentProfile() {
           aria-modal="true"
           aria-label="Gérer mon établissement"
           onClick={() => {
-            if (!enregistrementFermeture && !enregistrementHoraires) setGestionOuverte(false);
+            if (
+              !enregistrementFermeture &&
+              !enregistrementHoraires &&
+              !enregistrementLocalisation
+            )
+              setGestionOuverte(false);
           }}
         >
           <div
@@ -1536,14 +1614,16 @@ export default function EstablishmentProfile() {
               <button
                 type="button"
                 className="text-xs font-semibold text-ink-muted underline"
-                disabled={enregistrementFermeture || enregistrementHoraires}
+                disabled={
+                  enregistrementFermeture || enregistrementHoraires || enregistrementLocalisation
+                }
                 onClick={() => setGestionOuverte(false)}
               >
                 Fermer
               </button>
             </div>
             <p className="mb-3 text-[11px] leading-snug text-ink-muted">
-              Ces deux réglages sont visibles immédiatement par tous les visiteurs de votre fiche.
+              Ces réglages sont visibles immédiatement par tous les visiteurs de votre fiche.
             </p>
 
             {messageGestion && (
@@ -1657,6 +1737,67 @@ export default function EstablishmentProfile() {
                 {enregistrementHoraires ? 'Enregistrement…' : 'Enregistrer mes horaires'}
               </button>
             </form>
+
+            {/* ── c) LOCALISATION (26/11) ────────────────────────────────────
+                Une fiche dont le point a dérivé (GPS reçu depuis le réseau, deux
+                kilomètres d'écart constatés sur le terrain) envoie les clients au
+                mauvais endroit : c'est la correction la plus urgente pour le
+                gérant, d'où sa place ici, en un seul geste. Le repère se déplace
+                sur la carte, la validation écrit en base immédiatement — pas de
+                brouillon, pas de bouton « Enregistrer » à ne pas oublier. */}
+            <section className="mt-3 rounded-md border border-line p-3">
+              <p className="text-sm font-bold text-ink">Localisation</p>
+              <p className="mb-1 mt-0.5 text-[11px] leading-snug text-ink-muted">
+                Une position GPS reçue dans un mauvais réseau peut dériver de plusieurs
+                kilomètres. Déplacez le repère sur l’emplacement exact : la correction est
+                enregistrée immédiatement.
+              </p>
+              <p className="mb-2 text-[11px] leading-snug text-ink-muted">
+                Position actuelle :{' '}
+                <span className="font-semibold text-ink">
+                  {etablissement?.localisation?.lat != null &&
+                  etablissement?.localisation?.lng != null
+                    ? `${Number(etablissement.localisation.lat).toFixed(5)}, ${Number(
+                        etablissement.localisation.lng
+                      ).toFixed(5)}`
+                    : 'non renseignée'}
+                </span>
+              </p>
+
+              {messageLocalisation && (
+                <p
+                  role="status"
+                  className="mb-2 rounded-md bg-health-light px-2 py-1.5 text-[11px] font-semibold leading-snug text-health-dark"
+                >
+                  {messageLocalisation}
+                </p>
+              )}
+              {erreurLocalisationGestion && (
+                <p
+                  role="alert"
+                  className="mb-2 rounded-md border border-danger/40 bg-danger/10 px-2 py-1.5 text-[11px] font-semibold leading-snug text-danger"
+                >
+                  {erreurLocalisationGestion}
+                </p>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setErreurLocalisationGestion('');
+                  setCarteGestionOuverte(true);
+                }}
+                disabled={enregistrementLocalisation}
+                className="inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-2.5 text-xs font-bold text-white disabled:opacity-60"
+              >
+                {enregistrementLocalisation ? (
+                  <IconLoader size={16} />
+                ) : (
+                  <Icon name="mapPin" size={16} />
+                )}
+                {enregistrementLocalisation ? 'Enregistrement…' : 'Corriger ma position exacte'}
+              </button>
+            </section>
           </div>
         </div>
       )}
@@ -1896,6 +2037,30 @@ export default function EstablishmentProfile() {
               setPositionGps(null);
               setErreurLocalisation('');
             }}
+          />
+        </Suspense>
+      )}
+
+      {/* ── Carte de correction depuis « Gérer mon établissement » (26/11) ─────
+          Même composant que l'inscription et que « Modifier la fiche », mais avec
+          un comportement différent : la validation ÉCRIT la position (voir
+          `enregistrerPositionGestion`), il n'y a pas de brouillon. `centre` est la
+          position publiée — la carte s'ouvre là où le gérant sait que son commerce
+          N'EST PAS, il n'a plus qu'à faire glisser le repère de 2 km. `reference`
+          alimente le garde-fou « à plus d'un kilomètre » : sur un écart aussi
+          grand, l'avertissement est exactement ce qu'il faut lire avant de
+          valider. Rendue après le panneau dans le DOM : à z-index égal, elle se
+          pose au-dessus de la feuille « Gérer » restée ouverte. */}
+      {carteGestionOuverte && estProprietaire && (
+        <Suspense fallback={null}>
+          <ChoisirPosition
+            ouvert={carteGestionOuverte}
+            titre="Corriger ma position exacte"
+            aide="Faites glisser le repère orange sur l’emplacement exact du commerce (ou touchez la carte : le repère s’y place). Validez : la position est enregistrée immédiatement."
+            onFermer={() => setCarteGestionOuverte(false)}
+            centre={etablissement?.localisation || null}
+            reference={etablissement?.localisation || null}
+            onValider={enregistrerPositionGestion}
           />
         </Suspense>
       )}

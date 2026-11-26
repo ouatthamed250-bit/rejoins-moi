@@ -656,6 +656,22 @@ export default function RegisterEstablishment() {
               : 'Position non détectée : touchez « Utiliser ma position actuelle », ou « Placer sur la carte ».'}
           </p>
         )}
+        {/* Garde-fou de précision (26/11) : un GPS qui répond depuis le réseau peut
+            dériver de plusieurs kilomètres — c'est ainsi qu'une boulangerie s'est
+            retrouvée 2 km plus loin. Au-delà de 500 m (`precisionFaible`), la
+            position est conservée mais l'inscripteur doit le SAVOIR, avec la marche
+            à suivre juste à côté : le bouton carte est la seule façon d'obtenir un
+            point juste quand le ciel est masqué. */}
+        {coords && position.precisionFaible && (
+          <p
+            role="alert"
+            className="mb-2 rounded-md border border-danger/40 bg-danger/10 px-2 py-1.5 text-[11px] font-semibold leading-snug text-danger"
+          >
+            ⚠️ Votre position est imprécise (±{position.precisionMetres} m) : le téléphone a
+            probablement répondu depuis le réseau. Utilisez le bouton « Placer sur la carte » pour
+            être plus précis — sinon vos clients seront envoyés au mauvais endroit.
+          </p>
+        )}
         <div className="flex flex-wrap gap-2">
           <button type="button" className="btn-ghost flex-1 py-2 text-xs" onClick={position.relancer}>
             <Icon name="mapPin" size={15} />

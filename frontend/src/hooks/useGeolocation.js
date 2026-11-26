@@ -155,6 +155,7 @@ export function calibrerPositionGps(dureeMs = 10000) {
  *   loading: boolean, error: string|null, depuisCache: boolean, refuser: boolean,
  *   permission: 'granted'|'denied'|'prompt'|'inconnue', demandeRequise: boolean,
  *   gesteRequis: boolean, source: 'gps'|'manuel'|null, ageMinutes: number|null,
+ *   precisionMetres: number|null, precisionFaible: boolean,
  *   relancer: () => void, choisirPosition: (lat: number, lng: number) => void,
  *   oublier: () => void }}
  */
@@ -165,6 +166,16 @@ export function useGeolocation({ auto = true } = {}) {
   );
   const [source, setSource] = useState(memoireInitiale?.source || null);
   const [ageMinutes, setAgeMinutes] = useState(memoireInitiale?.ageMinutes ?? null);
+  // `precisionMetres` : rayon d'incertitude annoncé par le téléphone (`coords.accuracy`),
+  // arrondi au mètre. Exposé à l'écran d'inscription, qui doit pouvoir dire noir sur
+  // blanc « cette position peut être fausse de X mètres » : une mesure réseau reçue
+  // dans un mauvais réseau dérive de plusieurs kilomètres, et c'est ce point-là qui
+  // finit dans une fiche. Un point CHOISI sur la carte n'est pas une mesure : `null`,
+  // jamais « 0 m » (qui laisserait croire à une exactitude parfaite).
+  const [precisionMetres, setPrecisionMetres] = useState(() => {
+    const brute = memoireInitiale?.accuracy;
+    return brute != null && Number.isFinite(Number(brute)) ? Math.round(Number(brute)) : null;
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [depuisCache, setDepuisCache] = useState(Boolean(memoireInitiale));
@@ -203,6 +214,7 @@ export function useGeolocation({ auto = true } = {}) {
         setPosition({ lat: latitude, lng: longitude });
         setSource('gps');
         setAgeMinutes(memorisee?.ageMinutes ?? 0);
+        setPrecisionMetres(Number.isFinite(accuracy) ? Math.round(accuracy) : null);
         setDepuisCache(false);
         setRefuser(false);
         setGesteRequis(false);
@@ -287,6 +299,7 @@ export function useGeolocation({ auto = true } = {}) {
     setPosition({ lat: Number(lat), lng: Number(lng) });
     setSource('manuel');
     setAgeMinutes(0);
+    setPrecisionMetres(null); // un choix n'est pas une mesure : aucune précision à annoncer
     setDepuisCache(false);
     setGesteRequis(false);
     setDemandeRequise(false);
@@ -300,6 +313,7 @@ export function useGeolocation({ auto = true } = {}) {
     setPosition(null);
     setSource(null);
     setAgeMinutes(null);
+    setPrecisionMetres(null);
     setDepuisCache(false);
   }, []);
 
@@ -343,6 +357,11 @@ export function useGeolocation({ auto = true } = {}) {
         setPosition({ lat: Number(p.lat), lng: Number(p.lng) });
         setSource(p.source);
         setAgeMinutes(p.ageMinutes ?? 0);
+        setPrecisionMetres(
+          p.accuracy != null && Number.isFinite(Number(p.accuracy))
+            ? Math.round(Number(p.accuracy))
+            : null
+        );
         setDepuisCache(false);
         setError(null);
       } else {
@@ -375,6 +394,12 @@ export function useGeolocation({ auto = true } = {}) {
     gesteRequis,
     source,
     ageMinutes,
+    precisionMetres,
+    // Seuil de 500 m : au-delà, ce n'est plus « une position un peu floue », c'est
+    // un point qui peut être dans un autre quartier. L'écran d'inscription s'en sert
+    // pour afficher une alerte visible, avec la marche à suivre (« Placer sur la
+    // carte »), au lieu de laisser croire à une position fiable.
+    precisionFaible: precisionMetres != null && precisionMetres > 500,
     relancer: demander,
     choisirPosition,
     oublier,

@@ -15,6 +15,19 @@
  *     quelle. Le serveur reste seul juge du paiement (règle de sécurité du projet).
  */
 
+// v25 : correction manuelle de la position par le propriétaire (26/11)
+//       — une boulangerie créée sur un mauvais réseau avait reçu un point GPS
+//       décalé de 2 km. « Gérer mon établissement » gagne une section
+//       « Localisation » : le gérant déplace le repère sur la carte et la
+//       correction est écrite immédiatement (PATCH localisation), avec mise à jour
+//       de la distance et du tri sans rechargement. À l'inscription, une position
+//       à plus de 500 m d'incertitude affiche désormais une alerte visible
+//       (« Placer sur la carte »). EstablishmentProfile.jsx, RegisterEstablishment
+//       .jsx et useGeolocation.js changent : nouvelles empreintes index-*.js, donc
+//       nouveau nom de cache — sinon un téléphone déjà installé garderait l'ancien
+//       panneau, sans le bouton de correction.
+//
+
 // v24 : migration complète des sous-catégories + barre d'onglets nettoyée (26/11)
 //       — les 6 419 fiches restantes rejoignent la taxonomie locale (Restauration
 //       et boissons, Commerces, Services de proximité), ce qui vide « Alimentation »
@@ -187,7 +200,7 @@
 //      index.html en secours, donc l'ANCIENNE app — médaillon toujours rogné.
 // Changer la version est indispensable dès que les fichiers « cache d'abord »
 // (icônes) ou l'app shell changent de façon visible.
-const VERSION = 'v24';
+const VERSION = 'v25';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

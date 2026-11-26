@@ -36,7 +36,7 @@ const SECTIONS = [
     liens: [
       { to: '/jobs', icone: 'briefcase', libelle: 'Jobs — offres & demandes' },
       { to: '/main-doeuvre', icone: 'tools', libelle: 'Main-d’œuvre & métiers' },
-      { to: '/main-doeuvre?mode=poster', icone: 'plus', libelle: 'Publier une annonce (gratuit)' },
+      { to: '/main-doeuvre?mode=poster', icone: 'plus', libelle: 'Publier une annonce' },
     ],
   },
   {

@@ -90,6 +90,11 @@ const userSchema = new mongoose.Schema(
     metier: { type: String, trim: true, default: '' },
     bio: { type: String, trim: true, maxlength: 400, default: '' },
 
+    // CONSENTEMENT DE CONTACT (prompt 7) : l'artisan accepte (ou non) que son numéro
+    // soit affiché publiquement sur sa carte, dans l'annuaire et dans le feed. Défaut
+    // false : l'annuaire ne sert JAMAIS un numéro par accident, seulement sur accord.
+    contactPublic: { type: Boolean, default: false },
+
     // Localisation approximative du compte (quartier / commune d'Abidjan)
     quartier: { type: String, trim: true, default: '' },
     commune: { type: String, trim: true, default: '' },
@@ -238,6 +243,10 @@ userSchema.methods.toPublicJSON = function toPublicJSON({
     roles: this.roles,
     metier: this.metier,
     bio: this.bio,
+    // Le téléphone n'est servi à l'annuaire que si `contactPublic` est vrai (la route
+    // /artisans masque explicitement le numéro dans le cas contraire) : le drapeau
+    // voyage donc avec le profil, pour que le frontend sache quoi afficher.
+    contactPublic: Boolean(this.contactPublic),
     quartier: this.quartier,
     commune: this.commune,
     noteMoyenne: this.noteMoyenne,

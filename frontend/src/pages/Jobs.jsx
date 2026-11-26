@@ -78,6 +78,11 @@ export default function Jobs() {
     finAt: profil?.abonnement?.finAt || lireAbonnementLocal()?.finAt || null,
   }));
 
+  // Signalements (prompt 7) : mémorisés par identifiant d'annonce, le temps de la
+  // visite, pour ne pas envoyer deux fois le même signalement depuis cet écran.
+  const [signalements, setSignalements] = useState({});
+  const [signalementEnCours, setSignalementEnCours] = useState('');
+
   const {
     enCours,
     erreur,
@@ -106,7 +111,39 @@ export default function Jobs() {
   });
 
 
-  /** Charge les annonces du sous-onglet actif (offres ou demandes). */
+  /**
+   * Signale une annonce (prompt 7). Aucun compte n'est exigé côté serveur : le
+   * signalement est compté puis examiné dans le back-office, qui retire l'annonce.
+   * On met à jour le compteur local pour que la carte reflète l'envoi sans recharger.
+   */
+  async function signaler(annonce) {
+    const cle = String(annonce.id);
+    if (signalements[cle]) return;
+    setSignalementEnCours(cle);
+    try {
+      const reponse = await api.post(`/jobs/${annonce.id}/signaler`, {});
+      setSignalements((prec) => ({ ...prec, [cle]: true }));
+      setAnnonces((prec) =>
+        prec.map((a) =>
+          String(a.id) === cle
+            ? {
+                ...a,
+                signalements: Number(reponse?.signalements) || (Number(a.signalements) || 0) + 1,
+              }
+            : a
+        )
+      );
+      setMessage(reponse?.message || 'Merci : votre signalement a été transmis à notre équipe.');
+    } catch (err) {
+      setErreur(err?.message || 'Signalement impossible pour le moment.');
+    } finally {
+      setSignalementEnCours('');
+    }
+  }
+
+  /**
+   * Charge les annonces du sous-onglet actif (offres ou demandes).
+   */
   const charger = useCallback(async () => {
     setChargement(true);
     const coords = position.position;
@@ -341,6 +378,9 @@ export default function Jobs() {
               onVerifierDepot={() => verifierMaDemande(annonce)}
               onDebloquer={() => debloquer(annonce)}
               onVerifier={() => verifierPaiement(annonce)}
+              onSignaler={() => signaler(annonce)}
+              signale={Boolean(signalements[String(annonce.id)])}
+              envoiSignalement={signalementEnCours === String(annonce.id)}
             />
           ))}
         </div>
@@ -387,8 +427,12 @@ function CarteAnnonce({
   onVerifierDepot,
   onDebloquer,
   onVerifier,
+  onSignaler,
+  signale,
+  envoiSignalement,
 }) {
-  const offre = (annonce.typeAnnonce || 'demande') === 'offre';
+  const stage = annonce.typeAnnonce === 'stage';
+  const offre = (annonce.typeAnnonce || 'demande') === 'offre' || stage;
   const titre = annonce.titre || annonce.metier || 'Annonce';
   // Pastille de l'annonce : le dessin du MÉTIER (« Plombier » → plomberie,
   // « Coiffeur » → salonBeaute…) plutôt qu'une icône générique. Repli sur l'icône
@@ -398,6 +442,10 @@ function CarteAnnonce({
   // Nom affiché de l'auteur : un compte créé avec son NUMÉRO dans le champ « nom »
   // ne doit pas l'exposer ici — le contact passe par le déblocage payant (§2).
   const nomPosteurPublic = formaterNomPublic(annonce.nomPosteur);
+  // Numéro affichable tout de suite : soit il vient du déblocage côté serveur, soit
+  // l'auteur a coché « J'accepte que mon numéro soit visible » (contactPublic). Un
+  // numéro jamais consenti reste masqué : le drapeau vient du serveur, pas du client.
+  const numeroAffiche = telephone || (annonce.contactPublic ? annonce.telephoneContact : '');
 
   return (
     <article className="carte p-3">
@@ -419,7 +467,7 @@ function CarteAnnonce({
             {annonce.urgence && <TagBadge label="Urgent" taille="sm" icone="alert" />}
           </p>
           <p className="text-[11px] font-semibold text-primary">
-            {offre ? 'Offre de boulot' : 'Demande de main-d’œuvre'} · {annonce.metier}
+            {stage ? 'Offre de stage' : offre ? 'Offre de boulot' : 'Demande de main-d’œuvre'} · {annonce.metier}
           </p>
           <p className="text-[11px] text-ink-muted">
             {[annonce.quartier, annonce.commune].filter(Boolean).join(', ') || 'Abidjan'}
@@ -458,21 +506,25 @@ function CarteAnnonce({
         Publié par <span className="font-semibold text-ink">{nomPosteurPublic || 'un habitant'}</span>
       </p>
 
-      {telephone ? (
+      {numeroAffiche ? (
         <div className="mt-2 rounded-md border border-health/40 bg-health-light p-2">
           <p className="flex items-center gap-1 text-[11px] font-bold text-health-dark">
             <Icon name="check" size={14} />
-            {abonnementActif ? 'Contact inclus dans votre abonnement' : 'Contact débloqué'}
+            {telephone
+              ? abonnementActif
+                ? 'Contact inclus dans votre abonnement'
+                : 'Contact débloqué'
+              : 'Numéro publié par l’auteur'}
           </p>
-          <p className="text-base font-bold text-ink">{formatTelephone(telephone)}</p>
+          <p className="text-base font-bold text-ink">{formatTelephone(numeroAffiche)}</p>
           <div className="mt-2 grid grid-cols-2 gap-2">
-            <a className="btn-health py-2 text-xs" href={`tel:${telephone}`}>
+            <a className="btn-health py-2 text-xs" href={`tel:${numeroAffiche}`}>
               <Icon name="phone" size={16} />
               Appeler
             </a>
             <a
               className="btn-health-ghost py-2 text-xs"
-              href={`https://wa.me/${String(telephone).replace('+', '')}?text=${encodeURIComponent(
+              href={`https://wa.me/${String(numeroAffiche).replace('+', '')}?text=${encodeURIComponent(
                 `Bonjour, je vous contacte via Rejoins'Moi au sujet de « ${titre} ».`
               )}`}
               target="_blank"
@@ -488,10 +540,10 @@ function CarteAnnonce({
           <p className="flex items-center gap-2 rounded-md border border-line bg-soft px-2 py-2 text-[11px] font-semibold text-ink-muted">
             <Icon name="lock" size={16} />
             {gratuit
-              ? 'Numéro masqué : cliquez pour voir le contact'
+              ? 'Contact masqué : cliquez pour le voir'
               : abonnementActif
-                ? 'Inclus dans votre abonnement : débloquez sans payer'
-                : `Numéro masqué : ${formatFcfa(frais)} pour le révéler`}
+                ? 'Contact masqué : inclus dans votre abonnement'
+                : `Contact masqué : ${formatFcfa(frais)} pour le voir`}
           </p>
 
           {gratuit ? (
@@ -544,6 +596,25 @@ function CarteAnnonce({
           </p>
         </div>
       )}
+
+      {/* Signalement (prompt 7) : accessible à tous, sans quitter la liste. Le
+          serveur ne garde qu'un compteur — le back-office examine et retire. */}
+      <div className="mt-2 flex items-center justify-between gap-2 border-t border-line pt-2">
+        <p className="text-[10px] leading-snug text-ink-muted">
+          {Number(annonce.signalements) > 0
+            ? `Annonce signalée ${annonce.signalements} fois`
+            : 'Annonce douteuse ? Signalez-la.'}
+        </p>
+        <button
+          type="button"
+          className="flex shrink-0 items-center gap-1 text-[10px] font-semibold text-ink-muted underline disabled:opacity-60"
+          onClick={onSignaler}
+          disabled={signale || envoiSignalement}
+        >
+          <Icon name="flag" size={12} />
+          {signale ? 'Signalée' : envoiSignalement ? 'Envoi…' : 'Signaler'}
+        </button>
+      </div>
     </article>
   );
 }

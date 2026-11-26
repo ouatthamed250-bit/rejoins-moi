@@ -133,6 +133,11 @@ export const adminApi = {
     requeteAdmin(`/demandes-categories/${id}/valider`, { method: 'POST', body: { famille } }),
   refuserDemandeCategorie: (id, noteAdmin = '') =>
     requeteAdmin(`/demandes-categories/${id}/refuser`, { method: 'POST', body: { noteAdmin } }),
+  // Annonces signalées (prompt 7) : file de modération, les plus signalées d'abord.
+  // Retirer une annonce est une SUPPRESSION réelle côté serveur (une annonce
+  // frauduleuse ne doit pas rester « en pause »).
+  annoncesSignalees: () => requeteAdmin('/annonces-signalees'),
+  supprimerAnnonce: (id) => requeteAdmin(`/jobs/${id}`, { method: 'DELETE' }),
 };
 
 export default adminApi;

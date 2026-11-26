@@ -395,6 +395,9 @@ function CarteBesoin({
   const b = besoin || {};
   const premierContactOffert = b.segment === 'journalier' && b.premierContactGratuit;
   const nombreDeblocages = Number(b.nombreDeblocages) || 0;
+  // Contact immédiatement affichable : débloqué côté serveur, ou publié par l'auteur
+  // qui a coché « J'accepte que mon numéro soit visible » (prompt 7).
+  const numeroAffiche = telephone || (b.contactPublic ? b.telephoneContact : '');
   // Nom affiché de l'auteur : un compte créé avec son NUMÉRO dans le champ « nom »
   // ne doit pas l'exposer ici — le contact passe par le déblocage payant (§2).
   const nomPosteurPublic = formaterNomPublic(b.nomPosteur);
@@ -417,6 +420,11 @@ function CarteBesoin({
             {(b.typeAnnonce || 'demande') === 'offre' && (
               <span className="ml-1 align-middle text-[9px] font-bold uppercase text-primary">
                 Offre
+              </span>
+            )}
+            {b.typeAnnonce === 'stage' && (
+              <span className="ml-1 align-middle text-[9px] font-bold uppercase text-primary">
+                Stage
               </span>
             )}
           </span>
@@ -460,21 +468,21 @@ function CarteBesoin({
         Publié par <span className="font-semibold text-ink">{nomPosteurPublic || 'un habitant'}</span>
       </p>
 
-      {telephone ? (
+      {numeroAffiche ? (
         <div className="mt-2 rounded-md border border-health/40 bg-health-light p-2">
           <p className="flex items-center gap-1 text-[11px] font-bold text-health-dark">
             <Icon name="check" size={14} />
-            Contact débloqué
+            {telephone ? 'Contact débloqué' : 'Numéro publié par l’auteur'}
           </p>
-          <p className="text-base font-bold text-ink">{formatTelephone(telephone)}</p>
+          <p className="text-base font-bold text-ink">{formatTelephone(numeroAffiche)}</p>
           <div className="mt-2 grid grid-cols-2 gap-2">
-            <a className="btn-health py-2 text-xs" href={`tel:${telephone}`}>
+            <a className="btn-health py-2 text-xs" href={`tel:${numeroAffiche}`}>
               <Icon name="phone" size={16} />
               Appeler
             </a>
             <a
               className="btn-health-ghost py-2 text-xs"
-              href={`https://wa.me/${String(telephone).replace('+', '')}?text=${encodeURIComponent(
+              href={`https://wa.me/${String(numeroAffiche).replace('+', '')}?text=${encodeURIComponent(
                 `Bonjour, je vous contacte via Rejoins'Moi pour la mission « ${b.metier} ».`
               )}`}
               target="_blank"
@@ -490,8 +498,8 @@ function CarteBesoin({
           <p className="flex items-center gap-2 rounded-md border border-line bg-soft px-2 py-2 text-[11px] font-semibold text-ink-muted">
             <Icon name="lock" size={16} />
             {gratuit
-              ? 'Numéro masqué : cliquez pour voir le contact'
-              : `Numéro masqué : ${formatFcfa(FRAIS_DEBLOCAGE)} pour le révéler`}
+              ? 'Contact masqué : cliquez pour le voir'
+              : `Contact masqué : ${formatFcfa(FRAIS_DEBLOCAGE)} pour le voir`}
           </p>
 
           {gratuit ? (
@@ -590,6 +598,9 @@ function FormulaireBesoin({
     telephoneContact: '',
   });
   const [segment, setSegment] = useState('specialise');
+  // Consentement de publication du numéro (prompt 7) : décoché par défaut. La
+  // publication reste possible sans lui — c'est le CONTACT qui n'est pas publié.
+  const [contactPublic, setContactPublic] = useState(false);
   const [envoi, setEnvoi] = useState(false);
   const [retour, setRetour] = useState({ type: '', texte: '' });
 
@@ -639,6 +650,8 @@ function FormulaireBesoin({
         quartier: form.quartier,
         segment,
         telephoneContact: form.telephoneContact.trim() || profil?.telephone,
+        // Le serveur ne publie le numéro que sur ce consentement explicite.
+        contactPublic,
       });
       setForm((prec) => ({ ...prec, description: '', urgence: false, budgetFcfa: '', duree: '' }));
       await onPublie?.();
@@ -692,10 +705,26 @@ function FormulaireBesoin({
             </span>
           </span>
         </label>
+        <label className="flex items-start gap-2 py-1 text-xs font-semibold text-ink">
+          <input
+            type="radio"
+            name="typeAnnonce"
+            value="stage"
+            checked={typeAnnonce === 'stage'}
+            onChange={() => setTypeAnnonce('stage')}
+            className="mt-0.5 h-4 w-4 accent-primary"
+          />
+          <span>
+            Offre de stage
+            <span className="block text-[10px] font-normal text-ink-muted">
+              J’accueille un stagiaire : l’annonce apparaît avec les offres de boulot, marquée « Stage ».
+            </span>
+          </span>
+        </label>
       </fieldset>
 
       <label className="text-[10px] font-bold uppercase tracking-wide text-ink-muted">
-        {typeAnnonce === 'offre' ? 'Intitulé du poste' : 'Intitulé de la mission (facultatif)'}
+        {typeAnnonce === 'demande' ? 'Intitulé de la mission (facultatif)' : 'Intitulé du poste'}
         <input
           type="text"
           value={form.intitule}
@@ -863,14 +892,35 @@ function FormulaireBesoin({
         C’est urgent (le besoin remonte en haut de la liste)
       </label>
 
+      {/* Consentement de contact (prompt 7) : le numéro n'est publié QUE si cette
+          case est cochée. La décocher n'empêche pas de publier l'annonce — elle
+          laisse simplement le contact masqué, comme avant. */}
+      <label className="flex items-start gap-2 rounded-md border border-line bg-white p-2.5 text-xs font-semibold text-ink">
+        <input
+          type="checkbox"
+          checked={contactPublic}
+          onChange={(e) => setContactPublic(e.target.checked)}
+          className="mt-0.5 h-4 w-4 accent-primary"
+        />
+        <span>
+          J’accepte que mon numéro de téléphone soit visible par tous les utilisateurs de Rejoins’Moi
+          <span className="block text-[10px] font-normal text-ink-muted">
+            {contactPublic
+              ? 'Votre numéro s’affichera sur la carte, avec les boutons Appeler et WhatsApp.'
+              : 'Sans cette case, votre numéro reste masqué : les personnes intéressées passent par la demande de contact.'}
+          </span>
+        </span>
+      </label>
+
       <button type="submit" className="bouton-principal w-full text-sm" disabled={envoi}>
         <Icon name="briefcase" size={18} />
         {envoi ? 'Publication…' : connecte ? 'Publier mon besoin' : 'Se connecter pour publier'}
       </button>
 
       <p className="text-center text-[10px] leading-snug text-ink-muted">
-        Votre numéro n’est jamais affiché publiquement : il n’est révélé qu’aux personnes qui
-        débloquent le contact.
+        {contactPublic
+          ? 'Votre numéro sera visible par tous : vous pouvez retirer ce consentement à tout moment depuis votre profil.'
+          : 'Votre numéro n’est pas publié : il n’est révélé qu’aux personnes qui débloquent le contact.'}
       </p>
     </form>
   );

@@ -303,6 +303,14 @@ const TRACES = {
       <path d="M16.5 20v-9" />
     </>
   ),
+  // Drapeau « Signaler » (prompt 7) : une annonce douteuse se signale d'un geste,
+  // sans quitter la liste.
+  flag: (
+    <>
+      <path d="M6 21V4" />
+      <path d="M6 4h9l-1.2 3.2L15.5 11H6" />
+    </>
+  ),
   activity: <path d="M3 12.5h3.8L9 6l3.6 12 2.6-5.5H21" />,
   userCheck: (
     <>

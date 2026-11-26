@@ -43,6 +43,9 @@ const FORMULAIRE_VIDE = {
   // l'utilisateur est trouvable comme artisan et s'il reçoit les annonces.
   estArtisan: false,
   chercheTravail: true,
+  // Consentement de contact (prompt 7) : tant qu'il est faux, l'annuaire ne sert
+  // jamais le numéro de l'artisan. C'est un choix explicite, révocable à tout moment.
+  contactPublic: false,
 };
 
 /**
@@ -159,6 +162,7 @@ export default function Profile() {
       commune: profil.commune || '',
       estArtisan: Boolean(profil.estArtisan),
       chercheTravail: profil.chercheTravail !== false,
+      contactPublic: Boolean(profil.contactPublic),
     });
   }, [profil]);
 
@@ -673,6 +677,23 @@ export default function Profile() {
                 Je cherche du travail
                 <span className="block text-[10px] font-normal text-ink-muted">
                   Je parcours les offres de boulot et les demandes de mon quartier.
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 py-1 text-xs font-semibold text-ink">
+              <input
+                type="checkbox"
+                checked={formulaire.contactPublic}
+                onChange={(e) =>
+                  setFormulaire((prec) => ({ ...prec, contactPublic: e.target.checked }))
+                }
+                className="mt-0.5 h-4 w-4 accent-primary"
+              />
+              <span>
+                J’accepte que mon numéro de téléphone soit visible par tous les utilisateurs de Rejoins’Moi
+                <span className="block text-[10px] font-normal text-ink-muted">
+                  Coché : les boutons Appeler et WhatsApp apparaissent sur ma carte artisan. Décoché : mon
+                  numéro reste masqué et passe par la demande de contact.
                 </span>
               </span>
             </label>

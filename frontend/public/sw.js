@@ -15,6 +15,22 @@
  *     quelle. Le serveur reste seul juge du paiement (règle de sécurité du projet).
  */
 
+// v27 : refonte Artisans/Emplois (26/11) — consentement de contact, offres de stage,
+//       signalements et nettoyage final des mentions de gratuité.
+//       • Le numéro n'apparaît sur une carte (annonce ou artisan) que si son
+//         propriétaire a coché « J'accepte que mon numéro soit visible » ; sinon la
+//         carte affiche « Contact masqué » et la mise en relation habituelle reste
+//         seule voie d'accès (Job.contactPublic / User.contactPublic).
+//       • Les offres de stage existent (typeAnnonce 'stage') et sont listées avec les
+//         offres de boulot — sinon elles n'auraient aucun sous-onglet d'accueil.
+//       • Chaque carte d'annonce gagne un bouton « Signaler » (icône drapeau) et le
+//         back-office une section « Annonces signalées » pour retirer une annonce.
+//       Jobs.jsx, JobBoard.jsx, Profile.jsx, Admin.jsx, ArtisansMisEnAvant.jsx,
+//       BottomNav.jsx, MenuPrincipal.jsx et RegisterEstablishment.jsx changent :
+//       nouvelles empreintes index-*.js, donc nouveau nom de cache — sinon un
+//       téléphone déjà installé garderait l'ancien formulaire, sans la case de
+//       consentement ni l'option « Offre de stage ».
+//
 // v25 : correction manuelle de la position par le propriétaire (26/11)
 //       — une boulangerie créée sur un mauvais réseau avait reçu un point GPS
 //       décalé de 2 km. « Gérer mon établissement » gagne une section
@@ -205,7 +221,7 @@
 //       plus de bandeau ni de bouton « gratuit » : le contact s'obtient
 //       naturellement (« Voir le contact »). Même publication que le correctif
 //       backend qui acceptait « GRATUIT » dans l'enum moyenPaiement.
-const VERSION = 'v26';
+const VERSION = 'v27';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

@@ -213,10 +213,37 @@ export default function ArtisansMisEnAvant({
                   {[artisan.quartier, artisan.commune].filter(Boolean).join(', ') || 'Abidjan'}
                   {distanceKm != null ? ` · ${formatDistanceKm(distanceKm)}` : ''}
                 </p>
-                <p className="mt-1 flex items-center gap-1 text-[10px] leading-tight text-ink-muted">
-                  <Icon name="lock" size={11} className="shrink-0" />
-                  Contact via la page Jobs
-                </p>
+                {artisan.contactPublic && artisan.telephone ? (
+                  // Consentement explicite (prompt 7) : l'artisan a accepté que son
+                  // numéro soit visible, les deux gestes utiles sont donc affichés.
+                  <div className="mt-1 grid grid-cols-2 gap-1">
+                    <a
+                      className="btn-health py-1 text-[10px]"
+                      href={`tel:${artisan.telephone}`}
+                    >
+                      <Icon name="phone" size={12} />
+                      Appeler
+                    </a>
+                    <a
+                      className="btn-health-ghost py-1 text-[10px]"
+                      href={`https://wa.me/${String(artisan.telephone).replace('+', '')}?text=${encodeURIComponent(
+                        `Bonjour, je vous contacte via Rejoins'Moi pour vos services de ${
+                          artisan.metier || 'votre métier'
+                        }.`
+                      )}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Icon name="whatsapp" size={12} />
+                      WhatsApp
+                    </a>
+                  </div>
+                ) : (
+                  <p className="mt-1 flex items-center gap-1 text-[10px] leading-tight text-ink-muted">
+                    <Icon name="lock" size={11} className="shrink-0" />
+                    Contact masqué
+                  </p>
+                )}
               </article>
             );
           })
@@ -224,8 +251,9 @@ export default function ArtisansMisEnAvant({
       </div>
 
       <p className="mt-1 text-[10px] leading-snug text-ink-muted">
-        Les artisans abonnés apparaissent en tête, puis les mieux notés et les plus proches. Leurs
-        numéros ne sont communiqués que lors d’une mise en relation (page Jobs).
+        Les artisans abonnés apparaissent en tête, puis les mieux notés et les plus proches. Leur numéro
+        ne s’affiche que s’ils ont accepté d’être contactés publiquement ; sinon la mise en relation
+        passe par la page Jobs.
       </p>
     </section>
   );

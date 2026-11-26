@@ -78,6 +78,13 @@ const SECTIONS = [
     groupe: 'Suivi',
   },
   {
+    cle: 'annonces',
+    libelle: 'Annonces signalées',
+    icone: 'flag',
+    sous: 'Offres et demandes signalées par les utilisateurs : examiner, puis retirer',
+    groupe: 'Suivi',
+  },
+  {
     cle: 'profil',
     libelle: 'Mon profil',
     icone: 'shieldCheck',
@@ -754,6 +761,15 @@ export default function Admin() {
             />
           ) : null}
 
+          {section === 'annonces' ? (
+            <VueAnnoncesSignalees
+              cle={cle}
+              onMessage={setMessage}
+              onGererErreur={gererErreur}
+              onRafraichir={rafraichir}
+            />
+          ) : null}
+
           {section === 'profil' ? (
             <VueProfil
               admin={admin}
@@ -1113,7 +1129,7 @@ const ONGLETS_DEPOTS = [
   { cle: 'tous', libelle: 'Tous', icone: 'wallet', compteur: null },
 ];
 
-const TYPE_ANNONCE = { offre: 'Offre d’emploi', demande: 'Demande d’emploi' };
+const TYPE_ANNONCE = { offre: 'Offre d’emploi', demande: 'Demande d’emploi', stage: 'Offre de stage' };
 
 /**
  * File des dépôts mobile money. La passerelle CinetPay n'étant pas branchée, c'est ICI
@@ -2680,6 +2696,142 @@ function VueReclamations({ cle, onMessage, onGererErreur, onRafraichir }) {
                         {ligne.statut === 'acceptee' ? 'Acceptée' : 'Refusée'}
                       </Badge>
                     )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Panneau>
+  );
+}
+
+/* ─── Annonces signalées (prompt 7) ───────────────────────────────────────────
+   Le signalement est un geste de terrain : quelqu'un voit une annonce douteuse
+   (fausse offre, numéro surtaxé, arnaque) et appuie sur le drapeau. Le serveur ne
+   garde AUCUN nom de signaleur, seulement un compteur — cette file, triée par nombre
+   de signalements, est donc le seul endroit où la décision se prend. « Retirer »
+   supprime réellement l'annonce : une offre frauduleuse ne doit pas rester en pause. */
+function VueAnnoncesSignalees({ cle, onMessage, onGererErreur, onRafraichir }) {
+  const [donnees, setDonnees] = useState(null);
+  const [chargement, setChargement] = useState(true);
+  const [erreur, setErreur] = useState('');
+  const [idEnCours, setIdEnCours] = useState('');
+
+  useEffect(() => {
+    let vivant = true;
+    setChargement(true);
+    adminApi
+      .annoncesSignalees()
+      .then((reponse) => {
+        if (!vivant) return;
+        setDonnees(reponse);
+        setErreur('');
+      })
+      .catch((err) => {
+        if (!vivant || onGererErreur(err)) return;
+        setErreur(err?.message || 'Annonces signalées indisponibles pour le moment.');
+      })
+      .finally(() => {
+        if (vivant) setChargement(false);
+      });
+    return () => {
+      vivant = false;
+    };
+  }, [cle, onGererErreur]);
+
+  const lignes = donnees?.items || [];
+
+  async function retirer(ligne) {
+    setIdEnCours(ligne.id);
+    try {
+      await adminApi.supprimerAnnonce(ligne.id);
+      // On recharge la file PUIS on annonce le résultat (l'ordre compte : le
+      // rafraîchissement efface le message précédent).
+      onRafraichir();
+      onMessage(`« ${ligne.titre} » a été retirée.`);
+    } catch (err) {
+      if (!onGererErreur(err)) setErreur(err?.message || 'Retrait impossible sur cette annonce.');
+    } finally {
+      setIdEnCours('');
+    }
+  }
+
+  return (
+    <Panneau
+      titre="Annonces signalées"
+      sous="Chaque appui sur le drapeau d’une annonce incrémente un compteur, sans conserver le nom du signaleur. Cette file est triée par nombre de signalements : à vous de trancher."
+    >
+      {erreur ? (
+        <Alerte variante="erreur" icone="alert" onFermer={() => setErreur('')}>
+          {erreur}
+        </Alerte>
+      ) : null}
+
+      {chargement ? (
+        <EtatChargement texte="Chargement des annonces signalées…" />
+      ) : lignes.length === 0 ? (
+        <EtatVide texte="Aucune annonce signalée pour le moment." icone="check" />
+      ) : (
+        <div className="bo-tableau-enveloppe">
+          <table className="bo-tableau">
+            <thead>
+              <tr>
+                <th>Annonce</th>
+                <th>Type</th>
+                <th>Auteur</th>
+                <th>Signalements</th>
+                <th>Dernier</th>
+                <th>Décision</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lignes.map((ligne) => (
+                <tr key={ligne.id}>
+                  <td>
+                    <strong>{ligne.titre}</strong>
+                    <div className="bo-petit bo-doux">
+                      {[ligne.quartier, ligne.commune].filter(Boolean).join(', ') ||
+                        'Localisation non précisée'}
+                    </div>
+                    <div className="bo-petit bo-doux">{ligne.description}</div>
+                  </td>
+                  <td>
+                    <div>{TYPE_ANNONCE[ligne.typeAnnonce] || 'Annonce'}</div>
+                    <div className="bo-petit bo-doux">
+                      {ligne.contactPublic ? 'Numéro public' : 'Contact via demande'}
+                    </div>
+                  </td>
+                  <td>
+                    {ligne.auteur ? (
+                      <>
+                        {ligne.auteur.nom}
+                        <div className="bo-petit bo-doux">
+                          {ligne.auteur.telephone
+                            ? formatTelephone(ligne.auteur.telephone)
+                            : 'numéro masqué'}
+                        </div>
+                      </>
+                    ) : (
+                      'compte supprimé'
+                    )}
+                  </td>
+                  <td>
+                    <Badge variante="attente" icone="flag">
+                      {ligne.signalements}
+                    </Badge>
+                  </td>
+                  <td>{ligne.dernierSignalementAt ? formatDateRelative(ligne.dernierSignalementAt) : '—'}</td>
+                  <td className="bo-tableau-actions">
+                    <button
+                      type="button"
+                      className="bo-btn bo-btn--danger"
+                      disabled={idEnCours === ligne.id}
+                      onClick={() => retirer(ligne)}
+                    >
+                      Retirer
+                    </button>
                   </td>
                 </tr>
               ))}

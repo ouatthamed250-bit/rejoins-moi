@@ -40,7 +40,7 @@ router.use(requireDb);
 /**
  * POST /api/users/register — création de compte UNIQUE.
  * body: { telephone, motDePasse, nom, prenom, metier?, estArtisan?, chercheTravail?,
- *         segment?, photoProfil?, quartier?, commune?, localisation? }
+ *         segment?, photoProfil?, quartier?, commune?, localisation?, contactPublic? }
  *
  * Aucun choix de « type de compte » : le métier renseigné suffit à activer la
  * visibilité artisan (décision à valider : elle reste modifiable depuis le profil).
@@ -84,6 +84,9 @@ router.post(
     // chercher du travail (c'est le cœur de l'application).
     const estArtisan = req.body?.estArtisan !== undefined ? Boolean(req.body.estArtisan) : Boolean(metierNettoye);
     const chercheTravail = req.body?.chercheTravail !== undefined ? Boolean(req.body.chercheTravail) : true;
+    // Consentement de contact (prompt 7) : jamais accordé par défaut. L'annuaire ne
+    // sert le numéro que si le compte l'a explicitement coché.
+    const contactPublic = req.body?.contactPublic !== undefined ? Boolean(req.body.contactPublic) : false;
 
     const user = new User({
       telephone,
@@ -92,6 +95,7 @@ router.post(
       motDePasseHash: await User.hashMotDePasse(motDePasse),
       estArtisan,
       chercheTravail,
+      contactPublic,
       metier: metierNettoye,
       segment: segment === 'journalier' ? 'journalier' : segment === 'specialise' ? 'specialise' : '',
       photoProfil,
@@ -198,6 +202,12 @@ router.patch(
     }
     if (req.body?.chercheTravail !== undefined) {
       req.user.chercheTravail = Boolean(req.body.chercheTravail);
+    }
+    // Consentement de contact (prompt 7) : modifiable à tout moment depuis le profil.
+    // Décocher la case retire le numéro de l'annuaire dès l'enregistrement — c'est un
+    // retrait de consentement, il ne doit jamais demander une intervention d'admin.
+    if (req.body?.contactPublic !== undefined) {
+      req.user.contactPublic = Boolean(req.body.contactPublic);
     }
     // Cohérence : un artisan sans métier n'est pas trouvable → on l'inscrit d'office.
     if (req.user.estArtisan && !req.user.metier) {
@@ -451,12 +461,15 @@ router.get(
             ? getDistanceKm(coords.lat, coords.lng, doc.localisation.lat, doc.localisation.lng)
             : null;
         const publicJson = doc.toPublicJSON({ abonnementActif: abonnes.has(String(doc._id)) });
+        // Annuaire public : le numéro n'est servi QUE si l'artisan a coché « J'accepte
+        // que mon numéro soit visible » (contactPublic). Sans cet accord explicite, il
+        // reste masqué et la mise en relation passe par la page Jobs (déblocage tracé,
+        // §2). Le consentement se retire depuis le profil et s'applique aussitôt.
+        const numeroPublic = Boolean(publicJson.contactPublic);
         return {
           ...publicJson,
-          // Annuaire public : le numéro n'est JAMAIS servi ici. La mise en relation
-          // passe par la page Jobs, où le déblocage est payé et tracé (§2).
-          telephone: null,
-          telephoneMasque: true,
+          telephone: numeroPublic ? publicJson.telephone : null,
+          telephoneMasque: !numeroPublic,
           distanceKm,
         };
       })
@@ -480,9 +493,15 @@ router.get(
     // effacé n'a plus de page publique.
     if (!user || user.supprimeAt) throw new ApiError(404, 'Utilisateur introuvable.');
     const abonnement = await Subscription.trouverActif(user._id);
+    const publicJson = user.toPublicJSON({ abonnement });
     res.json({
-      // Profil public : le téléphone n'est pas exposé (mise en relation tracée ailleurs).
-      user: { ...user.toPublicJSON({ abonnement }), telephone: null, telephoneMasque: true },
+      // Profil public : le téléphone n'est exposé que sur accord explicite de la
+      // personne (contactPublic). Sinon la mise en relation reste tracée ailleurs.
+      user: {
+        ...publicJson,
+        telephone: publicJson.contactPublic ? publicJson.telephone : null,
+        telephoneMasque: !publicJson.contactPublic,
+      },
       avis: (user.avis || []).slice().reverse().slice(0, 30),
     });
   })

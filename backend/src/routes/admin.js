@@ -22,6 +22,8 @@
 //   GET    /api/admin/demandes-categories        -> catégories proposées par les gérants (prompt 6)
 //   POST   /api/admin/demandes-categories/:id/valider -> VALIDER une proposition (elle devient proposée)
 //   POST   /api/admin/demandes-categories/:id/refuser -> REFUSER une proposition (elle reste sur les fiches)
+//   GET    /api/admin/annonces-signalees         -> annonces signalées, les plus signalées d'abord (prompt 7)
+//   DELETE /api/admin/jobs/:id                   -> RETIRER une annonce signalée (prompt 7)
 //
 // Suivi (ajout du 01/10) : le back-office n'est plus seulement une file de validation,
 // c'est l'écran de pilotage — d'où /activite (qui s'inscrit, qui se connecte, quels
@@ -158,6 +160,9 @@ router.get(
       etablissements,
       offres,
       demandes,
+      // Offres de stage (prompt 7) : comptées à part pour que le total des annonces
+      // reste juste — un stage n'est ni une offre « classique » ni une demande.
+      stages,
       abonnementsActifs,
       depotsEnAttente,
       depotsValides,
@@ -178,6 +183,7 @@ router.get(
       Establishment.countDocuments({}),
       Job.countDocuments({ typeAnnonce: 'offre' }),
       Job.countDocuments({ typeAnnonce: 'demande' }),
+      Job.countDocuments({ typeAnnonce: 'stage' }),
       Subscription.countDocuments({ statut: { $in: ['actif', 'annule'] }, finAt: { $gt: maintenant } }),
       Depot.countDocuments({ statut: 'en_attente' }),
       Depot.countDocuments({ statut: 'valide' }),
@@ -262,7 +268,7 @@ router.get(
       inscrits30j,
       connectes: { dernier24h: connectes24h, dernier7j: connectes7j },
       etablissements,
-      jobs: { total: offres + demandes, offres, demandes },
+      jobs: { total: offres + demandes + stages, offres, demandes, stages },
       abonnementsActifs,
       depots: {
         enAttente: depotsEnAttente,
@@ -559,6 +565,73 @@ router.post(
     fiche.reclamation.statut = 'refusee';
     await fiche.save();
     res.json({ statut: fiche.reclamation.statut, etablissementId: String(fiche._id), reclame: false });
+  })
+);
+
+/**
+ * GET /api/admin/annonces-signalees — annonces signalées par les utilisateurs
+ * (prompt 7). Triées par NOMBRE de signalements : une annonce signalée dix fois
+ * passe avant celle signalée une fois, quel que soit l'âge de la fiche.
+ */
+router.get(
+  '/annonces-signalees',
+  protectAdmin,
+  asyncHandler(async (req, res) => {
+    const docs = await Job.find({ signalements: { $gt: 0 } })
+      .sort({ signalements: -1, dernierSignalementAt: -1, _id: 1 })
+      .limit(200)
+      .populate('posteParUserId', 'nom prenom telephone metier');
+
+    const items = docs.map((doc) => ({
+      id: String(doc._id),
+      titre: doc.intitule || doc.metier || 'Annonce',
+      typeAnnonce: doc.typeAnnonce || 'demande',
+      metier: doc.metier,
+      description: doc.description,
+      commune: doc.commune,
+      quartier: doc.quartier,
+      statut: doc.statut,
+      // Le numéro est visible ici, dans le back-office : c'est un écran de
+      // modération, pas une réponse publique (aucune règle de masquage à casser).
+      telephoneContact: doc.telephoneContact,
+      contactPublic: Boolean(doc.contactPublic),
+      signalements: doc.signalements || 0,
+      dernierSignalementAt: doc.dernierSignalementAt || null,
+      createdAt: doc.createdAt,
+      auteur: doc.posteParUserId
+        ? {
+            id: String(doc.posteParUserId._id),
+            nom:
+              [doc.posteParUserId.prenom, doc.posteParUserId.nom].filter(Boolean).join(' ') ||
+              'Sans nom',
+            telephone: doc.posteParUserId.telephone || '',
+            metier: doc.posteParUserId.metier || '',
+          }
+        : null,
+    }));
+
+    res.json({ items, total: items.length });
+  })
+);
+
+/**
+ * DELETE /api/admin/jobs/:id — retirer une annonce (prompt 7).
+ *
+ * Suppression RÉELLE du document : une annonce frauduleuse ne doit pas continuer à
+ * exister « en pause ». Les dépôts éventuellement liés gardent leur `jobId`
+ * (historique comptable) ; les écrans du back-office affichent déjà « annonce
+ * retirée » lorsque le populate ne trouve plus le document.
+ */
+router.delete(
+  '/jobs/:id',
+  protectAdmin,
+  asyncHandler(async (req, res) => {
+    const job = await Job.findById(req.params.id);
+    if (!job) throw new ApiError(404, 'Annonce introuvable.');
+    const titre = job.intitule || job.metier || 'Annonce';
+    const signalements = job.signalements || 0;
+    await Job.deleteOne({ _id: job._id });
+    res.json({ supprime: true, id: String(job._id), titre, signalements });
   })
 );
 

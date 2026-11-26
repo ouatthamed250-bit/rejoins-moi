@@ -37,7 +37,7 @@ const ACTIONS = [
     to: '/main-doeuvre?mode=poster',
     icone: 'briefcase',
     titre: 'Poster un besoin',
-    detail: 'Gratuit — trouvez un artisan près de vous',
+    detail: 'Trouvez un artisan près de vous',
   },
   {
     to: '/inscription',

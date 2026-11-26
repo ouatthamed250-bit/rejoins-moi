@@ -2,11 +2,14 @@
 // GET    /api/jobs                    -> liste des annonces (offres de boulot + demandes de main-d'œuvre)
 // POST   /api/jobs                    -> poster une annonce (gratuit)
 // POST   /api/jobs/:id/unlock-contact -> débloque le contact (500 FCFA OU inclus dans l'abonnement)
+// POST   /api/jobs/:id/signaler       -> signale une annonce (prompt 7) : compteur pour le back-office
 //
 // DEUX TYPES D'ANNONCES, UNE SEULE COLLECTION (cahier des charges, ajout du 29/09 :
 // page « Jobs » à deux sous-onglets). Le champ `typeAnnonce` distingue :
 //   • 'offre'   -> offre de boulot (emploi proposé par un employeur)
 //   • 'demande' -> demande de main-d'œuvre (mission ponctuelle artisan/journalier)
+//   • 'stage'   -> offre de stage (prompt 7) : filtrée AVEC les offres de boulot,
+//                  sinon elle ne serait atteignable depuis aucun sous-onglet.
 // Le filtre `?typeAnnonce=` est optionnel : sans lui, on renvoie tout.
 //
 // MODÈLE ÉCONOMIQUE (§2) : poster une annonce est GRATUIT et chercher du travail est
@@ -119,7 +122,10 @@ router.get(
     if (segment === 'journalier' || segment === 'specialise') filtre.segment = segment;
     // 'demande' inclut les annonces créées AVANT l'ajout du champ (valeur manquante
     // en base) : sans quoi l'historique disparaîtrait du sous-onglet « demandes ».
-    if (typeAnnonce === 'offre') filtre.typeAnnonce = 'offre';
+    // 'offre' inclut les STAGES : une offre de stage est un emploi à pourvoir, elle
+    // doit apparaître là où les chercheurs regardent (prompt 7).
+    if (typeAnnonce === 'offre') filtre.typeAnnonce = { $in: ['offre', 'stage'] };
+    else if (typeAnnonce === 'stage') filtre.typeAnnonce = 'stage';
     else if (typeAnnonce === 'demande') filtre.typeAnnonce = { $in: ['demande', null] };
     if (urgence === 'true') filtre.urgence = true;
     if (q) {
@@ -181,6 +187,9 @@ router.post(
       quartier = '',
       segment = 'specialise',
       typeAnnonce = 'demande',
+      // Consentement explicite de publication du numéro (prompt 7). Absent = false :
+      // on ne publie jamais un contact par omission.
+      contactPublic = false,
     } = req.body || {};
 
     if (!metier) throw new ApiError(400, 'Le métier recherché est obligatoire.');
@@ -201,8 +210,9 @@ router.post(
 
     const doc = new Job({
       // Une offre de boulot est un emploi : le segment « journalier » n'a de sens
-      // que pour les demandes de main-d'œuvre ponctuelles.
-      typeAnnonce: typeAnnonce === 'offre' ? 'offre' : 'demande',
+      // que pour les demandes de main-d'œuvre ponctuelles. Le stage est une offre
+      // (typeAnnonce conservé tel quel pour l'afficher « Stage » sur la carte).
+      typeAnnonce: typeAnnonce === 'offre' ? 'offre' : typeAnnonce === 'stage' ? 'stage' : 'demande',
       metier,
       intitule: String(intitule || '').trim().slice(0, 120),
       description: String(description).trim(),
@@ -215,6 +225,7 @@ router.post(
       posteParUserId: req.user._id,
       nomPosteur: req.user.nomComplet || req.user.telephone,
       telephoneContact: contact,
+      contactPublic: Boolean(contactPublic),
       segment: segment === 'journalier' ? 'journalier' : 'specialise',
       premierContactGratuit,
     });
@@ -582,6 +593,33 @@ router.post(
         job.segment === 'journalier'
           ? 'Mission confirmée. La mise en relation est gratuite : aucun frais n’est dû.'
           : 'Mission confirmée.',
+    });
+  })
+);
+
+/**
+ * POST /api/jobs/:id/signaler — signaler une annonce (prompt 7).
+ *
+ * Aucun compte n'est exigé : une annonce douteuse doit pouvoir être signalée par la
+ * personne qui la voit, même non inscrite. On ne conserve AUCUNE donnée sur le
+ * signaleur (ni identifiant, ni numéro) : seuls un compteur et la date du dernier
+ * signalement remontent au back-office, qui examine l'annonce puis la retire.
+ * Le limiteur de débit empêche qu'un seul appareil fasse monter le compteur.
+ */
+router.post(
+  '/:id/signaler',
+  optionalAuth,
+  limiteurAuth(),
+  asyncHandler(async (req, res) => {
+    const job = await Job.findById(req.params.id);
+    if (!job) throw new ApiError(404, 'Annonce introuvable.');
+    job.signalements = (job.signalements || 0) + 1;
+    job.dernierSignalementAt = new Date();
+    await job.save();
+    res.status(201).json({
+      ok: true,
+      signalements: job.signalements,
+      message: 'Merci : votre signalement a été transmis à notre équipe.',
     });
   })
 );

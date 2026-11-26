@@ -51,8 +51,16 @@ const deblocageSchema = new mongoose.Schema(
 const jobSchema = new mongoose.Schema(
   {
     // 'offre' = offre de boulot / 'demande' = demande de main-d'œuvre (défaut,
-    // valeur historique : les annonces déjà en base restent des demandes).
-    typeAnnonce: { type: String, enum: ['offre', 'demande'], default: 'demande', index: true },
+    // valeur historique : les annonces déjà en base restent des demandes) /
+    // 'stage' = offre de stage (prompt 7) : même parcours qu'une offre de boulot,
+    // mais affichée « Stage » et filtrée avec les offres (« Offres de boulot »
+    // reste la porte d'entrée, sinon une annonce de stage serait introuvable).
+    typeAnnonce: {
+      type: String,
+      enum: ['offre', 'demande', 'stage'],
+      default: 'demande',
+      index: true,
+    },
 
     metier: { type: String, required: [true, 'Le métier recherché est obligatoire'], trim: true, index: true },
 
@@ -86,6 +94,12 @@ const jobSchema = new mongoose.Schema(
     // Contact masqué par défaut ; révélé seulement après paiement des 500 FCFA (§2)
     telephoneContact: { type: String, required: true, trim: true },
 
+    // CONSENTEMENT DE CONTACT (prompt 7). L'auteur coche explicitement « J'accepte
+    // que mon numéro soit visible par tous les utilisateurs ». Tant que ce champ est
+    // false, le numéro reste masqué et passe par la mise en relation habituelle :
+    // on ne publie jamais un numéro que son propriétaire n'a pas accepté de publier.
+    contactPublic: { type: Boolean, default: false, index: true },
+
     statut: { type: String, enum: ['ouvert', 'pourvu', 'annule'], default: 'ouvert', index: true },
 
     segment: { type: String, enum: ['journalier', 'specialise'], default: 'specialise', index: true },
@@ -95,6 +109,12 @@ const jobSchema = new mongoose.Schema(
     // Variante journalier (point ouvert §2) : le premier contact est gratuit et le
     // paiement n'intervient qu'après confirmation de la mission par le posteur.
     premierContactGratuit: { type: Boolean, default: false },
+
+    // SIGNALEMENTS (prompt 7) : chaque appui sur « Signaler » incrémente le compteur
+    // (aucune donnée sur le signaleur n'est conservée — un signalement ne doit pas
+    // devenir une trace nominative). Le back-office examine puis retire l'annonce.
+    signalements: { type: Number, default: 0, min: 0, index: true },
+    dernierSignalementAt: { type: Date, default: null },
 
     vues: { type: Number, default: 0, min: 0 },
 
@@ -127,7 +147,11 @@ jobSchema.methods.dejaDebloquePar = function dejaDebloquePar(userId) {
  */
 jobSchema.methods.toJSONFor = function toJSONFor({ userId, masquerContact = true } = {}) {
   const debloque = this.dejaDebloquePar(userId);
-  const masque = masquerContact && !debloque;
+  // Deux façons d'avoir le numéro : l'avoir débloqué (mise en relation tracée) ou
+  // l'auteur avoir ACCEPTÉ de le publier (`contactPublic`). Un numéro public n'est
+  // jamais une fuite : il vient d'une case cochée, pas d'un défaut du schéma.
+  const contactPublic = Boolean(this.contactPublic);
+  const masque = (masquerContact && !debloque) && !contactPublic;
   const monDeblocage = (this.contactDebloquePar || []).find((d) => String(d.userId) === String(userId));
   return {
     id: this._id,
@@ -149,7 +173,11 @@ jobSchema.methods.toJSONFor = function toJSONFor({ userId, masquerContact = true
     premierContactGratuit: this.premierContactGratuit,
     telephoneContact: masque ? null : this.telephoneContact,
     contactMasque: masque,
+    // L'auteur a accepté la publication de son numéro : le frontend peut donc
+    // afficher « Appeler » / « WhatsApp » sans passer par un déblocage.
+    contactPublic,
     nombreDeblocages: this.contactDebloquePar.length,
+    signalements: this.signalements || 0,
     dejaDebloque: debloque,
     // Déblocage couvert par l'abonnement de l'appelant (facturation 0 FCFA).
     debloqueViaAbonnement: Boolean(monDeblocage?.viaAbonnement),

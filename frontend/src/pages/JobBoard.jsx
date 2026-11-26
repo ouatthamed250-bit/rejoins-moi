@@ -34,7 +34,6 @@ import Illustration from '../components/illustrations/Illustration.jsx';
 import { dessinDeContexte } from '../components/illustrations/dessinsContexte.js';
 import { api } from '../utils/api/client.js';
 import { paiementDisponible, FRAIS_DEBLOCAGE } from '../utils/payment.js';
-import { libelleGratuitJusquAu } from '../config/abonnement.js';
 import { distanceDepuis, formatDistanceKm } from '../utils/distance.js';
 import { formatDateRelative, formatFcfa, formatTelephone, formaterNomPublic, initiales } from '../utils/format.js';
 import { METIERS, filtrerBesoinsDemo } from '../data/demoData.js';
@@ -181,10 +180,7 @@ export default function JobBoard() {
         ))}
       </div>
 
-      <InfoBanner variante="succes" titre="Tout est gratuit pendant le lancement" className="mb-3">
-        Poster un besoin, consulter les offres et voir le numéro de contact sont gratuits
-        jusqu’au {libelleGratuitJusquAu()}. Aucun paiement n’est demandé.
-      </InfoBanner>
+      {/* Aucun bandeau de tarif ni de gratuité : l'accès au contact est direct. */}
 
       {horsLigne && (
         <InfoBanner variante="demo" titre="Besoins d’exemple" className="mb-3" illustration="horsLigne">
@@ -367,7 +363,7 @@ export default function JobBoard() {
             onClick={() => setMode('besoin')}
           >
             <Icon name="plus" size={18} />
-            Poster un besoin (gratuit)
+            Poster un besoin
           </button>
         </>
       )}
@@ -445,7 +441,7 @@ function CarteBesoin({
         {Number(b.budgetFcfa) > 0 && (
           <TagBadge label={formatFcfa(b.budgetFcfa)} taille="sm" icone="wallet" />
         )}
-        {premierContactOffert && <TagBadge label="1er contact offert" taille="sm" icone="check" />}
+        {premierContactOffert && <TagBadge label="1er contact inclus" taille="sm" icone="check" />}
         {nombreDeblocages > 0 && (
           <TagBadge
             label={`${nombreDeblocages} contact${nombreDeblocages > 1 ? 's' : ''} débloqué${
@@ -494,7 +490,7 @@ function CarteBesoin({
           <p className="flex items-center gap-2 rounded-md border border-line bg-soft px-2 py-2 text-[11px] font-semibold text-ink-muted">
             <Icon name="lock" size={16} />
             {gratuit
-              ? 'Numéro masqué : cliquez pour voir le contact, gratuitement'
+              ? 'Numéro masqué : cliquez pour voir le contact'
               : `Numéro masqué : ${formatFcfa(FRAIS_DEBLOCAGE)} pour le révéler`}
           </p>
 
@@ -506,7 +502,7 @@ function CarteBesoin({
               disabled={enCours || indisponible}
             >
               <Icon name="unlock" size={17} />
-              {enCours ? 'Ouverture du contact…' : 'Voir le contact (Gratuit)'}
+              {enCours ? 'Ouverture du contact…' : 'Voir le contact'}
             </button>
           ) : modeDepot ? (
             <BlocDepot
@@ -544,7 +540,7 @@ function CarteBesoin({
 
           <p className="mt-1 text-center text-[10px] text-ink-muted">
             {gratuit
-              ? 'Aucun paiement, aucune carte bancaire : le contact est offert pendant la période de lancement.'
+              ? 'La révélation du numéro est enregistrée côté serveur.'
               : modeDepot
                 ? 'Le déblocage est vérifié par notre équipe avant toute révélation du numéro.'
                 : 'Wave · Orange Money · MTN MoMo · Moov. Le paiement est vérifié côté serveur avant toute révélation du numéro.'}
@@ -710,11 +706,6 @@ function FormulaireBesoin({
           className="mt-1 w-full rounded-md border border-line bg-white px-2 py-2.5 text-sm font-semibold normal-case text-ink outline-none focus:border-primary"
         />
       </label>
-      <InfoBanner variante="succes" titre="Publier un besoin est gratuit">
-        Rejoins’Moi ne prend rien, ni sur la publication ni sur les contacts : tout est
-        gratuit pendant la période de lancement.
-      </InfoBanner>
-
       {!position && (
         <InfoBanner variante="alerte" titre="Position GPS indisponible">
           Votre position n’a pas pu être lue : la localisation est nécessaire pour publier (les
@@ -840,7 +831,7 @@ function FormulaireBesoin({
           <span>
             Prestation spécialisée
             <span className="block text-[10px] font-normal text-ink-muted">
-              Le contact est gratuit pour la personne qui le débloque.
+              Le contact s’affiche en un clic, après vérification côté serveur.
             </span>
           </span>
         </label>
@@ -856,8 +847,7 @@ function FormulaireBesoin({
           <span>
             Mission journalière
             <span className="block text-[10px] font-normal text-ink-muted">
-              Le premier contact est offert : le paiement n’intervient qu’après confirmation de la
-              mission.
+              Le premier contact s’affiche en un clic.
             </span>
           </span>
         </label>

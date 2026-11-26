@@ -26,7 +26,6 @@ import { useAuth } from '../hooks/useAuth.js';
 import { formatFcfa, formatTelephone, initiales } from '../utils/format.js';
 import { METIERS, ETABLISSEMENTS_DEMO } from '../data/demoData.js';
 import { TEXTE_DONNEES, LIEN_DONNEES } from '../config/legal.js';
-import { TEXTE_GRATUIT, libelleGratuitJusquAu } from '../config/abonnement.js';
 import { estSansPublicite } from '../config/categories.js';
 
 const FORMULAIRE_VIDE = {
@@ -478,9 +477,9 @@ export default function Profile() {
             Pas de mise en avant
           </p>
           <p className="mt-1 text-[11px] leading-snug text-ink-muted">
-            Votre fiche est un lieu public ou un lieu de culte : elle reste gratuite et visible
-            dans les résultats, mais n’est jamais mise en avant — aucune option payante ne vous
-            sera proposée, même après la période gratuite.
+            Votre fiche est un lieu public ou un lieu de culte : elle reste visible dans les
+            résultats, mais n’est jamais mise en avant — aucune mise en avant ne vous sera
+            proposée.
           </p>
         </section>
       ) : (
@@ -489,10 +488,10 @@ export default function Profile() {
             <Icon name="star" size={16} className="text-primary" />
             Être mis en avant
           </p>
-        <p className="mt-1 text-[11px] leading-snug text-ink-muted">
-          {TEXTE_GRATUIT} Laissez votre demande : elle est enregistrée dès maintenant
-          (gratuit jusqu’au {libelleGratuitJusquAu()}).
-        </p>
+          <p className="mt-1 text-[11px] leading-snug text-ink-muted">
+            Laissez votre demande : elle est enregistrée dès maintenant. Vous serez informé dès
+            qu’une mise en avant sera disponible.
+          </p>
         <button
           type="button"
           className="btn-ghost mt-2 w-full text-xs"
@@ -619,7 +618,8 @@ export default function Profile() {
               ))}
             </div>
             <p className="mt-1 text-[11px] text-ink-muted">
-              En tant que journalier, votre premier contact sur une mission d’une journée est gratuit.
+              En tant que journalier, votre premier contact sur une mission d’une journée s’affiche
+              en un clic.
             </p>
           </fieldset>
 
@@ -746,7 +746,7 @@ export default function Profile() {
             onClick={() => navigate('/main-doeuvre?mode=poster')}
           >
             <Icon name="plus" size={18} />
-            Poster un besoin (gratuit)
+            Poster un besoin
           </button>
         ) : (
           <ul className="flex flex-col gap-2">

@@ -17,7 +17,24 @@ const deblocageSchema = new mongoose.Schema(
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     montant: { type: Number, default: 500 },
     devise: { type: String, default: 'XOF' },
-    moyenPaiement: { type: String, enum: ['WAVE', 'ORANGE_MONEY', 'MTN_MOMO', 'MOOV_MONEY', 'GRATUIT_JOURNALIER', 'ABONNEMENT', 'SOLDE'], default: 'WAVE' },
+    // 'GRATUIT' = contact offert pendant la période sans paiement (routes/jobs.js,
+    // cas « mode gratuit ») ; 'GRATUIT_JOURNALIER' = premier contact offert d'une
+    // mission journalière. Les deux valeurs sont distinctes : les confondre faisait
+    // échouer l'ENUM Mongoose et bloquait la révélation du contact.
+    moyenPaiement: {
+      type: String,
+      enum: [
+        'WAVE',
+        'ORANGE_MONEY',
+        'MTN_MOMO',
+        'MOOV_MONEY',
+        'GRATUIT',
+        'GRATUIT_JOURNALIER',
+        'ABONNEMENT',
+        'SOLDE',
+      ],
+      default: 'WAVE',
+    },
     transactionId: { type: String, trim: true },
     statutPaiement: { type: String, enum: ['ACCEPTED', 'PENDING', 'REFUSED'], default: 'ACCEPTED' },
     // Déblocage couvert par l'abonnement en cours (aucun frais à l'unité) — permet

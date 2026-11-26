@@ -200,7 +200,12 @@
 //      index.html en secours, donc l'ANCIENNE app — médaillon toujours rogné.
 // Changer la version est indispensable dès que les fichiers « cache d'abord »
 // (icônes) ou l'app shell changent de façon visible.
-const VERSION = 'v25';
+// v26 : retrait des mentions de gratuité dans l'interface (26/11)
+//       — les pages Jobs / Main-d'œuvre / Profil / Mentions légales n'affichent
+//       plus de bandeau ni de bouton « gratuit » : le contact s'obtient
+//       naturellement (« Voir le contact »). Même publication que le correctif
+//       backend qui acceptait « GRATUIT » dans l'enum moyenPaiement.
+const VERSION = 'v26';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

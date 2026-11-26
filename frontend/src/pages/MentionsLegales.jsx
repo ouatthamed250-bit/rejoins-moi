@@ -13,7 +13,6 @@
 import { Icon } from '../components/Icons.jsx';
 import InfoBanner from '../components/InfoBanner.jsx';
 import { TEXTE_DONNEES, LIEN_DONNEES, NUMERO_SUPPORT } from '../config/legal.js';
-import { TEXTE_GRATUIT, libelleGratuitJusquAu } from '../config/abonnement.js';
 
 /** Un bloc titré, style sobre (pas de couleur vive : on n'est pas dans un parcours). */
 function Bloc({ titre, icone, children }) {
@@ -101,18 +100,18 @@ export default function MentionsLegales() {
         <p>
           Le numéro de téléphone d’un artisan ou d’un chercheur de boulot n’est{' '}
           <span className="font-semibold text-ink">jamais</span> affiché dans les listes : il n’est
-          révélé qu’après le déblocage du contact — gratuit pendant la période de lancement — et
-          cette révélation est enregistrée côté serveur.
+          révélé qu’après votre demande de contact, et cette révélation est enregistrée côté
+          serveur.
         </p>
       </Bloc>
 
-      <Bloc titre="Paiements" icone="wallet">
-        <p>{TEXTE_GRATUIT}</p>
+      <Bloc titre="Contact et utilisation" icone="wallet">
         <p>
-          Jusqu’au {libelleGratuitJusquAu()}, le déblocage d’un contact et l’abonnement artisan sont
-          gratuits : aucun paiement n’est demandé, aucun débit n’est effectué et la passerelle
-          CinetPay n’est pas appelée. Les options de visibilité qui arriveront plus tard seront
-          annoncées ici avant toute mise en service.
+          L’application est ouverte à tous : consulter les fiches et demander un contact se fait
+          directement dans l’application, sans information bancaire à saisir.
+        </p>
+        <p>
+          Toute évolution des conditions d’utilisation sera annoncée ici avant sa mise en service.
         </p>
       </Bloc>
 

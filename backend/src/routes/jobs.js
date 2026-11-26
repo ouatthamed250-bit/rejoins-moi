@@ -47,7 +47,6 @@ import {
   GRATUIT_JUSQU_AU,
   estModeGratuit,
   getMessageModeGratuit,
-  libelleGratuitJusquAu,
 } from '../config/abonnement.js';
 
 const router = express.Router();
@@ -336,7 +335,9 @@ router.post(
         montantPaye: 0,
         gratuit: true,
         modeGratuit: true,
-        message: `Contact débloqué gratuitement (offert jusqu'au ${libelleGratuitJusquAu()}).`,
+        // Message neutre : l'interface n'affiche plus de discours commercial sur la
+        // gratuité, le numéro doit simplement apparaître naturellement.
+        message: 'Contact affiché : le numéro est disponible ci-dessous.',
       });
     }
 

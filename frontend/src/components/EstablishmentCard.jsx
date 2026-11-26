@@ -19,18 +19,10 @@ import TagBadge from './TagBadge.jsx';
 import { formatCompteur, formatTelephone } from '../utils/format.js';
 import { distanceDepuis, formatDistanceKm } from '../utils/distance.js';
 import { partagerWhatsApp, textePartageFiche, urlPartageFiche } from '../utils/partage.js';
-
-/** Libellés de catégories (miroir de CATEGORIES dans data/demoData.js). */
-const LIBELLES_CATEGORIES = {
-  alimentation: 'Alimentation',
-  beaute: 'Beauté',
-  services: 'Services',
-  artisanat: 'Artisanat',
-  commerce: 'Commerce',
-  sante: 'Santé',
-  spiritualite: 'Spiritualité',
-  autre: 'Autre',
-};
+// Libellé de famille : une seule source (config/categories.js) — la table locale
+// recopiait les 8 familles et affichait un slug brut dès qu'une famille locale
+// arrivait (« restauration », « proximite »).
+import { libelleFamille } from '../config/categories.js';
 
 /**
  * Les deux compteurs, côte à côte et jamais fusionnés.
@@ -122,7 +114,7 @@ export default function EstablishmentCard({
           ? distanceDepuis(position, etablissement || { localisation: null })
           : null;
   const fichier = `/etablissement/${e.id}`;
-  const libelleCategorie = LIBELLES_CATEGORIES[e.categorie] || e.categorie;
+  const libelleCategorie = libelleFamille(e.categorie);
 
   /**
    * Partage WhatsApp de la fiche, SANS ouvrir la fiche.

@@ -15,6 +15,13 @@
  *     quelle. Le serveur reste seul juge du paiement (règle de sécurité du projet).
  */
 
+// v23 : libellés de famille (20/11) — la carte du feed et la fiche affichaient
+//       « Autre » ou un slug brut (« restauration ») pour les fiches rangées dans
+//       une famille locale : elles lisent désormais config/categories.js
+//       (libelleFamille). EstablishmentCard.jsx et EstablishmentProfile.jsx
+//       changent, donc nouvelles empreintes index-*.js : nouveau nom de cache,
+//       sinon un téléphone déjà en v22 garderait les anciens libellés.
+//
 // v22 : adaptation ivoirienne des catégories (20/11) — familles locales
 //       (Restauration et boissons, Commerces, Services de proximité, Lieux de culte
 //       et communautaires), sous-catégories de rue (maquis, koutoukoudrom,
@@ -170,7 +177,7 @@
 //      index.html en secours, donc l'ANCIENNE app — médaillon toujours rogné.
 // Changer la version est indispensable dès que les fichiers « cache d'abord »
 // (icônes) ou l'app shell changent de façon visible.
-const VERSION = 'v22';
+const VERSION = 'v23';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

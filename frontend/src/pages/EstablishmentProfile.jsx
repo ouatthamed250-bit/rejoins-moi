@@ -54,17 +54,10 @@ import { useAuth } from '../hooks/useAuth.js';
 /** Leaflet n'arrive que si le gérant ouvre réellement la carte de recalibrage. */
 const ChoisirPosition = lazy(() => import('../components/ChoisirPosition.jsx'));
 
-/** Miroir des libellés de catégories (data/demoData.js). */
-const LIBELLES_CATEGORIES = {
-  alimentation: 'Alimentation',
-  beaute: 'Beauté',
-  services: 'Services',
-  artisanat: 'Artisanat',
-  commerce: 'Commerce',
-  sante: 'Santé',
-  spiritualite: 'Spiritualité',
-  autre: 'Autre',
-};
+// Libellé de famille : source unique (config/categories.js). L'ancienne table
+// locale ne connaissait que les 8 familles historiques et affichait « Autre »
+// pour toute fiche rangée dans une famille locale (maquis, WC publique…).
+import { libelleFamille } from '../config/categories.js';
 
 export default function EstablishmentProfile() {
   const { id } = useParams();
@@ -825,7 +818,7 @@ export default function EstablishmentProfile() {
   }
 
   const tags = etablissement.tags || [];
-  const libelleCategorie = LIBELLES_CATEGORIES[etablissement.categorie] || 'Autre';
+  const libelleCategorie = libelleFamille(etablissement.categorie);
   const whatsapp = etablissement.whatsapp || etablissement.telephone;
 
   return (

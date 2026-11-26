@@ -1276,15 +1276,34 @@ export default function EstablishmentProfile() {
           </section>
         )}
 
-        {/* ── Contact direct : appel et WhatsApp ── */}
-        {etablissement.telephone && (
-          <section className="mt-4 grid grid-cols-2 gap-2">
-            <a className="btn-ghost text-sm" href={`tel:${etablissement.telephone}`}>
-              <Icon name="phone" size={17} />
-              Appeler
-            </a>
+        {/* ── Contact : message interne d'abord (prompt B), puis téléphone ──
+            WhatsApp n'est plus le chemin par défaut : la discussion se fait dans
+            l'application, y compris pour un gérant qui n'a jamais publié de numéro.
+            Le lien WhatsApp reste en secours (le commerce l'a peut-être renseigné),
+            mais il n'occupe plus la place principale. */}
+        <section className="mt-4">
+          <div className={`grid gap-2 ${etablissement.telephone ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            {!estProprietaire && (
+              <button
+                type="button"
+                className="bouton-principal text-sm"
+                onClick={() => navigate(`/messages?to=${etablissement.id}`)}
+              >
+                <Icon name="message" size={17} />
+                Message
+              </button>
+            )}
+            {etablissement.telephone ? (
+              <a className="btn-ghost text-sm" href={`tel:${etablissement.telephone}`}>
+                <Icon name="phone" size={17} />
+                Appeler
+              </a>
+            ) : null}
+          </div>
+
+          {whatsapp ? (
             <a
-              className="btn-ghost text-sm"
+              className="btn-ghost mt-2 w-full text-sm"
               href={`https://wa.me/${String(whatsapp).replace('+', '')}?text=${encodeURIComponent(
                 `Bonjour, je vous contacte via Rejoins'Moi au sujet de ${etablissement.nom}.`
               )}`}
@@ -1292,10 +1311,19 @@ export default function EstablishmentProfile() {
               rel="noopener noreferrer"
             >
               <Icon name="whatsapp" size={17} />
-              WhatsApp
+              Écrire sur WhatsApp
             </a>
-          </section>
-        )}
+          ) : null}
+
+          <p className="mt-1.5 flex items-start gap-1 text-[11px] leading-snug text-ink-muted">
+            <Icon name="lock" size={13} className="mt-0.5 shrink-0" />
+            <span>
+              Le message arrive directement dans l’application du gérant : votre numéro n’est pas
+              communiqué.
+            </span>
+          </p>
+        </section>
+
 
         {/* ── Avis clients (§5) — jamais pour la santé (§6) ── */}
         {estSante ? (

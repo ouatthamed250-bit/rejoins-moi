@@ -138,6 +138,15 @@ export const adminApi = {
   // frauduleuse ne doit pas rester « en pause »).
   annoncesSignalees: () => requeteAdmin('/annonces-signalees'),
   supprimerAnnonce: (id) => requeteAdmin(`/jobs/${id}`, { method: 'DELETE' }),
+  // ── Messagerie interne (prompt B) ─────────────────────────────────────────
+  // Retrouver les conversations d'un compte : par nom, prénom, numéro, ou en
+  // collant directement un identifiant de conversation.
+  conversations: (params = {}) =>
+    requeteAdmin(`/conversations${typeof params === 'string' ? params : chaineParametres(params)}`),
+  // Extraction d'une conversation (réquisition légale) : le serveur renvoie un
+  // objet JSON complet (métadonnées, participants avec numéros, messages datés).
+  // Le téléchargement du fichier est fait par l'écran, pas par ce client.
+  exportConversation: (id) => requeteAdmin(`/conversations/${id}/export`),
 };
 
 export default adminApi;

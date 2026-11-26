@@ -254,7 +254,16 @@
 //       d'où ce nouveau nom de cache : sans lui, un téléphone déjà installé
 //       servirait l'ancien index.html et garderait des cartes qui ne réagissent
 //       pas au clic.
-const VERSION = 'v30';
+// v31 : messagerie interne (26/11)
+//       — l'onglet Messages devient un vrai chat : recherche d'un artisan ou d'un
+//       commerce, conversation privée, aucun numéro échangé. Les boutons
+//       « Message » des fiches remplacent le renvoi vers WhatsApp, et le
+//       back-office gagne la modération des messages (recherche + export JSON
+//       pour réquisition). Pages Messages.jsx, Admin.jsx, EstablishmentProfile.jsx,
+//       ArtisanProfile.jsx et le client admin changent : nouveau nom de cache
+//       obligatoire, sinon un téléphone déjà installé garderait l'ancien écran
+//       « le contact passe par WhatsApp ».
+const VERSION = 'v31';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

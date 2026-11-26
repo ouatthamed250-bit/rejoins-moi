@@ -24,6 +24,8 @@
 //   POST   /api/admin/demandes-categories/:id/refuser -> REFUSER une proposition (elle reste sur les fiches)
 //   GET    /api/admin/annonces-signalees         -> annonces signalées, les plus signalées d'abord (prompt 7)
 //   DELETE /api/admin/jobs/:id                   -> RETIRER une annonce signalée (prompt 7)
+//   GET    /api/admin/conversations              -> chercher les conversations d'un compte (messagerie, prompt B)
+//   GET    /api/admin/conversations/:id/export   -> EXTRAIRE une conversation (réquisition légale)
 //
 // Suivi (ajout du 01/10) : le back-office n'est plus seulement une file de validation,
 // c'est l'écran de pilotage — d'où /activite (qui s'inscrit, qui se connecte, quels
@@ -34,6 +36,7 @@
 // sont protégées par protectAdmin qui RELIT `estAdmin` en base à chaque appel.
 
 import express from 'express';
+import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Job from '../models/Job.js';
 import Establishment from '../models/Establishment.js';
@@ -41,6 +44,8 @@ import Subscription from '../models/Subscription.js';
 import Depot from '../models/Depot.js';
 import ListeAttente from '../models/ListeAttente.js';
 import DemandeCategorie from '../models/DemandeCategorie.js';
+import Conversation from '../models/Conversation.js';
+import Message from '../models/Message.js';
 import { protectAdmin, signToken, DUREE_JETON_ADMIN } from '../middleware/auth.js';
 import { requireDb } from '../config/db.js';
 import { asyncHandler, ApiError } from '../middleware/errorHandler.js';
@@ -1248,6 +1253,208 @@ router.post(
     // Le libellé reste sur les fiches qui l'ont saisi : refuser une proposition
     // n'efface pas le travail du gérant, ça évite juste de le proposer aux suivants.
     res.json({ demande: demande.toPublicJSON(), message: 'Proposition refusée.' });
+  })
+);
+
+/* ─── Messagerie interne : recherche et extraction (prompt B) ──────────────────
+   L'administrateur ne participe JAMAIS à une conversation : il ne peut pas
+   écrire à la place d'un compte. Il dispose de deux gestes, tous deux protégés
+   par protectAdmin (qui relit `estAdmin` en base à chaque appel) :
+
+   1. RETROUVER les conversations d'une personne à partir de son nom ou de son
+      numéro — indispensable quand une réquisition ne donne qu'un nom ;
+   2. EXTRAIRE une conversation entière en JSON (participants, numéros, date et
+      heure de chaque message, expéditeur).
+
+   Ces routes sont les SEULES à publier les numéros de téléphone des participants :
+   c'est le prix de la réquisition, et il reste enfermé derrière `estAdmin`.
+   Un message n'est ni modifiable ni supprimable un par un : une pièce ne doit pas
+   pouvoir être altérée après coup. */
+
+const FR_DATE_LONGUE = new Intl.DateTimeFormat('fr-FR', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  timeZone: 'Africa/Abidjan',
+});
+const FR_HEURE = new Intl.DateTimeFormat('fr-FR', {
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  timeZone: 'Africa/Abidjan',
+});
+
+/** « 26/11/2026 » — jamais « Invalid Date » dans une pièce remise à la police. */
+function dateLisible(valeur) {
+  if (!valeur) return '';
+  const date = new Date(valeur);
+  return Number.isNaN(date.getTime()) ? '' : FR_DATE_LONGUE.format(date);
+}
+
+/** « 14:32:07 » (heure d'Abidjan). */
+function heureLisible(valeur) {
+  if (!valeur) return '';
+  const date = new Date(valeur);
+  return Number.isNaN(date.getTime()) ? '' : FR_HEURE.format(date);
+}
+
+/** Participants d'une conversation, avec le numéro (back-office uniquement). */
+function participantsExport(conversation) {
+  return (conversation.participants || []).map((p) => ({
+    id: String(p?._id || p),
+    nom: p?.nomComplet || [p?.prenom, p?.nom].filter(Boolean).join(' ') || 'Compte sans nom',
+    telephone: p?.telephone || '',
+    estArtisan: Boolean(p?.estArtisan),
+    metier: p?.metier || '',
+    compteSupprime: Boolean(p?.supprimeAt),
+  }));
+}
+
+/**
+ * GET /api/admin/conversations?q=…&limit=…
+ *
+ * Sans `q` : les conversations les plus récentes de la plateforme (veille).
+ * Avec `q` : celles dont UN participant correspond au nom, au prénom ou au
+ * numéro. Un identifiant de conversation collé tel quel fonctionne aussi : c'est
+ * le geste le plus rapide quand la réquisition donne déjà cet identifiant.
+ */
+router.get(
+  '/conversations',
+  protectAdmin,
+  asyncHandler(async (req, res) => {
+    const terme = String(req.query.q || '').trim();
+    const limite = Math.min(Math.max(Number(req.query.limit) || 30, 1), 100);
+
+    const filtre = {};
+
+    if (terme) {
+      const rx = new RegExp(escapeRegex(terme), 'i');
+      const comptes = await User.find({
+        $or: [{ nom: rx }, { prenom: rx }, { telephone: rx }],
+      })
+        .select('_id')
+        .limit(50);
+
+      // Aucun compte ne correspond : inutile d'interroger les conversations
+      // (et surtout, ne pas retomber sur « tout » par un filtre vide).
+      if (comptes.length === 0 && !mongoose.isValidObjectId(terme)) {
+        return res.json({ conversations: [], total: 0, terme });
+      }
+
+      const conditions = [{ participants: { $in: comptes.map((c) => c._id) } }];
+      if (mongoose.isValidObjectId(terme)) conditions.push({ _id: terme });
+      filtre.$or = conditions;
+    }
+
+    const conversations = await Conversation.find(filtre)
+      .sort({ derniereActivite: -1 })
+      .limit(limite)
+      .populate({
+        path: 'participants',
+        select: 'nom prenom telephone estArtisan metier supprimeAt',
+      });
+
+    // Nombre de messages par conversation, en une agrégation (pas une requête
+    // par ligne).
+    const ids = conversations.map((c) => c._id);
+    const compteurs = ids.length
+      ? await Message.aggregate([
+          { $match: { conversationId: { $in: ids } } },
+          { $group: { _id: '$conversationId', total: { $sum: 1 } } },
+        ])
+      : [];
+    const parConversation = new Map(compteurs.map((c) => [String(c._id), c.total]));
+
+    res.json({
+      conversations: conversations.map((conversation) => ({
+        id: String(conversation._id),
+        participants: participantsExport(conversation),
+        dernierMessage: conversation.dernierMessage || '',
+        debut: conversation.createdAt,
+        derniereActivite: conversation.derniereActivite,
+        nombreMessages: parConversation.get(String(conversation._id)) || 0,
+      })),
+      total: conversations.length,
+      terme,
+    });
+  })
+);
+
+/**
+ * GET /api/admin/conversations/:id/export — EXTRAIRE une conversation.
+ *
+ * Réponse JSON téléchargeable (`Content-Disposition: attachment`) : c'est une
+ * pièce destinée à être remise telle quelle (police, justice), donc lisible sans
+ * l'application. Contenu :
+ *   • meta : identifiant, dates, nombre de messages, qui a exporté et quand ;
+ *   • participants : nom, numéro, métier, état du compte ;
+ *   • messages : numéro d'ordre, expéditeur, identifiant, date et heure locales
+ *     (Africa/Abidjan, sans ambiguïté de fuseau).
+ *
+ * On n'arrondit rien et on ne tronque rien : un message de 1000 caractères sort
+ * entier. Le plafond de 5000 messages protège seulement la mémoire du serveur.
+ */
+router.get(
+  '/conversations/:id/export',
+  protectAdmin,
+  asyncHandler(async (req, res) => {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      throw new ApiError(404, 'Conversation introuvable.');
+    }
+
+    const conversation = await Conversation.findById(req.params.id).populate({
+      path: 'participants',
+      select: 'nom prenom telephone estArtisan metier supprimeAt statutCompte createdAt',
+    });
+    if (!conversation) throw new ApiError(404, 'Conversation introuvable.');
+
+    const messages = await Message.find({ conversationId: conversation._id })
+      .sort({ createdAt: 1 })
+      .limit(5000);
+
+    const participants = participantsExport(conversation);
+    const nomsParId = new Map(participants.map((p) => [p.id, p.nom]));
+
+    const charge = {
+      meta: {
+        conversationId: String(conversation._id),
+        debut: conversation.createdAt,
+        debutLisible: `${dateLisible(conversation.createdAt)} ${heureLisible(conversation.createdAt)}`.trim(),
+        derniereActivite: conversation.derniereActivite,
+        nombreMessages: messages.length,
+        exporteLe: new Date().toISOString(),
+        exportePar: {
+          id: String(req.user._id),
+          nom: req.user.nomComplet || 'Administrateur',
+          telephone: req.user.telephone || '',
+        },
+        fuseauHoraire: 'Africa/Abidjan',
+        // Rappel explicite pour le destinataire de la pièce : ce document contient
+        // des données personnelles (loi ivoirienne n° 2013-450 sur la protection
+        // des données à caractère personnel).
+        avertissement:
+          'Extraction de messagerie interne Rejoins’Moi — données personnelles, usage strictement limité au cadre de la réquisition.',
+      },
+      participants,
+      messages: messages.map((message, index) => ({
+        numero: index + 1,
+        id: String(message._id),
+        expediteurId: String(message.expediteurId),
+        expediteur: nomsParId.get(String(message.expediteurId)) || 'Compte inconnu',
+        date: message.createdAt,
+        dateLisible: dateLisible(message.createdAt),
+        heure: heureLisible(message.createdAt),
+        contenu: message.contenu,
+        luPar: (message.luPar || []).map(String),
+      })),
+    };
+
+    const nomFichier = `conversation-${conversation._id}-${new Date().toISOString().slice(0, 10)}.json`;
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${nomFichier}"`);
+    // `res.send` (et non `res.json`) pour ne pas réécrire l'en-tête Content-Type
+    // déjà posé : le fichier doit sortir en JSON lisible, indenté.
+    res.send(JSON.stringify(charge, null, 2));
   })
 );
 

@@ -23,6 +23,7 @@ import establishmentsRouter from './routes/establishments.js';
 import jobsRouter from './routes/jobs.js';
 import subscriptionsRouter from './routes/subscriptions.js';
 import healthFacilitiesRouter from './routes/healthFacilities.js';
+import messagesRouter from './routes/messages.js';
 import adminRouter from './routes/admin.js';
 import { isPaymentConfigured, getUnlockFee } from './services/cinetpay.js';
 import {
@@ -163,6 +164,7 @@ app.get('/api', (req, res) => {
       '/api/jobs',
       '/api/subscriptions',
       '/api/health-facilities',
+      '/api/messages',
     ],
   });
 });
@@ -215,6 +217,9 @@ app.use('/api/establishments', establishmentsRouter);
 app.use('/api/jobs', jobsRouter);
 app.use('/api/subscriptions', subscriptionsRouter);
 app.use('/api/health-facilities', healthFacilitiesRouter);
+// Messagerie interne (prompt B) : chat privé entre deux comptes, recherche d'un
+// destinataire, et lecture des conversations du compte connecté.
+app.use('/api/messages', messagesRouter);
 // Back-office administrateur (dépôts + validation des déblocages + comptes).
 app.use('/api/admin', adminRouter);
 

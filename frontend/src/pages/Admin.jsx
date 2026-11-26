@@ -93,6 +93,13 @@ const SECTIONS = [
     groupe: 'Suivi',
   },
   {
+    cle: 'messages',
+    libelle: 'Modération des messages',
+    icone: 'message',
+    sous: 'Retrouver les conversations d’un compte et les exporter (réquisition légale)',
+    groupe: 'Suivi',
+  },
+  {
     cle: 'misesEnAvant',
     libelle: 'Mises en avant',
     icone: 'star',
@@ -869,6 +876,14 @@ export default function Admin() {
               onMessage={setMessage}
               onGererErreur={gererErreur}
               onRafraichir={rafraichir}
+            />
+          ) : null}
+
+          {section === 'messages' ? (
+            <VueModerationMessages
+              cle={cle}
+              onMessage={setMessage}
+              onGererErreur={gererErreur}
             />
           ) : null}
 
@@ -3198,6 +3213,321 @@ function VueAnnoncesSignalees({ cle, onMessage, onGererErreur, onRafraichir }) {
       )}
     </Panneau>
   );
+/* ─── Modération des messages (prompt B) ──────────────────────────────────────
+   La messagerie interne est privée par conception : l'administrateur n'y écrit
+   jamais et n'a pas de conversation à lui. Cette section est le SEUL accès, et
+   elle est volontairement brute : on cherche un compte par nom ou par numéro, on
+   lit la liste de ses discussions, puis on exporte celle qui est visée.
+
+   Pourquoi un export de fichier : une réquisition légale demande une pièce
+   transmissible (identifiant de conversation, noms, numéros, date/heure de
+   chaque message, expéditeur). Le serveur construit ce document ; cet écran ne
+   fait que le télécharger — il ne recompose aucune donnée, donc aucune chance
+   d'altérer une pièce.
+   --------------------------------------------------------------------------- */
+
+/** Télécharge un objet JSON sous forme de fichier (aucune dépendance). */
+function telechargerJson(nomFichier, donnees) {
+  try {
+    const contenu = JSON.stringify(donnees, null, 2);
+    const blob = new Blob([contenu], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const lien = document.createElement('a');
+    lien.href = url;
+    lien.download = nomFichier;
+    document.body.appendChild(lien);
+    lien.click();
+    lien.remove();
+    // Le navigateur a lu l'URL de façon synchrone : on peut la libérer ensuite.
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function VueModerationMessages({ cle, onMessage, onGererErreur }) {
+  const [recherche, setRecherche] = useState('');
+  const [donnees, setDonnees] = useState(null);
+  const [chargement, setChargement] = useState(true);
+  const [erreur, setErreur] = useState('');
+  // Compteur : « Actualiser » doit relancer la requête même quand la recherche
+  // n'a pas changé (un simple setRecherche(précédent) ne provoquerait aucun rendu).
+  const [rafraichissement, setRafraichissement] = useState(0);
+
+  const [idColle, setIdColle] = useState('');
+  const [apercu, setApercu] = useState(null);
+  const [chargementApercu, setChargementApercu] = useState(false);
+  const [idEnCours, setIdEnCours] = useState('');
+
+  // Recherche débouncée (350 ms) : la liste se met à jour sans requête par frappe.
+  useEffect(() => {
+    let vivant = true;
+    setChargement(true);
+    const minuteur = setTimeout(
+      () => {
+        adminApi
+          .conversations(recherche.trim() ? { q: recherche.trim() } : {})
+          .then((reponse) => {
+            if (!vivant) return;
+            setDonnees(reponse);
+            setErreur('');
+          })
+          .catch((err) => {
+            if (!vivant || onGererErreur(err)) return;
+            setErreur(err?.message || 'Conversations indisponibles pour le moment.');
+          })
+          .finally(() => {
+            if (vivant) setChargement(false);
+          });
+      },
+      recherche.trim() ? 350 : 0
+    );
+
+    return () => {
+      vivant = false;
+      clearTimeout(minuteur);
+    };
+  }, [cle, recherche, onGererErreur, rafraichissement]);
+
+  async function chargerApercu(id) {
+    const identifiant = String(id || '').trim();
+    if (!identifiant) {
+      setErreur('Collez l’identifiant d’une conversation avant de charger.');
+      return;
+    }
+    setChargementApercu(true);
+    setErreur('');
+    try {
+      const reponse = await adminApi.exportConversation(identifiant);
+      setApercu(reponse);
+    } catch (err) {
+      setApercu(null);
+      if (!onGererErreur(err)) setErreur(err?.message || 'Conversation introuvable.');
+    } finally {
+      setChargementApercu(false);
+    }
+  }
+
+  async function exporter(conversation) {
+    const id = typeof conversation === 'string' ? conversation : conversation?.id;
+    if (!id) return;
+    setIdEnCours(String(id));
+    setErreur('');
+    try {
+      const reponse = await adminApi.exportConversation(id);
+      const nom = `conversation-${id}-${new Date().toISOString().slice(0, 10)}.json`;
+      if (!telechargerJson(nom, reponse)) {
+        throw new Error('Le téléchargement a été bloqué par le navigateur.');
+      }
+      onMessage(`Conversation exportée (${reponse?.meta?.nombreMessages ?? 0} message(s)) : ${nom}`);
+    } catch (err) {
+      if (!onGererErreur(err)) setErreur(err?.message || 'Export impossible sur cette conversation.');
+    } finally {
+      setIdEnCours('');
+    }
+  }
+
+  const lignes = donnees?.conversations || [];
+
+  return (
+    <div className="bo-empile bo-apparition">
+      {erreur ? (
+        <Alerte variante="erreur" icone="alert" onFermer={() => setErreur('')}>
+          {erreur}
+        </Alerte>
+      ) : null}
+
+      <Panneau
+        titre="Modération des messages"
+        sous="La messagerie est privée : cet écran ne permet ni de lire au fil de l’eau ni d’écrire. Cherchez un compte, puis exportez la conversation visée — le fichier contient les métadonnées, les deux participants avec leurs numéros, et chaque message daté."
+        serre
+        actions={
+          <button
+            type="button"
+            className="bo-btn bo-btn--petit"
+            onClick={() => setRafraichissement((precedent) => precedent + 1)}
+            disabled={chargement}
+          >
+            <Icon name="refresh" size={13} className={chargement ? 'bo-tourne' : ''} />
+            Actualiser
+          </button>
+        }
+      >
+        <div className="bo-barre-outils">
+          <label className="bo-champ bo-champ--large">
+            <span className="bo-etiquette">Rechercher par nom ou numéro</span>
+            <input
+              className="bo-entree"
+              type="search"
+              value={recherche}
+              onChange={(evenement) => setRecherche(evenement.target.value)}
+              placeholder="Nom, prénom, 07 07… ou identifiant de conversation"
+            />
+          </label>
+          <label className="bo-champ bo-champ--large">
+            <span className="bo-etiquette">…ou coller un identifiant de conversation</span>
+            <div className="bo-ligne-actions">
+              <input
+                className="bo-entree"
+                type="text"
+                value={idColle}
+                onChange={(evenement) => setIdColle(evenement.target.value)}
+                placeholder="ex. 6730f2c9a1b2c3d4e5f60718"
+              />
+              <button
+                type="button"
+                className="bo-btn"
+                onClick={() => chargerApercu(idColle)}
+                disabled={chargementApercu}
+              >
+                {chargementApercu ? 'Chargement…' : 'Aperçu'}
+              </button>
+            </div>
+          </label>
+        </div>
+
+        {chargement && !donnees ? (
+          <EtatChargement texte="Chargement des conversations…" />
+        ) : lignes.length === 0 ? (
+          <EtatVide
+            texte={
+              recherche.trim()
+                ? 'Aucune conversation pour cette recherche.'
+                : 'Aucune conversation sur la plateforme pour le moment.'
+            }
+            icone="message"
+          />
+        ) : (
+          <div className="bo-tableau-enveloppe">
+            <table className="bo-tableau">
+              <thead>
+                <tr>
+                  <th>Participants</th>
+                  <th>Dernier message</th>
+                  <th>Messages</th>
+                  <th>Activité</th>
+                  <th>Extraction</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lignes.map((ligne) => (
+                  <tr key={ligne.id}>
+                    <td>
+                      {(ligne.participants || []).map((participant) => (
+                        <div key={participant.id}>
+                          <strong>{participant.nom}</strong>
+                          <div className="bo-petit bo-doux">
+                            {participant.telephone
+                              ? formatTelephone(participant.telephone)
+                              : 'numéro absent'}
+                            {participant.metier ? ` · ${participant.metier}` : ''}
+                          </div>
+                        </div>
+                      ))}
+                      <div className="bo-petit bo-mono">{ligne.id}</div>
+                    </td>
+                    <td>
+                      <div className="bo-petit">
+                        {ligne.dernierMessage || <span className="bo-doux">aucun message</span>}
+                      </div>
+                      <div className="bo-petit bo-doux">début {formatDate(ligne.debut)}</div>
+                    </td>
+                    <td>
+                      <Badge variante={ligne.nombreMessages ? 'info' : 'attente'} icone="message">
+                        {ligne.nombreMessages}
+                      </Badge>
+                    </td>
+                    <td>{ligne.derniereActivite ? formatDateRelative(ligne.derniereActivite) : '—'}</td>
+                    <td className="bo-tableau-actions">
+                      <button
+                        type="button"
+                        className="bo-btn bo-btn--petit"
+                        onClick={() => chargerApercu(ligne.id)}
+                      >
+                        Lire
+                      </button>
+                      <button
+                        type="button"
+                        className="bo-btn bo-btn--petit bo-btn--principal"
+                        disabled={idEnCours === ligne.id}
+                        onClick={() => exporter(ligne)}
+                      >
+                        <Icon name="download" size={13} />
+                        Exporter
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panneau>
+
+
+      {apercu ? (
+        <Panneau
+          titre={`Conversation ${apercu.meta?.conversationId || ''}`}
+          sous={[
+            `${apercu.meta?.nombreMessages || 0} message(s)`,
+            `début ${apercu.meta?.debutLisible || '—'}`,
+            (apercu.participants || [])
+              .map(
+                (participant) =>
+                  `${participant.nom} (${
+                    participant.telephone ? formatTelephone(participant.telephone) : 'n° absent'
+                  })`
+              )
+              .join(' ↔ '),
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+          serre
+          actions={
+            <>
+              <button
+                type="button"
+                className="bo-btn bo-btn--petit bo-btn--principal"
+                disabled={idEnCours === apercu.meta?.conversationId}
+                onClick={() => exporter(apercu.meta?.conversationId)}
+              >
+                <Icon name="download" size={13} />
+                Exporter le JSON
+              </button>
+              <button
+                type="button"
+                className="bo-btn bo-btn--petit"
+                onClick={() => setApercu(null)}
+              >
+                Fermer
+              </button>
+            </>
+          }
+        >
+          <div className="bo-empile" style={{ maxHeight: '420px', overflowY: 'auto' }}>
+            {(apercu.messages || []).length === 0 ? (
+              <EtatVide texte="Aucun message dans cette conversation." icone="message" />
+            ) : (
+              (apercu.messages || []).map((message) => (
+                <div key={message.id} className="bo-sous-ligne">
+                  <div className="bo-petit bo-doux">
+                    #{message.numero} · {message.dateLisible} {message.heure} · {message.expediteur}
+                  </div>
+                  <div className="bo-petit" style={{ whiteSpace: 'pre-line' }}>
+                    {message.contenu}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </Panneau>
+      ) : null}
+    </div>
+  );
+}
+
+
 }
 /* ─── Mises en avant (file d'attente) ─────────────────────────────────────────
    Pendant la période gratuite, la mise en avant est OFFERTE : le bouton du profil

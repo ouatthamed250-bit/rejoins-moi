@@ -17,11 +17,12 @@
 //    de lire ce que l'API a bien voulu servir.
 //  - `contactPublic === true` -> « Appeler » + « WhatsApp », en vert, comme les
 //    cartes d'annonces et la fiche établissement : la personne a explicitement
-//    accepté d'être contactée, on ne cache pas ce qu'elle a publié.
-//  - `contactPublic === false` -> un seul bouton « Envoyer un message ». La
-//    messagerie interne n'existe pas encore : le bouton le dit franchement
-//    (alerte) plutôt que d'ouvrir un écran vide qui ressemblerait à une panne.
-//    Le jour où la messagerie arrive, SEUL ce bouton change.
+//    accepté d'être contactée, on ne cache pas ce qu'elle a publié. Un bouton
+//    « Envoyer un message » est ajouté en dessous : le chat interne (prompt B)
+//    est disponible pour TOUT LE MONDE, y compris ceux qui publient leur numéro.
+//  - `contactPublic === false` -> un seul bouton « Envoyer un message », qui
+//    ouvre la messagerie interne (/messages?to=<id>). Le serveur ne renvoie
+//    jamais le numéro dans ce cas ; la discussion se fait donc dans l'app.
 //  - Identifiants « demo-… » : les cartes d'exemple (data/demoData.js), montrées
 //    quand le serveur est injoignable, pointent vers /artisan/demo-artisan-jean.
 //    Ces identifiants n'existent pas côté serveur : on les sert directement
@@ -31,7 +32,7 @@
 //    compte anonymisé), « serveur injoignable » et « échec » (autre erreur).
 //    Chacun propose l'action utile — réessayer, ou revenir à la recherche.
 //  - Les avis ne sont pas listés : la page demande la NOTE et le NOMBRE d'avis.
-//    Le détail commenté viendra avec la messagerie (Prompt B), pas avant.
+//    Le détail commenté viendra plus tard, pas avant.
 
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -46,8 +47,10 @@ import { api } from '../utils/api/client.js';
 import { ARTISANS_DEMO } from '../data/demoData.js';
 import { formaterNomPublic, initiales } from '../utils/format.js';
 
-/** Phrase affichée par « Envoyer un message » tant que la messagerie n'existe pas. */
-const MESSAGE_MESSAGERIE = 'La messagerie sera bientôt disponible';
+/** Ouvre la messagerie interne sur la discussion avec cet artisan. */
+function ouvrirMessagerie(navigate, artisanId) {
+  navigate(`/messages?to=${artisanId}`);
+}
 
 /**
  * Les trois échecs possibles, avec l'action qui a du sens pour chacun.
@@ -338,27 +341,39 @@ export default function ArtisanProfile() {
         <h2 className="mb-1.5 text-sm font-bold text-ink">Actions</h2>
 
         {contactDirect ? (
-          <div className="grid grid-cols-2 gap-2">
-            <a className="btn-health text-sm" href={`tel:${artisan.telephone}`}>
-              <Icon name="phone" size={17} />
-              Appeler
-            </a>
-            <a
-              className="btn-health-ghost text-sm"
-              href={lienWhatsApp}
-              target="_blank"
-              rel="noopener noreferrer"
+          <>
+            <div className="grid grid-cols-2 gap-2">
+              <a className="btn-health text-sm" href={`tel:${artisan.telephone}`}>
+                <Icon name="phone" size={17} />
+                Appeler
+              </a>
+              <a
+                className="btn-health-ghost text-sm"
+                href={lienWhatsApp}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Icon name="whatsapp" size={17} />
+                WhatsApp
+              </a>
+            </div>
+            {/* Le chat interne reste disponible même quand le numéro est publié :
+                certaines personnes préfèrent ne pas recevoir d'appel. */}
+            <button
+              type="button"
+              className="btn-ghost mt-2 w-full text-sm"
+              onClick={() => ouvrirMessagerie(navigate, artisan.id)}
             >
-              <Icon name="whatsapp" size={17} />
-              WhatsApp
-            </a>
-          </div>
+              <Icon name="message" size={17} />
+              Envoyer un message
+            </button>
+          </>
         ) : (
           <>
             <button
               type="button"
               className="bouton-principal w-full text-sm"
-              onClick={() => window.alert(MESSAGE_MESSAGERIE)}
+              onClick={() => ouvrirMessagerie(navigate, artisan.id)}
             >
               <Icon name="message" size={17} />
               Envoyer un message
@@ -366,8 +381,8 @@ export default function ArtisanProfile() {
             <p className="mt-1.5 flex items-start gap-1 text-[11px] leading-snug text-ink-muted">
               <Icon name="lock" size={13} className="mt-0.5 shrink-0" />
               <span>
-                {nom} n’a pas publié son numéro : la messagerie interne prendra le relais. Elle
-                arrive bientôt — c’est écrit, plutôt que de laisser un bouton muet.
+                {nom} n’a pas publié son numéro : la discussion se déroule dans l’application, sans
+                que vos coordonnées soient échangées.
               </span>
             </p>
           </>

@@ -15,6 +15,14 @@
  *     quelle. Le serveur reste seul juge du paiement (règle de sécurité du projet).
  */
 
+// v20 : même publication que v19 (droit à l'effacement), texte corrigé — la zone
+//       DANGER du profil et le tiroir d'administration annoncent désormais ce qui
+//       arrive VRAIMENT aux fiches d'établissement : celles créées par la personne
+//       sont supprimées, celles qu'elle a seulement revendiquées restent en ligne
+//       sans son nom (l'ancienne phrase laissait croire qu'il fallait les retirer
+//       soi-même avant de supprimer le compte). Profile.jsx et Admin.jsx changent :
+//       nouvelles empreintes, donc nouveau nom de cache.
+//
 // v19 : droit à l'effacement (20/11) — le profil propose « Supprimer mon compte »,
 //       le back-office gagne l'onglet « Effacés », la pastille « Effacé », le
 //       masquage des numéros et une confirmation par saisie du nom. Profile.jsx,
@@ -142,7 +150,7 @@
 //      index.html en secours, donc l'ANCIENNE app — médaillon toujours rogné.
 // Changer la version est indispensable dès que les fichiers « cache d'abord »
 // (icônes) ou l'app shell changent de façon visible.
-const VERSION = 'v19';
+const VERSION = 'v20';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

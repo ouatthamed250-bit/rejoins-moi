@@ -651,9 +651,10 @@ export default function Profile() {
           <p className="mt-1 text-[11px] leading-snug text-ink-muted">
             Efface votre nom, votre numéro, votre photo, vos favoris, vos visites et
             votre mot de passe. Vos avis restent en ligne, signés «&nbsp;Utilisateur
-            supprimé&nbsp;» (ils informent encore les autres). Vos dépôts et abonnements
-            déjà payés sont conservés pour la comptabilité, sans votre nom. Un retrait
-            de fiche d'établissement vous appartient : supprimez-la d'abord si besoin.
+            supprimé&nbsp;» (ils informent encore les autres). Les fiches d'établissement
+            que vous avez créées sont supprimées ; celles que vous avez seulement
+            revendiquées restent en ligne, sans votre nom. Vos dépôts et abonnements
+            déjà payés sont conservés pour la comptabilité, sans votre nom.
           </p>
           <button
             type="button"

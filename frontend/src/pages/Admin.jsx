@@ -2036,8 +2036,10 @@ function TiroirUtilisateur({ utilisateurId, onFermer, onMessage, onGererErreur, 
                   <p className="bo-petit bo-doux">
                     Le nom, le numéro, la photo, les favoris et les avis de cette personne seront
                     anonymisés immédiatement («&nbsp;Utilisateur supprimé&nbsp;»), et ses jetons de
-                    connexion cesseront de fonctionner. Ses dépôts et abonnements payés restent, sans
-                    donnée personnelle, pour la comptabilité. C’est <strong>irréversible</strong>.
+                    connexion cesseront de fonctionner. Ses fiches d’établissement créées sont
+                    supprimées ; celles qu’elle a seulement revendiquées restent en ligne, sans son
+                    nom. Ses dépôts et abonnements payés restent, sans donnée personnelle, pour la
+                    comptabilité. C’est <strong>irréversible</strong>.
                   </p>
                   <label className="bo-champ">
                     <span className="bo-etiquette">

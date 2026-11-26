@@ -19,6 +19,29 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 
 /**
+ * Champs STRICTEMENT PRIVÉS d'un compte — jamais exposés par une réponse publique.
+ *
+ * Cette liste est la référence du modèle (finitions de sécurité) :
+ *   • `toPublicJSON()` ne les sert QUE si l'appelant prouve son contexte avec
+ *     `{ prive: true }` — c'est le cas de `/api/users/me` et du back-office ;
+ *   • `toJSON()`, utilisé dès qu'un document Mongoose est sérialisé sans passer par
+ *     une route explicite (`res.json(doc)`, populate renvoyé tel quel, script de
+ *     debug…), ne les sert JAMAIS.
+ *
+ * `suspendu` n'est pas stocké : c'est un drapeau dérivé de `statutCompte` que le
+ * back-office reçoit pour ne pas avoir à recalculer l'état.
+ */
+export const CHAMPS_PRIVES_UTILISATEUR = Object.freeze([
+  'solde',
+  'favoris',
+  'dernierLoginAt',
+  'statutCompte',
+  'motifSuspension',
+  'suspendu',
+  'suspenduAt',
+]);
+
+/**
  * Interaction utilisateur — alimente l'apprentissage progressif du feed (§3).
  * On ne stocke que des signaux explicables (vue, recherche, clic, favori).
  */
@@ -281,6 +304,24 @@ userSchema.methods.toPublicJSON = function toPublicJSON({
     misEnAvant: Boolean(actif && this.estArtisan),
     createdAt: this.createdAt,
   };
+};
+
+/**
+ * Filet de sécurité (finitions de sécurité).
+ *
+ * Mongoose sérialise un document via `toJSON()` dès qu'il passe par `res.json()`,
+ * y compris lorsqu'il est imbriqué dans un `populate`. Par défaut, Mongo aurait
+ * alors renvoyé TOUT le document — solde, favoris, dernière connexion, motif de
+ * suspension compris. En branchant `toJSON` sur la forme PUBLIQUE, un oubli de
+ * routeur ne peut plus faire fuiter de données privées : c'est le comportement
+ * par défaut qui est sûr.
+ *
+ * Les écrans qui ont besoin des champs privés (compte lui-même, back-office)
+ * n'appellent pas cette méthode : ils appellent explicitement
+ * `toPublicJSON({ prive: true })`. Les deux chemins restent donc indépendants.
+ */
+userSchema.methods.toJSON = function toJSON() {
+  return this.toPublicJSON();
 };
 
 /** Ajoute une interaction et borne l'historique (les 300 dernières suffisent au scoring). */

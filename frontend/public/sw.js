@@ -15,6 +15,18 @@
  *     quelle. Le serveur reste seul juge du paiement (règle de sécurité du projet).
  */
 
+// v28 : finitions de sécurité et refonte du back-office (26/11).
+//       • Côté serveur, un document utilisateur sérialisé sans route explicite
+//         (res.json(doc), populate renvoyé tel quel) sort désormais sous sa forme
+//         PUBLIQUE : solde, favoris, dernière connexion, statut et motif de
+//         suspension ne peuvent plus fuiter par oubli (User.toJSON).
+//       • Le back-office gagne cinq onglets permanents (Vue d'ensemble,
+//         Utilisateurs, Établissements, Annonces signalées, Mises en avant) et
+//         deux écrans : le catalogue des fiches et la file des mises en avant.
+//       Admin.jsx et admin.css changent (nouvelles empreintes index-*.css/js) :
+//       nouveau nom de cache — sinon un poste déjà ouvert garderait l'ancien
+//       back-office, sans les onglets.
+//
 // v27 : refonte Artisans/Emplois (26/11) — consentement de contact, offres de stage,
 //       signalements et nettoyage final des mentions de gratuité.
 //       • Le numéro n'apparaît sur une carte (annonce ou artisan) que si son
@@ -221,7 +233,7 @@
 //       plus de bandeau ni de bouton « gratuit » : le contact s'obtient
 //       naturellement (« Voir le contact »). Même publication que le correctif
 //       backend qui acceptait « GRATUIT » dans l'enum moyenPaiement.
-const VERSION = 'v27';
+const VERSION = 'v28';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

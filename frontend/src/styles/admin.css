@@ -257,11 +257,20 @@
   top: 0;
   z-index: 5;
   display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 14px 26px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  padding: 14px 26px 0;
   background: var(--bo-panneau);
   border-bottom: 1px solid var(--bo-trait);
+}
+
+/* Ligne du haut : titre de la section + actions globales. Les onglets
+   principaux occupent la ligne du dessous (voir .bo-onglets-principaux). */
+.bo-entete-ligne {
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
 
 .bo-entete-texte {
@@ -1432,4 +1441,231 @@
 
 
 
+
+
+/* ═══════════════════════ Refonte du back-office (finitions) ═══════════════════════
+   Trois intentions, dans cet ordre :
+     1. les cinq onglets du quotidien, toujours au même endroit, lisibles sans
+        chercher (barre d'onglets collée sous le titre de la section) ;
+     2. un écran plus AÉRÉ (espacements, tailles de police, hauteur de ligne) :
+        on passe des heures devant, l'entassement fatigue ;
+     3. des blocs réutilisables pour les nouveaux écrans (barre d'outils,
+        pagination, note, encadré d'aide) — plutôt que des styles ad hoc. */
+
+/* ── Barre d'onglets principaux ── */
+
+.bo-onglets-principaux {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  margin: 0 -6px;
+}
+
+.bo-onglet-principal {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #4b5a6b;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.14s ease, border-color 0.14s ease, background 0.14s ease;
+}
+
+.bo-onglet-principal:hover {
+  color: var(--bo-nuit);
+  background: #f7f9fc;
+}
+
+.bo-onglet-principal--actif {
+  color: var(--bo-nuit);
+  border-bottom-color: var(--bo-accent);
+}
+
+.bo-onglet-principal:focus-visible {
+  outline: 2px solid var(--bo-accent);
+  outline-offset: -2px;
+}
+
+.bo-onglet-principal-compte {
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #3d4b5c;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.bo-onglet-principal--actif .bo-onglet-principal-compte {
+  background: var(--bo-accent);
+  color: #1b1b1b;
+}
+
+/* ── Aération générale (contenu, panneaux, tableaux, tuiles) ── */
+
+.bo-contenu {
+  gap: 24px;
+  padding: 26px 30px 72px;
+  max-width: 1480px;
+}
+
+.bo-empile,
+.bo-colonnes {
+  gap: 22px;
+}
+
+.bo-panneau-tete {
+  padding: 16px 20px;
+}
+
+.bo-panneau-titre {
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+
+.bo-panneau-sous {
+  margin-top: 2px;
+  line-height: 1.5;
+}
+
+.bo-panneau-corps {
+  padding: 20px;
+}
+
+.bo-tuile {
+  padding: 16px 18px;
+  gap: 6px;
+}
+
+.bo-tuile-valeur {
+  font-size: 28px;
+}
+
+.bo-tuile-note {
+  line-height: 1.4;
+}
+
+.bo-tableau {
+  font-size: 13.5px;
+}
+
+.bo-tableau thead th {
+  padding: 12px 16px;
+}
+
+.bo-tableau tbody td {
+  padding: 14px 16px;
+  line-height: 1.45;
+}
+
+/* ── Barre d'outils d'un panneau (recherche + actions) ── */
+
+.bo-barre-outils {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--bo-trait);
+  background: #fbfcfe;
+}
+
+.bo-recherche {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bo-recherche .bo-entree {
+  min-width: 260px;
+}
+
+/* ── Pagination de tableau ── */
+
+.bo-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 16px;
+  border-top: 1px solid var(--bo-trait);
+  background: #fbfcfe;
+}
+
+.bo-pagination-info {
+  margin-right: auto;
+  font-size: 12px;
+  color: var(--bo-doux);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Note de réputation (chiffre mis en avant, avis en dessous) ── */
+
+.bo-note {
+  display: inline-block;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--bo-texte);
+}
+
+/* ── Encadré d'aide (procédure, rappel de règle) ── */
+
+.bo-aide {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px 20px;
+  border: 1px dashed var(--bo-trait);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.bo-aide-titre {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.bo-aide-liste {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--bo-doux);
+}
+
+/* ── Écrans étroits : onglets défilants, en-tête empilé ── */
+
+@media (max-width: 900px) {
+  .bo-entete-ligne {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .bo-onglets-principaux {
+    margin: 0 -16px;
+    padding: 0 10px;
+  }
+
+  .bo-recherche .bo-entree {
+    min-width: 0;
+    flex: 1 1 160px;
+  }
+}
 

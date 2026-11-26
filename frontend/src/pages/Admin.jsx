@@ -28,16 +28,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { Icon } from '../components/Icons.jsx';
+import { api } from '../utils/api/client.js';
 import { adminApi, getAdminToken, setAdminToken } from '../utils/api/admin.js';
 import { libelleFamille } from '../config/categories.js';
-import { formatDateRelative, formatFcfa, formatTelephone, initiales } from '../utils/format.js';
+import { formatDateRelative, formatFcfa, formatNote, formatTelephone, initiales } from '../utils/format.js';
 
 /* ─────────────────────────── Repères de navigation ─────────────────────────── */
 
 const SECTIONS = [
   {
     cle: 'tableau',
-    libelle: 'Tableau de bord',
+    libelle: 'Vue d’ensemble',
     icone: 'chart',
     sous: 'Suivi des comptes, de la présence réelle et des paiements',
     groupe: 'Suivi',
@@ -54,6 +55,13 @@ const SECTIONS = [
     libelle: 'Utilisateurs',
     icone: 'users',
     sous: 'Comptes inscrits : recherche, fiche, validation et suspension',
+    groupe: 'Suivi',
+  },
+  {
+    cle: 'etablissements',
+    libelle: 'Établissements',
+    icone: 'store',
+    sous: 'Catalogue des fiches : gérants, contacts et état de publication',
     groupe: 'Suivi',
   },
   {
@@ -85,6 +93,13 @@ const SECTIONS = [
     groupe: 'Suivi',
   },
   {
+    cle: 'misesEnAvant',
+    libelle: 'Mises en avant',
+    icone: 'star',
+    sous: 'Demandes « Je veux être mis en avant » à rappeler pour les options de visibilité',
+    groupe: 'Suivi',
+  },
+  {
     cle: 'profil',
     libelle: 'Mon profil',
     icone: 'shieldCheck',
@@ -94,6 +109,24 @@ const SECTIONS = [
 ];
 
 const GROUPES = ['Suivi', 'Compte'];
+
+/**
+ * Onglets principaux, affichés en haut de CHAQUE écran du back-office.
+ *
+ * Pourquoi une seconde navigation alors que la barre latérale existe déjà ?
+ * Parce que le travail quotidien tient en cinq écrans (regarder l'ensemble,
+ * ouvrir un compte, vérifier une fiche, modérer une annonce, rappeler une mise
+ * en avant). La barre latérale garde la navigation EXHAUSTIVE (dépôts, journal,
+ * réclamations, catégories, profil) ; cette barre-ci met les cinq gestes
+ * courants à un clic, toujours au même endroit, avec leur compteur.
+ */
+const ONGLETS_PRINCIPAUX = [
+  { cle: 'tableau', libelle: 'Vue d’ensemble', icone: 'chart' },
+  { cle: 'utilisateurs', libelle: 'Utilisateurs', icone: 'users' },
+  { cle: 'etablissements', libelle: 'Établissements', icone: 'store' },
+  { cle: 'annonces', libelle: 'Annonces signalées', icone: 'flag' },
+  { cle: 'misesEnAvant', libelle: 'Mises en avant', icone: 'star' },
+];
 
 const LIBELLE_OPERATEUR = { WAVE: 'Wave', ORANGE_MONEY: 'Orange Money', MTN_MOMO: 'MTN MoMo' };
 const LIBELLE_DEPOT = { en_attente: 'À vérifier', valide: 'Validé', rejete: 'Rejeté' };
@@ -435,7 +468,7 @@ function PanneauConnexion({ erreurInitiale = '', onConnexion }) {
  * Les pastilles (dépôts à vérifier, comptes, connectés) viennent des statistiques déjà
  * chargées par l'écran : elles ne déclenchent aucune requête supplémentaire.
  */
-function NavLaterale({ admin, section, stats, onSection, onDeconnecter }) {
+function NavLaterale({ admin, section, stats, annoncesSignalees, onSection, onDeconnecter }) {
   const pastille = (s) => {
     if (!stats) return null;
     if (s.cle === 'depots') {
@@ -446,6 +479,19 @@ function NavLaterale({ admin, section, stats, onSection, onDeconnecter }) {
     }
     if (s.cle === 'utilisateurs') {
       return <span className="bo-nav-pastille bo-nav-pastille--calme">{stats.utilisateurs || 0}</span>;
+    }
+    if (s.cle === 'etablissements') {
+      return <span className="bo-nav-pastille bo-nav-pastille--calme">{stats.etablissements || 0}</span>;
+    }
+    if (s.cle === 'annonces') {
+      // File de modération : une pastille rouge dès qu'une annonce est signalée,
+      // rien du tout quand la file est vide (on ne montre jamais « 0 » en rouge).
+      if (!annoncesSignalees) return null;
+      return <span className="bo-nav-pastille bo-nav-pastille--alerte">{annoncesSignalees}</span>;
+    }
+    if (s.cle === 'misesEnAvant') {
+      const n = stats.listeAttente?.enAttente || 0;
+      return n > 0 ? <span className="bo-nav-pastille bo-nav-pastille--alerte">{n}</span> : null;
     }
     if (s.cle === 'activite') {
       const n = stats.connectes?.dernier24h || 0;
@@ -523,6 +569,9 @@ export default function Admin() {
   const [message, setMessage] = useState('');
   const [stats, setStats] = useState(null);
   const [statsErreur, setStatsErreur] = useState('');
+  // Nombre d'annonces dans la file de modération : il alimente la pastille de
+  // l'onglet « Annonces signalées ». `null` = pas encore connu (aucune pastille).
+  const [annoncesSignalees, setAnnoncesSignalees] = useState(null);
   const [chargementStats, setChargementStats] = useState(false);
   // `cle` force le rechargement des vues : « Actualiser » réincrémente ce compteur au lieu
   // de dupliquer un state de rechargement dans chaque section.
@@ -571,9 +620,16 @@ export default function Admin() {
     if (!getAdminToken()) return;
     setChargementStats(true);
     try {
-      const donnees = await adminApi.statistiques();
+      // Les deux appels partent EN PARALLÈLE : la file de modération ne doit pas
+      // retarder l'affichage du tableau de bord. Un échec sur la file (route plus
+      // ancienne, réseau…) reste silencieux — il ne masque aucune statistique.
+      const [donnees, file] = await Promise.all([
+        adminApi.statistiques(),
+        adminApi.annoncesSignalees().catch(() => null),
+      ]);
       setStats(donnees);
       setStatsErreur('');
+      setAnnoncesSignalees(Array.isArray(file?.items) ? file.items.length : null);
     } catch (err) {
       if (err?.status === 401 || err?.status === 403) {
         deconnecter('Votre session administrateur n’est plus valide. Reconnectez-vous.');
@@ -651,39 +707,74 @@ export default function Admin() {
         admin={admin}
         section={section}
         stats={stats}
+        annoncesSignalees={annoncesSignalees}
         onSection={setSection}
         onDeconnecter={() => deconnecter()}
       />
 
       <div className="bo-main">
         <header className="bo-entete">
-          <div className="bo-entete-texte">
-            <h1 className="bo-entete-titre">{sectionActive.libelle}</h1>
-            <p className="bo-entete-sous">{sectionActive.sous}</p>
+          <div className="bo-entete-ligne">
+            <div className="bo-entete-texte">
+              <h1 className="bo-entete-titre">{sectionActive.libelle}</h1>
+              <p className="bo-entete-sous">{sectionActive.sous}</p>
+            </div>
+            <div className="bo-entete-actions">
+              {enAttente > 0 ? (
+                <Badge variante="attente" icone="wallet">
+                  {enAttente} dépôt{enAttente > 1 ? 's' : ''} à vérifier
+                </Badge>
+              ) : null}
+              <button
+                type="button"
+                className="bo-btn bo-btn--petit"
+                onClick={rafraichir}
+                disabled={chargementStats}
+              >
+                <Icon name="refresh" size={14} className={chargementStats ? 'bo-tourne' : ''} />
+                Actualiser
+              </button>
+              <button
+                type="button"
+                className="bo-btn bo-btn--petit"
+                onClick={() => window.location.assign('/')}
+              >
+                <Icon name="home" size={14} />
+                Ouvrir l’application
+              </button>
+            </div>
           </div>
-          <div className="bo-entete-actions">
-            {enAttente > 0 ? (
-              <Badge variante="attente" icone="wallet">
-                {enAttente} dépôt{enAttente > 1 ? 's' : ''} à vérifier
-              </Badge>
-            ) : null}
-            <button
-              type="button"
-              className="bo-btn bo-btn--petit"
-              onClick={rafraichir}
-              disabled={chargementStats}
-            >
-              <Icon name="refresh" size={14} className={chargementStats ? 'bo-tourne' : ''} />
-              Actualiser
-            </button>
-            <button
-              type="button"
-              className="bo-btn bo-btn--petit"
-              onClick={() => window.location.assign('/')}
-            >
-              <Icon name="home" size={14} />
-              Ouvrir l’application
-            </button>
+
+          {/* Cinq onglets toujours visibles : ce sont les gestes du quotidien.
+              Le compteur n'apparaît que s'il y a quelque chose à traiter. */}
+          <div className="bo-onglets-principaux" role="tablist" aria-label="Écrans principaux">
+            {ONGLETS_PRINCIPAUX.map((onglet) => {
+              const actif = section === onglet.cle;
+              const compte =
+                onglet.cle === 'utilisateurs'
+                  ? stats?.utilisateurs
+                  : onglet.cle === 'etablissements'
+                    ? stats?.etablissements
+                    : onglet.cle === 'annonces'
+                      ? annoncesSignalees
+                      : onglet.cle === 'misesEnAvant'
+                        ? stats?.listeAttente?.enAttente
+                        : null;
+              return (
+                <button
+                  key={onglet.cle}
+                  type="button"
+                  role="tab"
+                  aria-selected={actif}
+                  className={`bo-onglet-principal${actif ? ' bo-onglet-principal--actif' : ''}`}
+                  onClick={() => setSection(onglet.cle)}
+                >
+                  <Icon name={onglet.icone} size={15} />
+                  {onglet.libelle}
+                  {compte ? <span className="bo-onglet-principal-compte">{compte}</span> : null}
+                </button>
+              );
+            })}
           </div>
         </header>
 
@@ -705,6 +796,7 @@ export default function Admin() {
               erreur={statsErreur}
               chargement={chargementStats}
               cle={cle}
+              annoncesSignalees={annoncesSignalees}
               onGererErreur={gererErreur}
               onNaviguer={setSection}
               onOuvrirUtilisateur={ouvrirUtilisateur}
@@ -729,6 +821,16 @@ export default function Admin() {
               utilisateurOuvert={utilisateurOuvert}
               onUtilisateurOuvert={setUtilisateurOuvert}
               onMessage={setMessage}
+              onGererErreur={gererErreur}
+              onRafraichir={rafraichir}
+            />
+          ) : null}
+
+          {section === 'etablissements' ? (
+            <VueEtablissements
+              cle={cle}
+              stats={stats}
+              onNaviguer={setSection}
               onGererErreur={gererErreur}
               onRafraichir={rafraichir}
             />
@@ -766,6 +868,15 @@ export default function Admin() {
               cle={cle}
               onMessage={setMessage}
               onGererErreur={gererErreur}
+              onRafraichir={rafraichir}
+            />
+          ) : null}
+
+          {section === 'misesEnAvant' ? (
+            <VueMisesEnAvant
+              stats={stats}
+              onNaviguer={setSection}
+              onOuvrirUtilisateur={ouvrirUtilisateur}
               onRafraichir={rafraichir}
             />
           ) : null}
@@ -865,6 +976,7 @@ function VueTableauDeBord({
   erreur,
   chargement,
   cle,
+  annoncesSignalees,
   onGererErreur,
   onNaviguer,
   onOuvrirUtilisateur,
@@ -978,6 +1090,20 @@ function VueTableauDeBord({
           note="Demandes « Je veux être mis en avant »"
           icone="star"
           couleur={(stats.listeAttente?.enAttente || 0) > 0 ? 'accent' : ''}
+          onClick={() => onNaviguer('misesEnAvant')}
+        />
+        <Tuile
+          libelle="Annonces signalées"
+          valeur={annoncesSignalees || 0}
+          note={
+            annoncesSignalees
+              ? 'À examiner puis, si besoin, retirer'
+              : 'Aucune annonce à modérer'
+          }
+          icone="flag"
+          couleur={annoncesSignalees ? 'rouge' : ''}
+          noteVariante={annoncesSignalees ? 'mal' : ''}
+          onClick={() => onNaviguer('annonces')}
         />
         <Tuile
           libelle="Catégories proposées"
@@ -2707,6 +2833,237 @@ function VueReclamations({ cle, onMessage, onGererErreur, onRafraichir }) {
   );
 }
 
+/* ─── Établissements (catalogue) ──────────────────────────────────────────────
+   Le back-office n'a pas de liste de fiches à lui : cette vue lit le CATALOGUE
+   PUBLIC (`GET /api/establishments`, celui de l'application) pour répondre aux
+   questions du quotidien — « cette fiche existe-t-elle ? », « quel numéro est
+   publié ? », « est-elle importée, réclamée, vérifiée ? ». La modération des
+   réclamations garde sa section dédiée, joignable d'un clic depuis la barre
+   d'outils : on regarde ici, on tranche là-bas. */
+function VueEtablissements({ cle, stats, onNaviguer, onGererErreur, onRafraichir }) {
+  const [recherche, setRecherche] = useState('');
+  const [requete, setRequete] = useState('');
+  const [page, setPage] = useState(1);
+  const [donnees, setDonnees] = useState(null);
+  const [chargement, setChargement] = useState(true);
+  const [erreur, setErreur] = useState('');
+
+  useEffect(() => {
+    let vivant = true;
+    setChargement(true);
+    // `sort=recent` : les fiches qui viennent d'être créées (tournée terrain,
+    // inscription d'un gérant) sont celles qu'on veut voir en premier.
+    const parametres = new URLSearchParams({ page: String(page), limit: '25', sort: 'recent' });
+    if (requete) parametres.set('q', requete);
+    api
+      .get(`/establishments?${parametres.toString()}`, { auth: false })
+      .then((reponse) => {
+        if (!vivant) return;
+        setDonnees(reponse);
+        setErreur('');
+      })
+      .catch((err) => {
+        if (!vivant || onGererErreur(err)) return;
+        setErreur(err?.message || 'Catalogue indisponible pour le moment.');
+      })
+      .finally(() => {
+        if (vivant) setChargement(false);
+      });
+    return () => {
+      vivant = false;
+    };
+  }, [cle, page, requete, onGererErreur]);
+
+  const items = donnees?.items || [];
+  const total = Number(donnees?.total) || 0;
+
+  function chercher(evt) {
+    evt.preventDefault();
+    setPage(1);
+    setRequete(recherche.trim());
+  }
+
+  function effacer() {
+    setRecherche('');
+    setRequete('');
+    setPage(1);
+  }
+
+  return (
+    <div className="bo-empile bo-apparition">
+      <div className="bo-tuiles">
+        <Tuile
+          libelle="Fiches au catalogue"
+          valeur={stats?.etablissements || 0}
+          note="Toutes catégories confondues"
+          icone="store"
+          couleur="accent"
+        />
+        <Tuile
+          libelle="Résultat affiché"
+          valeur={total}
+          note={requete ? `Recherche « ${requete} »` : 'Fiches les plus récentes'}
+          icone="search"
+        />
+        <Tuile
+          libelle="Catégories proposées"
+          valeur={stats?.demandesCategorie?.enAttente || 0}
+          note="Métiers locaux saisis par les gérants, à valider"
+          icone="grid"
+          couleur={(stats?.demandesCategorie?.enAttente || 0) > 0 ? 'accent' : ''}
+          onClick={() => onNaviguer('categories')}
+        />
+      </div>
+
+      <Panneau
+        titre="Catalogue"
+        sous="Fiches visibles dans l’application : contact publié, réputation et état de publication"
+        serre
+      >
+        <div className="bo-barre-outils">
+          <form className="bo-recherche" onSubmit={chercher}>
+            <input
+              className="bo-entree"
+              type="search"
+              placeholder="Nom, quartier, catégorie…"
+              value={recherche}
+              onChange={(e) => setRecherche(e.target.value)}
+              aria-label="Rechercher une fiche"
+            />
+            <button type="submit" className="bo-btn bo-btn--petit">
+              <Icon name="search" size={14} />
+              Rechercher
+            </button>
+            {requete ? (
+              <button type="button" className="bo-btn bo-btn--petit" onClick={effacer}>
+                <Icon name="close" size={13} />
+                Effacer
+              </button>
+            ) : null}
+          </form>
+          <div className="bo-ligne-actions">
+            <button type="button" className="bo-btn bo-btn--petit" onClick={onRafraichir}>
+              <Icon name="refresh" size={14} />
+              Actualiser
+            </button>
+            <button
+              type="button"
+              className="bo-btn bo-btn--petit"
+              onClick={() => onNaviguer('reclamations')}
+            >
+              <Icon name="mapPin" size={14} />
+              Réclamations
+            </button>
+          </div>
+        </div>
+
+        {chargement ? (
+          <EtatChargement texte="Chargement du catalogue…" />
+        ) : erreur ? (
+          <div className="bo-panneau-corps">
+            <Alerte variante="erreur" icone="alert" onFermer={() => setErreur('')}>
+              {erreur}
+            </Alerte>
+          </div>
+        ) : items.length === 0 ? (
+          <EtatVide
+            texte={requete ? `Aucune fiche pour « ${requete} ».` : 'Aucune fiche au catalogue.'}
+            icone="store"
+          />
+        ) : (
+          <div className="bo-tableau-enveloppe">
+            <table className="bo-tableau">
+              <thead>
+                <tr>
+                  <th>Fiche</th>
+                  <th>Catégorie</th>
+                  <th>Localisation</th>
+                  <th>Contact publié</th>
+                  <th>Réputation</th>
+                  <th>État</th>
+                  <th>Créée le</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((fiche) => (
+                  <tr key={String(fiche.id)}>
+                    <td>
+                      <strong>{fiche.nom || 'Fiche sans nom'}</strong>
+                      {fiche.sousCategorie ? (
+                        <div className="bo-petit bo-doux">{fiche.sousCategorie}</div>
+                      ) : null}
+                    </td>
+                    <td>{libelleFamille(fiche.categorie)}</td>
+                    <td>{[fiche.quartier, fiche.commune].filter(Boolean).join(', ') || '—'}</td>
+                    <td>
+                      {fiche.telephone ? (
+                        formatTelephone(fiche.telephone)
+                      ) : (
+                        <span className="bo-doux">non publié</span>
+                      )}
+                    </td>
+                    <td>
+                      {Number(fiche.nombreAvis) > 0 ? (
+                        <>
+                          <span className="bo-note">{formatNote(fiche.noteMoyenne)}</span>
+                          <div className="bo-petit bo-doux">{fiche.nombreAvis} avis</div>
+                        </>
+                      ) : (
+                        <span className="bo-petit bo-doux">Nouveau</span>
+                      )}
+                    </td>
+                    <td>
+                      {fiche.verifie ? (
+                        <Badge variante="ok" icone="check">
+                          Vérifiée
+                        </Badge>
+                      ) : fiche.reclame ? (
+                        <Badge variante="info">Réclamée</Badge>
+                      ) : fiche.estImporte ? (
+                        <Badge variante="susp">Importée</Badge>
+                      ) : (
+                        <Badge variante="attente">À compléter</Badge>
+                      )}
+                    </td>
+                    <td className="bo-tableau-num">{formatDate(fiche.createdAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {!chargement && !erreur && items.length > 0 ? (
+          <div className="bo-pagination">
+            <span className="bo-pagination-info">
+              Page {page} · {total} fiche{total > 1 ? 's' : ''}
+            </span>
+            <button
+              type="button"
+              className="bo-btn bo-btn--petit"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Précédent
+            </button>
+            <button
+              type="button"
+              className="bo-btn bo-btn--petit"
+              disabled={!donnees?.hasMore}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Suivant
+            </button>
+          </div>
+        ) : null}
+      </Panneau>
+    </div>
+  );
+}
+
+
+
+
 /* ─── Annonces signalées (prompt 7) ───────────────────────────────────────────
    Le signalement est un geste de terrain : quelqu'un voit une annonce douteuse
    (fausse offre, numéro surtaxé, arnaque) et appuie sur le drapeau. Le serveur ne
@@ -2842,6 +3199,142 @@ function VueAnnoncesSignalees({ cle, onMessage, onGererErreur, onRafraichir }) {
     </Panneau>
   );
 }
+/* ─── Mises en avant (file d'attente) ─────────────────────────────────────────
+   Pendant la période gratuite, la mise en avant est OFFERTE : le bouton du profil
+   n'achète rien, il enregistre l'INTÉRÊT d'un artisan ou d'un gérant pour les
+   futures options de visibilité (models/ListeAttente.js). Cette section est donc
+   un carnet d'appels : qui rappeler, pour quel profil, depuis quand. Aucune
+   action n'est nécessaire ici — la demande se traite au téléphone, avec la
+   personne. Le compteur de la tuile vient du serveur (`listeAttente.enAttente`),
+   la liste montre les demandes les plus récentes. */
+function VueMisesEnAvant({ stats, onNaviguer, onOuvrirUtilisateur, onRafraichir }) {
+  const file = stats?.listeAttente?.recentes || [];
+  const total = stats?.listeAttente?.enAttente || 0;
+  const avecFiche = file.filter((demande) => Boolean(demande.etablissement?.nom)).length;
+  const sansFiche = file.length - avecFiche;
+
+  return (
+    <div className="bo-empile bo-apparition">
+      <div className="bo-tuiles">
+        <Tuile
+          libelle="Demandes en attente"
+          valeur={total}
+          note="« Je veux être mis en avant »"
+          icone="star"
+          couleur={total > 0 ? 'accent' : ''}
+        />
+        <Tuile
+          libelle="Avec une fiche"
+          valeur={avecFiche}
+          note={`Sur les ${file.length} demande(s) les plus récentes`}
+          icone="store"
+        />
+        <Tuile
+          libelle="Profil artisan seul"
+          valeur={sansFiche}
+          note={`Sur les ${file.length} demande(s) les plus récentes`}
+          icone="tools"
+        />
+      </div>
+
+      <Panneau
+        titre="File d’attente"
+        sous="Demandes les plus récentes, à rappeler pour les options de visibilité"
+        actions={
+          <button type="button" className="bo-btn bo-btn--petit" onClick={onRafraichir}>
+            <Icon name="refresh" size={14} />
+            Actualiser
+          </button>
+        }
+      >
+        {file.length === 0 ? (
+          <EtatVide texte="Aucune demande de mise en avant pour l’instant." icone="star" />
+        ) : (
+          <div className="bo-tableau-enveloppe">
+            <table className="bo-tableau">
+              <thead>
+                <tr>
+                  <th>Personne</th>
+                  <th>À mettre en avant</th>
+                  <th>Demandée le</th>
+                  <th>Ancienneté</th>
+                  <th>Compte</th>
+                </tr>
+              </thead>
+              <tbody>
+                {file.map((demande) => (
+                  <tr key={String(demande.id)}>
+                    <td>
+                      <div className="bo-cellule-principale">
+                        <span className="bo-avatar">{initiales(demande.utilisateur?.nom) || '?'}</span>
+                        <div>
+                          <strong>{demande.utilisateur?.nom || 'Compte sans nom'}</strong>
+                          <div className="bo-petit bo-doux">
+                            {demande.utilisateur?.telephone
+                              ? formatTelephone(demande.utilisateur.telephone)
+                              : 'numéro indisponible'}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      {demande.etablissement?.nom || 'Profil artisan (sans fiche)'}
+                      {demande.utilisateur?.metier ? (
+                        <div className="bo-petit bo-doux">{demande.utilisateur.metier}</div>
+                      ) : null}
+                    </td>
+                    <td>{formatDateHeure(demande.date)}</td>
+                    <td>{formatDateRelative(demande.date) || '—'}</td>
+                    <td className="bo-tableau-actions">
+                      {demande.utilisateur?.id ? (
+                        <button
+                          type="button"
+                          className="bo-btn bo-btn--petit"
+                          onClick={() => onOuvrirUtilisateur(demande.utilisateur.id)}
+                        >
+                          Ouvrir
+                        </button>
+                      ) : (
+                        <span className="bo-petit bo-doux">compte supprimé</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panneau>
+
+      <div className="bo-aide">
+        <p className="bo-aide-titre">Comment traiter une demande</p>
+        <ul className="bo-aide-liste">
+          <li>Appelez la personne au numéro affiché : le numéro n’est pas public dans l’application.</li>
+          <li>
+            Confirmez ce qui doit être mis en avant — une fiche d’établissement ou un profil
+            d’artisan — et le métier concerné.
+          </li>
+          <li>
+            La mise en avant est offerte pendant la période gratuite : la demande sert à savoir qui
+            rappeler le jour où des options de visibilité seront proposées.
+          </li>
+          <li>
+            Besoin de la fiche complète du compte (activité, dépôts, contacts débloqués) ?
+            « Ouvrir » mène directement à sa fiche dans la section Utilisateurs.
+          </li>
+        </ul>
+        <div className="bo-ligne-actions">
+          <button type="button" className="bo-btn bo-btn--petit" onClick={() => onNaviguer('utilisateurs')}>
+            <Icon name="users" size={14} />
+            Ouvrir les utilisateurs
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 
 /* ─── Catégories proposées (prompt 6) ─────────────────────────────────────────
    La taxonomie locale (maquis, garbadrom, clé minute…) ne se devine pas depuis un

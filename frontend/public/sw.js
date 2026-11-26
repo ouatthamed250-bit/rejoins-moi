@@ -242,7 +242,19 @@
 //       plus de bandeau ni de bouton « gratuit » : le contact s'obtient
 //       naturellement (« Voir le contact »). Même publication que le correctif
 //       backend qui acceptait « GRATUIT » dans l'enum moyenPaiement.
-const VERSION = 'v29';
+// v30 : profil artisan + cartes cliquables (26/11)
+//       — les cartes « Artisans mis en avant » affichaient un nom, un métier et
+//       une note sans mener nulle part. Elles ouvrent maintenant /artisan/:id
+//       (nouvelle page ArtisanProfile.jsx) : grande photo, nom, métier,
+//       quartier, note et nombre d'avis, bio, puis les actions — « Appeler » et
+//       « WhatsApp » si l'artisan a publié son numéro, sinon « Envoyer un
+//       message ». Les boutons de contact posés DANS la carte gardent leur
+//       geste propre : ils n'ouvrent pas la fiche.
+//       App.jsx et ArtisansMisEnAvant.jsx changent (nouvelles empreintes JS),
+//       d'où ce nouveau nom de cache : sans lui, un téléphone déjà installé
+//       servirait l'ancien index.html et garderait des cartes qui ne réagissent
+//       pas au clic.
+const VERSION = 'v30';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

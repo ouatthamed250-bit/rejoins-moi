@@ -2,6 +2,7 @@
 // /                      -> Feed
 // /recherche             -> Search
 // /etablissement/:id     -> EstablishmentProfile
+// /artisan/:id           -> ArtisanProfile (profil public d'un artisan, 26/11)
 // /pharmacies-cliniques  -> PharmaciesCliniques
 // /inscription           -> RegisterEstablishment
 // /jobs                  -> Jobs (offres de boulot + demandes de main-d'œuvre, ajout du 29/09)
@@ -49,6 +50,10 @@ import Feed from './pages/Feed.jsx';
 import Search from './pages/Search.jsx';
 
 const EstablishmentProfile = lazy(() => import('./pages/EstablishmentProfile.jsx'));
+// Profil artisan (26/11) : la fiche derrière les cartes « Artisans mis en avant ».
+// Chargée à la demande comme les autres fiches — la page d'accueil n'a pas à
+// payer ce code tant que personne n'a cliqué sur une carte.
+const ArtisanProfile = lazy(() => import('./pages/ArtisanProfile.jsx'));
 const PharmaciesCliniques = lazy(() => import('./pages/PharmaciesCliniques.jsx'));
 const RegisterEstablishment = lazy(() => import('./pages/RegisterEstablishment.jsx'));
 const JobBoard = lazy(() => import('./pages/JobBoard.jsx'));
@@ -146,6 +151,10 @@ function Structure() {
             <Route path="/" element={<Feed />} />
             <Route path="/recherche" element={<Search />} />
             <Route path="/etablissement/:id" element={<EstablishmentProfile />} />
+            {/* Profil public d'un artisan (26/11) : PAS en plein écran — c'est une
+                fiche qu'on consulte au fil d'une liste, la barre du haut et la
+                navigation basse restent donc en place. */}
+            <Route path="/artisan/:id" element={<ArtisanProfile />} />
             <Route path="/pharmacies-cliniques" element={<PharmaciesCliniques />} />
             <Route path="/inscription" element={<RegisterEstablishment />} />
             <Route path="/jobs" element={<Jobs />} />

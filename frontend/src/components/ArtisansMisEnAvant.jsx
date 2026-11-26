@@ -13,6 +13,14 @@
 //  - Si l'API est injoignable, on affiche les artisans de démonstration en le disant.
 //  - Le bandeau disparaît s'il n'y a aucun artisan : jamais de section vide.
 //
+// CARTES CLIQUABLES (26/11) : chaque carte mène à sa fiche /artisan/:id (voir
+// pages/ArtisanProfile.jsx). Les deux boutons posés DANS la carte gardent leur
+// geste propre (« Appeler », « WhatsApp ») : sans garde, le clic déclencherait
+// AUSSI la navigation et l'on quitterait la fiche à peine ouverte. Le garde est
+// `stopPropagation()` sur le lien téléphone/WhatsApp — volontairement PAS
+// `preventDefault()`, qui annulerait l'appel lui-même : c'est l'événement qui
+// remonte vers le <Link> qu'il faut couper, pas l'action du bouton.
+//
 // CORRECTIF DU 16/11 — « rectangles beiges vides » dans la rangée « Artisans pour… » :
 //  1. les cartes de chargement étaient des `div` beiges SANS contenu : à l'arrivée de
 //     la position GPS (le hook relance la requête), la rangée repassait en squelette
@@ -29,7 +37,7 @@
 //     dans le projet, elle n'est pas recopiée ici.
 
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 import { Icon } from './Icons.jsx';
 import StarRating from './StarRating.jsx';
@@ -187,10 +195,22 @@ export default function ArtisansMisEnAvant({
           artisans.map((artisan) => {
             const distanceKm =
               artisan.distanceKm ?? distanceDepuis(position.position, artisan.localisation || artisan);
+            // Lien WhatsApp rédigé UNE fois : il sert de `href` (adresse visible,
+            // copiable, accessible au clavier) ET de cible au clic programmé plus
+            // bas. Le message reprend le métier, comme sur la fiche artisan.
+            const lienWhatsApp =
+              artisan.contactPublic && artisan.telephone
+                ? `https://wa.me/${String(artisan.telephone).replace('+', '')}?text=${encodeURIComponent(
+                    `Bonjour, je vous contacte via Rejoins'Moi pour vos services de ${
+                      artisan.metier || 'votre métier'
+                    }.`
+                  )}`
+                : '';
             return (
-              <article
+              <Link
                 key={artisan.id}
-                className={`carte w-[150px] shrink-0 p-2 ${
+                to={`/artisan/${artisan.id}`}
+                className={`carte block w-[150px] shrink-0 p-2 transition hover:border-primary/40 active:scale-[0.99] ${
                   artisan.misEnAvant ? 'border-primary/60 bg-primary/5' : ''
                 }`}
               >
@@ -216,23 +236,34 @@ export default function ArtisansMisEnAvant({
                 {artisan.contactPublic && artisan.telephone ? (
                   // Consentement explicite (prompt 7) : l'artisan a accepté que son
                   // numéro soit visible, les deux gestes utiles sont donc affichés.
+                  // `stopPropagation` : le clic appelle (ou ouvre WhatsApp) SANS
+                  // ouvrir la fiche — sans lui, le <Link> de la carte recevrait
+                  // l'événement et l'on changerait de page pendant l'appel.
                   <div className="mt-1 grid grid-cols-2 gap-1">
                     <a
                       className="btn-health py-1 text-[10px]"
                       href={`tel:${artisan.telephone}`}
+                      onClick={(evt) => {
+                        evt.preventDefault();
+                        evt.stopPropagation();
+                        window.location.href = `tel:${artisan.telephone}`;
+                      }}
                     >
                       <Icon name="phone" size={12} />
                       Appeler
                     </a>
                     <a
                       className="btn-health-ghost py-1 text-[10px]"
-                      href={`https://wa.me/${String(artisan.telephone).replace('+', '')}?text=${encodeURIComponent(
-                        `Bonjour, je vous contacte via Rejoins'Moi pour vos services de ${
-                          artisan.metier || 'votre métier'
-                        }.`
-                      )}`}
+                      href={lienWhatsApp}
                       target="_blank"
                       rel="noopener noreferrer"
+                      onClick={(evt) => {
+                        evt.preventDefault();
+                        evt.stopPropagation();
+                        // Fenêtre ouverte ici (et non par défaut) : dans un vrai
+                        // clic utilisateur, elle n'est pas bloquée.
+                        window.open(lienWhatsApp, '_blank', 'noopener,noreferrer');
+                      }}
                     >
                       <Icon name="whatsapp" size={12} />
                       WhatsApp
@@ -244,7 +275,7 @@ export default function ArtisansMisEnAvant({
                     Contact masqué
                   </p>
                 )}
-              </article>
+              </Link>
             );
           })
         )}

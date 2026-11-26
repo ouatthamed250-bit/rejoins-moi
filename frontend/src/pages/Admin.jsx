@@ -88,6 +88,10 @@ const ONGLETS_FILTRE = [
   { cle: 'artisans', libelle: 'Artisans', compteur: 'artisans', icone: 'tools' },
   { cle: 'chercheurs', libelle: 'Chercheurs', compteur: 'chercheurs', icone: 'briefcase' },
   { cle: 'admins', libelle: 'Administrateurs', compteur: 'admins', icone: 'shield' },
+  // Comptes effacés (droit à l'oubli, 20/11) : ils n'ont plus de nom ni de numéro.
+  // L'onglet existe pour l'AUDIT (« ce compte a-t-il bien été anonymisé ? »), jamais
+  // pour du démarchage : plus aucune donnée personnelle n'y figure.
+  { cle: 'effaces', libelle: 'Effacés', compteur: 'effaces', icone: 'close' },
 ];
 
 const TRIS = [
@@ -233,6 +237,15 @@ function Panneau({ titre, sous, actions, children, serre = false }) {
 /** Puces d'état d'un compte — l'état le plus important d'abord (la suspension). */
 function EtatCompte({ utilisateur }) {
   if (!utilisateur) return null;
+  // Compte effacé (droit à l'oubli) : ni actif ni suspendu — il n'existe plus
+  // qu'à l'état de trace technique pour la comptabilité.
+  if (utilisateur.supprime || utilisateur.supprimeAt) {
+    return (
+      <Badge variante="susp" icone="close">
+        Effacé
+      </Badge>
+    );
+  }
   if (utilisateur.suspendu || utilisateur.statutCompte === 'suspendu') {
     return (
       <Badge variante="ko" icone="ban">
@@ -795,8 +808,12 @@ function LigneEvenement({ evenement, onVoirUtilisateur }) {
 function compteurOnglet(onglet, compteurs) {
   if (!compteurs) return 0;
   if (onglet.compteur === 'actifs') {
-    // Le serveur ne renvoie pas « actifs » : c'est tout sauf les suspendus.
-    return Math.max(0, (compteurs.utilisateurs || 0) - (compteurs.suspendus || 0));
+    // Le serveur ne renvoie pas « actifs » : c'est tout sauf les suspendus et les
+    // comptes effacés (anonymisés, ils ne sont actifs pour personne).
+    return Math.max(
+      0,
+      (compteurs.utilisateurs || 0) - (compteurs.suspendus || 0) - (compteurs.effaces || 0)
+    );
   }
   return compteurs[onglet.compteur] || 0;
 }
@@ -879,7 +896,11 @@ function VueTableauDeBord({
         <Tuile
           libelle="Comptes inscrits"
           valeur={stats.utilisateurs || 0}
-          note={`+${stats.inscrits7j || 0} ces 7 derniers jours`}
+          note={
+            stats.effaces
+              ? `+${stats.inscrits7j || 0} ces 7 derniers jours · ${stats.effaces} effacé(s)`
+              : `+${stats.inscrits7j || 0} ces 7 derniers jours`
+          }
           icone="users"
           couleur="accent"
           onClick={() => onNaviguer('utilisateurs')}
@@ -1466,7 +1487,7 @@ function VueUtilisateurs({
 
       <Panneau
         titre="Comptes inscrits"
-        sous={`${total} compte(s) dans ce filtre${compteurs ? ` · ${compteurs.connectes24h} connecté(s) ces 24 h · ${compteurs.suspendus} suspendu(s)` : ''}`}
+        sous={`${total} compte(s) dans ce filtre${compteurs ? ` · ${compteurs.connectes24h} connecté(s) ces 24 h · ${compteurs.suspendus} suspendu(s)${compteurs.effaces ? ` · ${compteurs.effaces} effacé(s)` : ''}` : ''}`}
         serre
         actions={
           <button type="button" className="bo-btn bo-btn--petit" onClick={onRafraichir} disabled={chargement}>
@@ -1558,16 +1579,24 @@ function VueUtilisateurs({
                     key={compte.id}
                     className={`bo-tableau-ligne--cliquable${
                       compte.suspendu ? ' bo-tableau-ligne--suspendu' : ''
-                    }`}
+                    }${compte.supprime ? ' bo-tableau-ligne--efface' : ''}`}
                     onClick={() => onUtilisateurOuvert(String(compte.id))}
                   >
                     <td>
                       <div className="bo-cellule-principale">
-                        <span className="bo-avatar">{initiales(nomComplet(compte)) || '?'}</span>
+                        <span className="bo-avatar">
+                          {compte.supprime ? (
+                            <Icon name="close" size={13} />
+                          ) : (
+                            initiales(nomComplet(compte)) || '?'
+                          )}
+                        </span>
                         <span>
                           <span className="bo-nom">{nomComplet(compte)}</span>
                           <span className="bo-sous-ligne bo-petit bo-doux">
-                            {formatTelephone(compte.telephone) || 'numéro inconnu'}
+                            {compte.supprime
+                              ? 'compte anonymisé'
+                              : formatTelephone(compte.telephone) || 'numéro inconnu'}
                           </span>
                         </span>
                       </div>
@@ -1676,6 +1705,11 @@ function TiroirUtilisateur({ utilisateurId, onFermer, onMessage, onGererErreur, 
   const [reinit, setReinit] = useState(false);
   const [nouveauMdp, setNouveauMdp] = useState('');
   const [enCours, setEnCours] = useState('');
+  // Droit à l'effacement (20/11) : le geste est IRRÉVERSIBLE, il demande donc une
+  // confirmation tapée à la main (le nom affiché du compte), et non un simple clic.
+  const [effacer, setEffacer] = useState(false);
+  const [confirmation, setConfirmation] = useState('');
+  const [motifEffacement, setMotifEffacement] = useState('');
 
   useEffect(() => {
     let vivant = true;
@@ -1750,6 +1784,48 @@ function TiroirUtilisateur({ utilisateurId, onFermer, onMessage, onGererErreur, 
   };
 
   const suspendu = Boolean(utilisateur?.suspendu);
+  const efface = Boolean(utilisateur?.supprime || utilisateur?.supprimeAt);
+  // Exactement ce que le serveur attend : le nom complet s'il existe, sinon le
+  // numéro (voir DELETE /api/admin/utilisateurs/:id). On ne recompose pas la chaîne
+  // à la main — c'est `nomComplet` renvoyé par l'API qui fait foi.
+  const attenduConfirmation = String(utilisateur?.nomComplet || utilisateur?.telephone || '').trim();
+  const confirmationValide =
+    Boolean(attenduConfirmation) &&
+    confirmation.trim().toLowerCase() === attenduConfirmation.toLowerCase();
+
+  /**
+   * Efface le compte (anonymisation, pas suppression : voir
+   * backend/src/services/suppressionCompte.js). Le serveur revérifie `confirmation`
+   * contre le nom — ou le numéro — qu'il connaît : taper « n'importe quoi » renvoie
+   * 400 et ne touche à rien. On recharge ensuite la fiche pour montrer l'état réel
+   * (nom « Utilisateur supprimé », badge Effacé) : l'administrateur voit ce qu'il a
+   * fait, il ne le suppose pas.
+   */
+  const effacerCompte = async () => {
+    if (!confirmation.trim()) return;
+    setEnCours('effacer');
+    try {
+      const reponse = await adminApi.supprimerUtilisateur(
+        utilisateurId,
+        confirmation.trim(),
+        motifEffacement.trim()
+      );
+      setEffacer(false);
+      setConfirmation('');
+      setMotifEffacement('');
+      onRafraichir();
+      onMessage(
+        reponse?.dejaSupprime
+          ? 'Ce compte était déjà effacé.'
+          : reponse?.message || 'Compte effacé : les données personnelles ont été anonymisées.'
+      );
+      setRechargement((n) => n + 1);
+    } catch (err) {
+      if (!onGererErreur(err)) setErreur(err?.message || 'Effacement impossible.');
+    } finally {
+      setEnCours('');
+    }
+  };
 
   return (
     <div
@@ -1769,7 +1845,9 @@ function TiroirUtilisateur({ utilisateurId, onFermer, onMessage, onGererErreur, 
             <span>
               <span className="bo-fiche-nom">{nomComplet(utilisateur)}</span>
               <span className="bo-fiche-sous">
-                {formatTelephone(utilisateur?.telephone) || 'numéro inconnu'}
+                {efface
+                  ? 'numéro effacé'
+                  : formatTelephone(utilisateur?.telephone) || 'numéro inconnu'}
               </span>
             </span>
           </div>
@@ -1798,6 +1876,16 @@ function TiroirUtilisateur({ utilisateurId, onFermer, onMessage, onGererErreur, 
                 <EtatCompte utilisateur={utilisateur} />
                 <RolesCompte utilisateur={utilisateur} />
               </div>
+
+              {efface ? (
+                <Alerte variante="attention" icone="close">
+                  Compte effacé
+                  {utilisateur.supprimeAt ? ` le ${formatDateHeure(utilisateur.supprimeAt)}` : ''} :
+                  nom, numéro, photo, favoris et avis ont été anonymisés. Les dépôts et abonnements
+                  payés sont conservés sans donnée personnelle (comptabilité). Aucune action n’est
+                  possible sur ce compte ; la personne peut en recréer un avec le même numéro.
+                </Alerte>
+              ) : null}
 
               {suspendu ? (
                 <Alerte variante="attention" icone="ban">
@@ -1856,7 +1944,9 @@ function TiroirUtilisateur({ utilisateurId, onFermer, onMessage, onGererErreur, 
                     '—'}
                 </dd>
                 <dt>Téléphone</dt>
-                <dd className="bo-mono">{formatTelephone(utilisateur.telephone) || '—'}</dd>
+                <dd className="bo-mono">
+                  {efface ? '—' : formatTelephone(utilisateur.telephone) || '—'}
+                </dd>
                 <dt>Inscription</dt>
                 <dd>{formatDateHeure(utilisateur.createdAt)}</dd>
                 <dt>Dernière connexion</dt>
@@ -1933,6 +2023,74 @@ function TiroirUtilisateur({ utilisateurId, onFermer, onMessage, onGererErreur, 
                   </table>
                 </div>
               )}
+
+              {/* Droit à l'effacement (20/11). Le libellé demande de TAPER le nom :
+                  un clic de trop ne peut pas effacer un compte (demande fréquente de
+                  clients qui n'ont plus accès au numéro). */}
+              {effacer ? (
+                <div className="bo-bloc-action">
+                  <p className="bo-bloc-action-titre">
+                    <Icon name="close" size={15} />
+                    Effacer ce compte ?
+                  </p>
+                  <p className="bo-petit bo-doux">
+                    Le nom, le numéro, la photo, les favoris et les avis de cette personne seront
+                    anonymisés immédiatement («&nbsp;Utilisateur supprimé&nbsp;»), et ses jetons de
+                    connexion cesseront de fonctionner. Ses dépôts et abonnements payés restent, sans
+                    donnée personnelle, pour la comptabilité. C’est <strong>irréversible</strong>.
+                  </p>
+                  <label className="bo-champ">
+                    <span className="bo-etiquette">
+                      {`Pour confirmer, tapez « ${attenduConfirmation || 'le nom du compte'} »`}
+                    </span>
+                    <input
+                      className="bo-entree"
+                      type="text"
+                      autoComplete="off"
+                      value={confirmation}
+                      onChange={(e) => setConfirmation(e.target.value)}
+                      placeholder={attenduConfirmation}
+                    />
+                  </label>
+                  <label className="bo-champ">
+                    <span className="bo-etiquette">Motif (facultatif, à usage interne)</span>
+                    <input
+                      className="bo-entree"
+                      type="text"
+                      autoComplete="off"
+                      value={motifEffacement}
+                      onChange={(e) => setMotifEffacement(e.target.value)}
+                      placeholder="Demande écrite du client, compte frauduleux…"
+                    />
+                  </label>
+                  <div className="bo-ligne-actions">
+                    <button
+                      type="button"
+                      className="bo-btn bo-btn--danger"
+                      onClick={effacerCompte}
+                      disabled={enCours === 'effacer' || !confirmationValide}
+                    >
+                      <Icon
+                        name={enCours === 'effacer' ? 'loader' : 'close'}
+                        size={14}
+                        className={enCours === 'effacer' ? 'bo-tourne' : ''}
+                      />
+                      Confirmer l’effacement
+                    </button>
+                    <button
+                      type="button"
+                      className="bo-btn"
+                      onClick={() => {
+                        setEffacer(false);
+                        setConfirmation('');
+                        setMotifEffacement('');
+                      }}
+                    >
+                      Annuler
+                    </button>
+                  </div>
+                </div>
+              ) : null}
 
               {suspendre ? (
                 <div className="bo-bloc-action">
@@ -2041,7 +2199,7 @@ function TiroirUtilisateur({ utilisateurId, onFermer, onMessage, onGererErreur, 
             <Icon name="refresh" size={13} className={chargement ? 'bo-tourne' : ''} />
             Recharger la fiche
           </button>
-          {utilisateur && !reinit ? (
+          {utilisateur && !reinit && !efface ? (
             <button type="button" className="bo-btn bo-btn--petit" onClick={() => setReinit(true)}>
               <Icon name="key" size={13} />
               Mot de passe
@@ -2057,7 +2215,17 @@ function TiroirUtilisateur({ utilisateurId, onFermer, onMessage, onGererErreur, 
               Suspendre
             </button>
           ) : null}
-          {utilisateur && suspendu ? (
+          {utilisateur && !utilisateur.estAdmin && !efface && !effacer ? (
+            <button
+              type="button"
+              className="bo-btn bo-btn--danger bo-btn--petit"
+              onClick={() => setEffacer(true)}
+            >
+              <Icon name="close" size={13} />
+              Effacer le compte
+            </button>
+          ) : null}
+          {utilisateur && suspendu && !efface ? (
             <button
               type="button"
               className="bo-btn bo-btn--ok bo-btn--petit"

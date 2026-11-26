@@ -110,6 +110,13 @@ export const adminApi = {
     requeteAdmin(`/utilisateurs/${id}/statut`, { method: 'PATCH', body: { statut, motif } }),
   reinitialiserMotDePasse: (id, motDePasse) =>
     requeteAdmin(`/utilisateurs/${id}/mot-de-passe`, { method: 'POST', body: { motDePasse } }),
+  // Droit à l'effacement côté back-office (20/11) : anonymise le compte (nom, numéro,
+  // photo, avis, annonces) au lieu de le supprimer — les dépôts/abonnements payés
+  // restent pour la comptabilité. Le serveur EXIGE `confirmation` (le nom affiché du
+  // compte, ou son numéro tel qu'affiché) : une faute de frappe dans le tiroir ne doit
+  // jamais effacer la mauvaise personne. `motif` est facultatif (journalisé).
+  supprimerUtilisateur: (id, confirmation, motif = '') =>
+    requeteAdmin(`/utilisateurs/${id}`, { method: 'DELETE', body: { confirmation, motif } }),
   depots: (statut = 'en_attente') => requeteAdmin(`/depots${chaineParametres({ statut })}`),
   validerDepot: (id) => requeteAdmin(`/depots/${id}/valider`, { method: 'POST', body: {} }),
   rejeterDepot: (id, noteAdmin) => requeteAdmin(`/depots/${id}/rejeter`, { method: 'POST', body: { noteAdmin } }),

@@ -15,6 +15,14 @@
  *     quelle. Le serveur reste seul juge du paiement (règle de sécurité du projet).
  */
 
+// v19 : droit à l'effacement (20/11) — le profil propose « Supprimer mon compte »,
+//       le back-office gagne l'onglet « Effacés », la pastille « Effacé », le
+//       masquage des numéros et une confirmation par saisie du nom. Profile.jsx,
+//       Feed.jsx, Admin.jsx et admin.css changent : les empreintes index-*.js/css
+//       changent, donc nouveau nom de cache — sinon un téléphone déjà installé
+//       servirait l'ancien index.html en secours, sans le bouton de suppression et
+//       avec l'ancienne console d'administration.
+//
 // v18 : nettoyage sécurité / affichage du 17/11 — les fiches jamais notées affichent
 //       une pastille « Nouveau » au lieu de cinq étoiles vides et « 0 (0 avis) », les
 //       noms qui sont en réalité des NUMÉROS de téléphone sont anonymisés dans les avis
@@ -134,7 +142,7 @@
 //      index.html en secours, donc l'ANCIENNE app — médaillon toujours rogné.
 // Changer la version est indispensable dès que les fichiers « cache d'abord »
 // (icônes) ou l'app shell changent de façon visible.
-const VERSION = 'v18';
+const VERSION = 'v19';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

@@ -19,7 +19,7 @@
 //    l'indique en haut de page.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 import CategoryFilter from '../components/CategoryFilter.jsx';
 import ArtisansMisEnAvant from '../components/ArtisansMisEnAvant.jsx';
@@ -57,6 +57,7 @@ function ageLisible(minutes) {
 
 export default function Feed() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { profil, favoris, historique, ajouterInteraction } = useAuth();
   const position = useGeolocation();
   const [categorie, setCategorie] = useState('tous');
@@ -184,6 +185,21 @@ export default function Feed() {
     if (!positionPrete) return;
     charger(1);
   }, [charger, positionPrete]);
+
+  /**
+   * Message de passage (20/11) : une autre page nous confie un texte à afficher
+   * une seule fois — aujourd'hui la suppression de compte (« Votre compte a été
+   * supprimé »), envoyé par /profil via `navigate('/', { state: { message } })`.
+   * On le recopie dans le bandeau local puis on nettoie l'état d'historique :
+   * sans ce nettoyage, un retour arrière ou un rechargement réafficherait un
+   * message qui ne correspond plus à rien.
+   */
+  useEffect(() => {
+    const flash = location.state?.message;
+    if (!flash) return;
+    setMessage(flash);
+    navigate(location.pathname, { replace: true });
+  }, [location.state, location.pathname, navigate]);
 
   /**
    * Démarrage à froid (bloc A) : si l'API est probablement endormie et n'a rien

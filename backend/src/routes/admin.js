@@ -40,6 +40,7 @@ import { asyncHandler, ApiError } from '../middleware/errorHandler.js';
 import { limiteurAuth } from '../middleware/rateLimit.js';
 import { normalizePhone, escapeRegex } from '../utils/validators.js';
 import { getUnlockFee, getCurrency } from '../services/cinetpay.js';
+import { anonymiserOuSupprimerCompte } from '../services/suppressionCompte.js';
 import { getDepots, getSupportWhatsapp } from '../config/paiement.js';
 
 const router = express.Router();
@@ -283,6 +284,14 @@ router.get(
     else if (filtre === 'admins') filtreReq.estAdmin = true;
     else if (filtre === 'suspendus') filtreReq.statutCompte = 'suspendu';
     else if (filtre === 'actifs') filtreReq.statutCompte = { $ne: 'suspendu' };
+    // Comptes effacés (droit à l'oubli) : visibles UNIQUEMENT ici, pour l'audit —
+    // ils n'ont plus de nom ni de numéro, seulement un identifiant technique.
+    else if (filtre === 'effaces') filtreReq.supprimeAt = { $ne: null };
+
+    // Les comptes effacés sortent des listes courantes : ils n'ont plus de nom à
+    // chercher ni de numéro à appeler, et les afficher partout noierait l'équipe.
+    // Ils ne réapparaissent que par l'onglet « Effacés » (audit ci-dessus).
+    if (filtre !== 'effaces') filtreReq.supprimeAt = null;
 
     if (statut === 'suspendu') filtreReq.statutCompte = 'suspendu';
     else if (statut === 'actif') filtreReq.statutCompte = { $ne: 'suspendu' };
@@ -329,13 +338,16 @@ router.get(
         User.countDocuments({ chercheTravail: true }),
         User.countDocuments({ estAdmin: true }),
         User.countDocuments({ dernierLoginAt: { $gte: new Date(Date.now() - 24 * 3600 * 1000) } }),
-      ]).then(([utilisateurs, suspendus, artisans, chercheurs, admins, connectes24h]) => ({
+        // Comptes anonymisés : on les compte à part, ils ne sont « actifs » pour personne.
+        User.countDocuments({ supprimeAt: { $ne: null } }),
+      ]).then(([utilisateurs, suspendus, artisans, chercheurs, admins, connectes24h, effaces]) => ({
         utilisateurs,
         suspendus,
         artisans,
         chercheurs,
         admins,
         connectes24h,
+        effaces,
       })),
     ]);
 
@@ -682,6 +694,93 @@ router.post(
     user.motDePasseHash = await User.hashMotDePasse(motDePasse);
     await user.save();
     res.json({ ok: true, message: `Mot de passe réinitialisé pour ${user.telephone}.` });
+  })
+);
+
+/**
+ * DELETE /api/admin/utilisateurs/:id — droit à l'effacement appliqué par l'équipe.
+ * body: { confirmation: "<nom complet du compte>" , motif? }
+ *
+ * Deux cas d'usage :
+ *   1. une personne écrit à l'équipe (« supprimez mon compte, je n'ai plus accès à
+ *      mon téléphone ») : on applique la même anonymisation que le libre-service
+ *      (voir services/suppressionCompte.js), sans attendre qu'elle se connecte ;
+ *   2. compte frauduleux à nettoyer tout en gardant les traces de paiement.
+ *
+ * GARDE-FOUS (l'opération est IRRÉVERSIBLE) :
+ *   - on ne supprime pas SON PROPRE compte : le back-office se verrouillerait ;
+ *   - on ne supprime pas un compte ADMINISTRATEUR (retirer le rôle d'abord) ;
+ *   - on exige la saisie du nom affiché du compte : une erreur d'identifiant dans
+ *     l'URL ne peut pas effacer quelqu'un d'autre ;
+ *   - un compte déjà anonymisé n'est pas retraité (réponse idempotente) : les
+ *     compteurs du rapport ne sont jamais faussés par un double clic.
+ *
+ * Contrairement à une suppression de document, les dépôts et abonnements restent
+ * en base (obligations comptables) : c'est le comportement voulu, et la réponse
+ * le dit explicitement à l'administrateur.
+ */
+router.delete(
+  '/utilisateurs/:id',
+  protectAdmin,
+  asyncHandler(async (req, res) => {
+    const user = await User.findById(req.params.id);
+    if (!user) throw new ApiError(404, 'Compte introuvable.');
+
+    if (String(user._id) === String(req.user._id)) {
+      throw new ApiError(409, 'Vous ne pouvez pas effacer votre propre compte depuis le back-office.');
+    }
+    if (user.estAdmin) {
+      throw new ApiError(
+        409,
+        'Un compte administrateur ne peut pas être effacé : retirez d’abord le rôle administrateur.'
+      );
+    }
+
+    if (user.supprimeAt) {
+      return res.json({
+        ok: true,
+        dejaSupprime: true,
+        // `prive` : l'admin a le droit de voir l'état de modération du compte.
+        user: user.toPublicJSON({ prive: true }),
+        message: 'Ce compte a déjà été effacé : aucune donnée personnelle ne subsiste.',
+      });
+    }
+
+    // Double validation par saisie du nom : même principe que la suppression d'un
+    // dépôt GitHub — on ne peut pas effacer un compte « au hasard » d'un clic.
+    const attendu = (user.nomComplet || user.telephone || '').trim();
+    const saisi = String(req.body?.confirmation ?? '').trim();
+    if (!saisi) {
+      throw new ApiError(
+        400,
+        `Pour confirmer, saisissez le nom affiché du compte : « ${attendu} ».`,
+        { confirmationAttendue: attendu }
+      );
+    }
+    if (saisi.toLowerCase() !== attendu.toLowerCase()) {
+      throw new ApiError(
+        400,
+        'La confirmation ne correspond pas au nom du compte : rien n’a été supprimé.',
+        { confirmationAttendue: attendu }
+      );
+    }
+
+    const motif = String(req.body?.motif ?? '').trim().slice(0, 200);
+    const rapport = await anonymiserOuSupprimerCompte(user._id);
+
+    res.json({
+      ok: true,
+      dejaSupprime: false,
+      // On relit le compte pour renvoyer son état réel (nom remplacé, supprimeAt).
+      user: (await User.findById(user._id)).toPublicJSON({ prive: true }),
+      message:
+        'Compte effacé : identité, coordonnées et contenus personnels ont été anonymisés. ' +
+        `Dépôts et abonnements conservés pour la comptabilité (${rapport.depotsConserves} dépôt(s), ` +
+        `${rapport.abonnementsConserves} abonnement(s)).`,
+      // Détail utile au back-office (et au rapport d'audit) : aucune donnée
+      // personnelle ici, seulement des compteurs.
+      suppression: { ...rapport, motif },
+    });
   })
 );
 

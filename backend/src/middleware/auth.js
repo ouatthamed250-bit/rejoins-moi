@@ -72,7 +72,11 @@ export async function protectAdmin(req, res, next) {
 
     const payload = jwt.verify(token, getJwtSecret());
     const user = await User.findById(payload.sub);
-    if (!user) return res.status(401).json({ error: 'Compte introuvable ou supprimé.' });
+    // `supprimeAt` = compte anonymisé (droit à l'effacement). Le document existe
+    // encore pour les paiements, mais il ne doit plus rien ouvrir.
+    if (!user || user.supprimeAt) {
+      return res.status(401).json({ error: 'Compte introuvable ou supprimé.' });
+    }
     if ((user.statutCompte || 'actif') === 'suspendu') {
       return res
         .status(403)
@@ -107,6 +111,15 @@ export async function protect(req, res, next) {
     const payload = jwt.verify(token, getJwtSecret());
     const user = await User.findById(payload.sub);
     if (!user) return res.status(401).json({ error: 'Compte introuvable ou supprimé.' });
+    // Compte anonymisé (droit à l'effacement) : le jeton émis avant la
+    // suppression, s'il traîne encore sur un téléphone, ne doit plus rien ouvrir.
+    // C'est le seul « vidage de session » possible avec des JWT sans état.
+    if (user.supprimeAt) {
+      return res.status(401).json({
+        error: 'Ce compte a été supprimé.',
+        details: { code: 'COMPTE_SUPPRIME' },
+      });
+    }
     if ((user.statutCompte || 'actif') === 'suspendu') {
       return res.status(403).json({
         error: user.motifSuspension
@@ -140,6 +153,9 @@ export async function optionalAuth(req, res, next) {
     if (!token) return next();
     const payload = jwt.verify(token, getJwtSecret());
     req.user = await User.findById(payload.sub);
+    // Un compte anonymisé est traité comme un visiteur : ses favoris et son
+    // carnet de visites n'existent plus, il n'a rien à personnaliser.
+    if (req.user?.supprimeAt) req.user = undefined;
     return next();
   } catch {
     // Token invalide -> on ignore simplement, la route reste accessible.

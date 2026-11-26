@@ -14,7 +14,15 @@
 //    démonstration » prévient clairement l'utilisateur que rien n'est enregistré.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { api, ApiError, getProfilLocal, getToken, setProfilLocal, setToken } from '../utils/api/client.js';
+import {
+  api,
+  ApiError,
+  getProfilLocal,
+  getToken,
+  setProfilLocal,
+  setToken,
+  supprimerMonCompte as supprimerMonCompteApi,
+} from '../utils/api/client.js';
 import { ecrireAbonnementLocal } from '../utils/abonnement.js';
 import { CLE_CONTACTS } from '../utils/contactsLocaux.js';
 import { PROFIL_DEMO } from '../data/demoData.js';
@@ -151,6 +159,33 @@ export function AuthProvider({ children }) {
   );
 
   /**
+   * Droit à l'effacement (20/11) : supprime DÉFINITIVEMENT le compte connecté.
+   *
+   * Le serveur exige le mot de passe (confirmation) et anonymise le compte :
+   * l'appelant doit donc avoir demandé cette confirmation à l'écran. En cas de
+   * succès on déconnecte immédiatement (le jeton ne vaut plus rien côté API) ;
+   * en cas d'échec l'erreur remonte et la session reste intacte — un mot de passe
+   * mal recopié ne doit jamais déconnecter.
+   *
+   * @param {string} motDePasse
+   * @returns {Promise<{message: string, suppression: object}>}
+   */
+  const supprimerMonCompte = useCallback(
+    async (motDePasse) => {
+      if (estDemo) {
+        throw new ApiError(
+          400,
+          'Mode démonstration : ce compte existe seulement sur ce téléphone, il n’y a aucune donnée serveur à supprimer.'
+        );
+      }
+      const reponse = await supprimerMonCompteApi(motDePasse);
+      deconnexion();
+      return reponse;
+    },
+    [estDemo, deconnexion]
+  );
+
+  /**
    * Relit le profil depuis le serveur (`GET /users/me`) et le mémorise.
    *
    * Utile quand le SERVEUR modifie le compte sans que le client le sache :
@@ -256,6 +291,8 @@ export function AuthProvider({ children }) {
       inscription,
       deconnexion,
       mettreAJourProfil,
+      // Droit à l'effacement : utilisé par l'écran Profil (bouton « Supprimer mon compte »).
+      supprimerMonCompte,
       rafraichirProfil,
       ajouterInteraction,
       basculerFavori,
@@ -274,6 +311,7 @@ export function AuthProvider({ children }) {
       inscription,
       deconnexion,
       mettreAJourProfil,
+      supprimerMonCompte,
       rafraichirProfil,
       ajouterInteraction,
       basculerFavori,

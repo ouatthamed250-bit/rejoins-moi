@@ -113,7 +113,7 @@ async function forcerMiseAJour() {
 
 export default function Profile() {
   const navigate = useNavigate();
-  const { profil, connecte, estDemo, deconnexion, mettreAJourProfil, favoris, visites } = useAuth();
+  const { profil, connecte, estDemo, deconnexion, mettreAJourProfil, supprimerMonCompte, favoris, visites } = useAuth();
   const [edition, setEdition] = useState(false);
   const [formulaire, setFormulaire] = useState(FORMULAIRE_VIDE);
   const [message, setMessage] = useState('');
@@ -126,6 +126,15 @@ export default function Profile() {
   // de démonstration sont résolues localement, sans appel réseau.
   const [fichesVisites, setFichesVisites] = useState([]);
   const [chargementVisites, setChargementVisites] = useState(false);
+  // ── Droit à l'effacement (20/11) ──
+  // La fenêtre de confirmation est LOCALE à cet écran : rien n'est envoyé tant que
+  // le mot de passe n'a pas été saisi, et un échec (mot de passe faux) laisse la
+  // session intacte. `suppressionEnCours` verrouille le bouton pour éviter un
+  // double envoi sur réseau lent.
+  const [suppressionOuverte, setSuppressionOuverte] = useState(false);
+  const [motDePasseSuppression, setMotDePasseSuppression] = useState('');
+  const [erreurSuppression, setErreurSuppression] = useState('');
+  const [suppressionEnCours, setSuppressionEnCours] = useState(false);
 
   useEffect(() => {
     if (!profil) return;
@@ -215,6 +224,52 @@ export default function Profile() {
   function lancerMiseAJour() {
     setMajEnCours(true);
     forcerMiseAJour();
+  }
+
+  /** Ouvre la confirmation d'effacement (champs remis à zéro à chaque ouverture). */
+  function ouvrirSuppression() {
+    setMotDePasseSuppression('');
+    setErreurSuppression('');
+    setSuppressionOuverte(true);
+  }
+
+  /** Ferme la fenêtre — interdit pendant l'envoi (on ne masque pas une requête en cours). */
+  function fermerSuppression() {
+    if (suppressionEnCours) return;
+    setSuppressionOuverte(false);
+    setMotDePasseSuppression('');
+    setErreurSuppression('');
+  }
+
+  /**
+   * Confirme l'effacement : le MOT DE PASSE est la preuve que c'est bien le
+   * titulaire (un téléphone prêté ne suffit pas à effacer un compte).
+   *
+   * En cas de succès, AuthContext nous a déconnectés : on repart vers l'accueil
+   * avec un message de confirmation. En cas d'échec, la fenêtre reste ouverte avec
+   * l'erreur du serveur : rien n'a été supprimé, la session continue.
+   */
+  async function confirmerSuppression(evt) {
+    evt.preventDefault();
+    if (!motDePasseSuppression || suppressionEnCours) return;
+    setSuppressionEnCours(true);
+    setErreurSuppression('');
+    try {
+      await supprimerMonCompte(motDePasseSuppression);
+      setSuppressionOuverte(false);
+      // Message court : le détail (ce qui est conservé) est déjà annoncé dans la zone
+      // DANGER du profil, et un bandeau d'accueil de 5 lignes ne se lit pas.
+      navigate('/', {
+        replace: true,
+        state: {
+          message:
+            'Votre compte a été supprimé. Vos avis restent en ligne sous le nom « Utilisateur supprimé ».',
+        },
+      });
+    } catch (err) {
+      setErreurSuppression(err?.message || 'Suppression impossible pour le moment. Réessayez.');
+      setSuppressionEnCours(false);
+    }
   }
 
   if (!connecte) {
@@ -582,6 +637,98 @@ export default function Profile() {
           Se déconnecter
         </button>
       </div>
+
+      {/* Droit à l'effacement (20/11) — zone DANGER, volontairement séparée de la
+          déconnexion : la déconnexion est réversible, l'effacement ne l'est pas.
+          On annonce d'abord CE QUI PART et CE QUI RESTE (dépôts/abonnements payés
+          conservés pour la comptabilité, sans donnée personnelle) : la personne doit
+          comprendre avant de cliquer, pas découvrir après.
+          Masquée en mode démonstration : ce profil n'existe que sur ce téléphone.
+          `estDemo` est déjà déduit de `profil.demo` par AuthContext. */}
+      {!estDemo && (
+        <section className="mt-4 rounded-md border border-red-200 bg-red-50/60 p-3">
+          <h2 className="text-sm font-bold text-danger">Supprimer mon compte</h2>
+          <p className="mt-1 text-[11px] leading-snug text-ink-muted">
+            Efface votre nom, votre numéro, votre photo, vos favoris, vos visites et
+            votre mot de passe. Vos avis restent en ligne, signés «&nbsp;Utilisateur
+            supprimé&nbsp;» (ils informent encore les autres). Vos dépôts et abonnements
+            déjà payés sont conservés pour la comptabilité, sans votre nom. Un retrait
+            de fiche d'établissement vous appartient : supprimez-la d'abord si besoin.
+          </p>
+          <button
+            type="button"
+            className="btn mt-2 w-full bg-white text-sm text-danger"
+            onClick={ouvrirSuppression}
+          >
+            <Icon name="close" size={18} />
+            Supprimer définitivement mon compte
+          </button>
+        </section>
+      )}
+
+      {/* Confirmation par MOT DE PASSE. Une feuille en bas d'écran (même motif que
+          components/ChoisirPosition.jsx) : elle se ferme d'un clic à côté, mais
+          jamais pendant l'envoi. */}
+      {suppressionOuverte && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 animate-pop-in"
+          role="presentation"
+          onClick={fermerSuppression}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="titre-suppression"
+            className="w-full max-w-[480px] rounded-t-xl bg-white p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-lg"
+            onClick={(evt) => evt.stopPropagation()}
+          >
+            <h2 id="titre-suppression" className="text-base font-bold text-ink">
+              Confirmer la suppression
+            </h2>
+            <p className="mt-1 text-xs leading-snug text-ink-muted">
+              Saisissez votre mot de passe pour prouver que c'est bien vous. Votre compte
+              sera effacé immédiatement et vous serez déconnecté.
+            </p>
+            <form onSubmit={confirmerSuppression} className="mt-3 flex flex-col gap-2">
+              <label className="block text-[11px] font-semibold text-ink" htmlFor="mot-de-passe-suppression">
+                Mot de passe
+                <input
+                  id="mot-de-passe-suppression"
+                  type="password"
+                  autoComplete="current-password"
+                  value={motDePasseSuppression}
+                  onChange={(evt) => setMotDePasseSuppression(evt.target.value)}
+                  className="mt-1 w-full rounded-md border border-line px-3 py-2 text-sm outline-none focus:border-primary"
+                  autoFocus
+                  disabled={suppressionEnCours}
+                />
+              </label>
+              {erreurSuppression && (
+                <p role="alert" className="text-[11px] font-semibold text-danger">
+                  {erreurSuppression}
+                </p>
+              )}
+              <div className="mt-1 flex gap-2">
+                <button
+                  type="button"
+                  className="btn-ghost flex-1 text-sm"
+                  onClick={fermerSuppression}
+                  disabled={suppressionEnCours}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="btn flex-1 bg-danger text-sm text-white"
+                  disabled={suppressionEnCours || !motDePasseSuppression}
+                >
+                  {suppressionEnCours ? 'Suppression…' : 'Supprimer'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Suppression / correction des données (bloc G) : un VRAI moyen de contact, et
           non plus « depuis l'onglet Messages » (cet écran ne permet rien de tel).

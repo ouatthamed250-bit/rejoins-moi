@@ -27,6 +27,7 @@ import { asyncHandler, ApiError } from '../middleware/errorHandler.js';
 import { normalizePhone, escapeRegex, validatePhoto } from '../utils/validators.js';
 import { getDistanceKm, parseCoords } from '../utils/geo.js';
 import { limiteurAuth } from '../middleware/rateLimit.js';
+import { anonymiserOuSupprimerCompte, NOM_COMPTE_SUPPRIME } from '../services/suppressionCompte.js';
 
 const router = express.Router();
 
@@ -212,7 +213,67 @@ router.patch(
 );
 
 /**
- * POST /api/users/me/interactions
+ * DELETE /api/users/me — droit à l'effacement, en libre-service (20/11).
+ *
+ * body: { motDePasse }
+ *
+ * POURQUOI LE MOT DE PASSE EST EXIGÉ : la suppression est IRRÉVERSIBLE. Un
+ * téléphone laissé déverrouillé sur une table ne doit pas suffire à effacer le
+ * compte de son propriétaire. On revérifie donc le mot de passe (comme le font
+ * les boutiques en ligne) avant de lancer l'anonymisation. Le jeton seul ne
+ * suffit pas : il vit 30 jours et peut traîner dans un navigateur partagé.
+ *
+ * Le middleware `protect` a déjà chargé `req.user` : on relit le document avec
+ * `+motDePasseHash` (le hash n'est jamais sélectionné par défaut).
+ *
+ * Réponse : un récapitulatif de ce qui a été conservé (paiements) et effacé,
+ * pour que l'utilisateur sache exactement ce qui reste — transparence RGPD.
+ * Le client DOIT ensuite oublier son jeton : toute requête suivante répond 401
+ * (voir middleware/auth.js, contrôle `supprimeAt`).
+ */
+router.delete(
+  '/me',
+  protect,
+  // Un mot de passe se devine : même limite que /login (5 essais/minute/IP+numéro).
+  limiteurAuth({ max: 5, fenetreMs: 60000 }),
+  asyncHandler(async (req, res) => {
+    const motDePasse = req.body?.motDePasse;
+    if (!motDePasse) {
+      throw new ApiError(
+        400,
+        'Mot de passe obligatoire pour confirmer la suppression de votre compte.'
+      );
+    }
+
+    const user = await User.findById(req.user._id).select('+motDePasseHash');
+    if (!user) throw new ApiError(404, 'Compte introuvable.');
+    if (!(await user.verifierMotDePasse(motDePasse))) {
+      // 401 : le jeton reste valide, seule la confirmation a échoué.
+      throw new ApiError(401, 'Mot de passe incorrect : votre compte n’a pas été supprimé.');
+    }
+
+    const rapport = await anonymiserOuSupprimerCompte(user._id);
+
+    res.json({
+      message:
+        'Votre compte a été supprimé. Les avis que vous aviez laissés apparaissent désormais sous le nom « ' +
+        `${NOM_COMPTE_SUPPRIME} ». Vos dépôts et abonnements payés sont conservés pour la comptabilité, ` +
+        'sans aucune donnée personnelle.',
+      // Aucune donnée personnelle dans la réponse : le numéro est déjà remplacé
+      // par le jeton technique au moment où on la construit.
+      suppression: {
+        supprimeAt: rapport.supprimeAt,
+        avisAnonymises: rapport.avisAnonymises,
+        annoncesAnonymisees: rapport.annoncesAnonymisees,
+        fichesSupprimees: rapport.fichesSupprimees,
+        depotsConserves: rapport.depotsConserves,
+        abonnementsConserves: rapport.abonnementsConserves,
+      },
+    });
+  })
+);
+
+/**
  * body: { type, establishmentId?, categorie?, tags?, terme? }
  * Alimente l'apprentissage progressif du feed (§3).
  */
@@ -300,7 +361,10 @@ router.get(
     const { q, metier, limit = 40 } = req.query;
     const coords = parseCoords(req.query);
 
-    const filtre = { estArtisan: true, test: { $ne: true } };
+    // `supprimeAt: null` : un compte effacé n'est plus un artisan (le service met
+    // estArtisan à false) — la condition est redondante mais explicite : on ne
+    // veut jamais proposer « Utilisateur supprimé » comme prestataire.
+    const filtre = { estArtisan: true, test: { $ne: true }, supprimeAt: null };
     if (metier && metier !== 'tous') filtre.metier = new RegExp(`^${escapeRegex(String(metier))}$`, 'i');
     if (q) {
       const rx = new RegExp(escapeRegex(String(q).trim()), 'i');
@@ -342,7 +406,10 @@ router.get(
   '/:id',
   asyncHandler(async (req, res) => {
     const user = await User.findById(req.params.id);
-    if (!user) throw new ApiError(404, 'Utilisateur introuvable.');
+    // Compte anonymisé : son identité n'existe plus. On répond 404 plutôt que
+    // d'afficher « Utilisateur supprimé » avec sa note et ses avis — un profil
+    // effacé n'a plus de page publique.
+    if (!user || user.supprimeAt) throw new ApiError(404, 'Utilisateur introuvable.');
     const abonnement = await Subscription.trouverActif(user._id);
     res.json({
       // Profil public : le téléphone n'est pas exposé (mise en relation tracée ailleurs).
@@ -365,7 +432,7 @@ router.post(
       throw new ApiError(400, 'Vous ne pouvez pas vous noter vous-même.');
     }
     const cible = await User.findById(req.params.id);
-    if (!cible) throw new ApiError(404, 'Utilisateur introuvable.');
+    if (!cible || cible.supprimeAt) throw new ApiError(404, 'Utilisateur introuvable.');
 
     cible.avis.push({
       auteurId: req.user._id,

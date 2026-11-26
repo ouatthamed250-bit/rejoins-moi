@@ -232,7 +232,25 @@ export const api = {
   get: (chemin, options) => requete(chemin, { ...options, method: 'GET' }),
   post: (chemin, body, options) => requete(chemin, { ...options, method: 'POST', body }),
   patch: (chemin, body, options) => requete(chemin, { ...options, method: 'PATCH', body }),
-  delete: (chemin, options) => requete(chemin, { ...options, method: 'DELETE' }),
+  // `body` en 2ᵉ position comme post/patch : DELETE /users/me exige le mot de passe
+  // dans le corps (confirmation d'effacement), ce n'est pas un identifiant d'URL.
+  delete: (chemin, body, options) => requete(chemin, { ...options, method: 'DELETE', body }),
 };
+
+/**
+ * Droit à l'effacement : supprime DÉFINITIVEMENT le compte connecté.
+ *
+ * Le mot de passe est exigé par le serveur (DELETE /users/me) : un téléphone
+ * laissé déverrouillé ne suffit pas à effacer un compte. Ici on ne touche PAS à
+ * l'état local : c'est AuthContext qui appelle `deconnexion()` après succès, pour
+ * que le profil quitte l'écran au même instant. En cas d'échec (mot de passe
+ * faux, serveur injoignable), l'exception remonte et RIEN n'est effacé.
+ *
+ * @param {string} motDePasse confirmation saisie par la personne
+ * @returns {Promise<{ message: string, suppression: object }>}
+ */
+export function supprimerMonCompte(motDePasse) {
+  return requete('/users/me', { method: 'DELETE', body: { motDePasse: String(motDePasse ?? '') } });
+}
 
 export default api;

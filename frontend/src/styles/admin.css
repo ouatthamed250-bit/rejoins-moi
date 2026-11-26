@@ -487,6 +487,13 @@
   background: #fff8f8;
 }
 
+/* Comptes effacés (droit à l'oubli) : grisés, car il n'y a plus rien à lire
+   d'humain dedans — seulement un identifiant et des traces de paiement. */
+.bo-tableau tr.bo-tableau-ligne--efface td {
+  background: #f8fafc;
+  color: var(--bo-doux);
+}
+
 .bo-tableau-ligne--cliquable {
   cursor: pointer;
 }

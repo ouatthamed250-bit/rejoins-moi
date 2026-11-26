@@ -153,6 +153,15 @@ const userSchema = new mongoose.Schema(
     // Motif affiché à l'utilisateur bloqué (« Montant non reçu », « Doublon de compte »…).
     motifSuspension: { type: String, trim: true, maxlength: 300, default: '' },
     suspenduAt: { type: Date, default: null },
+
+    // ── Droit à l'effacement (ajout du 20/11) ────────────────────────────────
+    // Date d'anonymisation du compte (voir services/suppressionCompte.js). Le
+    // document survit pour ne pas casser dépôts, abonnements, annonces et avis
+    // (obligations comptables + preuves d'achat), mais il ne contient alors plus
+    // AUCUNE donnée personnelle : c'est un identifiant technique.
+    // Ce champ sert de verrou : `protect`/`protectAdmin` refusent tout jeton
+    // émis sur ce compte, et les routes publiques le traitent comme introuvable.
+    supprimeAt: { type: Date, default: null, index: true },
   },
   {
     timestamps: true,
@@ -246,6 +255,10 @@ userSchema.methods.toPublicJSON = function toPublicJSON({
           suspendu: (this.statutCompte || 'actif') === 'suspendu',
           motifSuspension: this.motifSuspension || '',
           suspenduAt: this.suspenduAt || null,
+          // Droit à l'effacement : le back-office voit qu'un compte a été
+          // anonymisé (et quand), sans pouvoir retrouver son identité.
+          supprime: Boolean(this.supprimeAt),
+          supprimeAt: this.supprimeAt || null,
           dernierLoginAt: this.dernierLoginAt || null,
           solde: this.solde,
           favoris: (this.favoris || []).map(String),

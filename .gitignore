@@ -9,6 +9,12 @@ node_modules/
 backend/.env
 frontend/.env
 
+# ── Sauvegardes chiffrées de la base ─────────────────────────────────────────
+# `npm run sauvegarder:base` écrit ici des archives de la base de PRODUCTION
+# (données personnelles des artisans). Même chiffrées, elles ne doivent JAMAIS
+# être versionnées ni poussées sur GitHub. Procédure : docs/SAUVEGARDE.md
+backups/
+
 # ── Builds et caches ─────────────────────────────────────────────────────────
 dist/
 build/

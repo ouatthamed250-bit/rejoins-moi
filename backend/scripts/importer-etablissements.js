@@ -43,6 +43,7 @@ import dotenv from 'dotenv';
 
 import Establishment from '../src/models/Establishment.js';
 import { sanitizeTags } from '../src/utils/validators.js';
+import { exigerConfirmationProduction } from '../src/utils/gardeFouProduction.js';
 import { connectDB, disconnectDB, getMongoDbName, getMongoUri, masquerUri } from '../src/config/db.js';
 
 // `.env` du dossier backend, quel que soit le dossier d'où la commande est lancée :
@@ -239,6 +240,19 @@ async function main() {
   if (!documents.length) throw new Error('Aucun document valide : rien à importer (vérifiez le fichier source).');
   if (SIMULATION) {
     console.log('\nSimulation terminée : rien n’a été écrit en base.');
+    return;
+  }
+
+  // 1bis. Garde-fou : l'import réel écrit dans la base de production, et
+  // `--remplacer` supprime des fiches avant de réimporter. La simulation
+  // ci-dessus n'écrit rien, elle n'est donc pas concernée par la confirmation.
+  const autorise = await exigerConfirmationProduction({
+    action:
+      `import de ${documents.length} fiche(s)` +
+      (REMPLACER ? ' avec suppression préalable des fiches estImporte (--remplacer)' : ''),
+  });
+  if (!autorise) {
+    process.exitCode = 1;
     return;
   }
 

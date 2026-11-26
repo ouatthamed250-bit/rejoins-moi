@@ -7,6 +7,7 @@
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
     "seed": "node src/seed.js",
+    "sauvegarder:base": "node scripts/sauvegarder-base.js",
     "admin:creer": "node scripts/creer-admin.js",
     "admin:supprimer": "node scripts/supprimer-admin.js",
     "lister:inactifs": "node scripts/lister-inactifs.js",

@@ -16,6 +16,7 @@ import Job from './models/Job.js';
 import User from './models/User.js';
 import Subscription from './models/Subscription.js';
 import { ABONNEMENT } from './config/abonnement.js';
+import { exigerConfirmationProduction } from './utils/gardeFouProduction.js';
 
 const photo = (seed) => `https://picsum.photos/seed/${seed}/700/460`;
 const portrait = (seed) => `https://picsum.photos/seed/${seed}/320/320`;
@@ -179,6 +180,17 @@ const BESOINS = [
 ];
 
 async function lancer() {
+  // Garde-fou : ce script VIDE cinq collections. Si la cible est le cluster Atlas
+  // de production, il faut taper la phrase de confirmation dans le terminal
+  // (voir src/utils/gardeFouProduction.js). Un appel non interactif est refusé.
+  const autorise = await exigerConfirmationProduction({
+    action: 'npm run seed — vide users, establishments, healthfacilities, jobs et subscriptions',
+  });
+  if (!autorise) {
+    process.exitCode = 1;
+    return;
+  }
+
   const connecte = await connectDB();
   if (!connecte) {
     console.error(

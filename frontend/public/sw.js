@@ -323,13 +323,14 @@
 //       (compteur exact : 2 277 fiches, 967 pharmacies, 1 310 cliniques) ;
 //       — PharmaciesCliniques.jsx change : nouveau nom de cache obligatoire, sinon
 //       les téléphones déjà installés garderaient la page vide pendant la grâce.
-// v38 : géolocalisation + accusés de lecture (27/11)
-//       — le cache GPS passe de 30 min à 5 min (DUREE_GPS_MS) et un bouton
-//       « Actualiser ma position » force une nouvelle mesure sur Feed, Recherche
-//       et Pharmacies & Cliniques ; les distances sont précisées « à vol d'oiseau ».
-//       — la messagerie affiche ✓ (envoyé) / ✓✓ (lu) et un badge « Lu » dans la
-//       liste des conversations, rafraîchie toutes les 5 s.
-const VERSION = 'v38';
+// v39 : notifications push (Web Push) (27/11)
+//       — écouteur « push » : reçoit les notifications du serveur (clés VAPID)
+//       et les affiche via self.registration.showNotification ;
+//       — écouteur « notificationclick » : ferme la notification et ouvre l'URL
+//       de destination (ex. /messages) ;
+//       — le cache GPS de 30 min à 5 min et les accusés de lecture de la
+//       messagerie (v38) restent actifs.
+const VERSION = 'v39';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];
@@ -723,6 +724,46 @@ async function elaguer(cache) {
   const enTrop = cles.slice(0, cles.length - MAX_ENTREES_DONNEES);
   await Promise.all(enTrop.map((cle) => cache.delete(cle)));
 }
+
+/* ─────────────────────── Notifications push (Web Push) ─────────────────────── */
+
+/**
+ * Écouteur « push » : le service de push du navigateur (Chrome, Firefox,
+ * Safari…) appelle ce worker quand le serveur envoie une notification.
+ * Le payload JSON contient { titre, corps, url }. Aucune donnée personnelle
+ * n'est affichée : titre, corps et URL de destination uniquement.
+ */
+self.addEventListener('push', (event) => {
+  let donnees = { titre: 'Rejoins’Moi', corps: 'Nouvelle notification', url: '/' };
+  try {
+    donnees = event.data ? event.data.json() : donnees;
+  } catch {
+    /* payload illisible : on garde les valeurs par défaut */
+  }
+  const options = {
+    body: String(donnees.corps || ''),
+    icon: `${BASE_APPLICATION}icons/icon-192.png`,
+    badge: `${BASE_APPLICATION}icons/icon-192.png`,
+    data: { url: donnees.url || '/' },
+    // `tag` permet de remplacer une notification précédente du même tag plutôt
+    // que d'en afficher plusieurs (ex. plusieurs messages non lus).
+    tag: 'rejoinsmoi-notification',
+    requireInteraction: false,
+  };
+  event.waitUntil(
+    self.registration.showNotification(donnees.titre || 'Rejoins’Moi', options)
+  );
+});
+
+/**
+ * Écouteur « notificationclick » : l'utilisateur clique sur la notification.
+ * On la ferme et on ouvre l'URL de destination (ex. /messages) dans l'app.
+ */
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url || BASE_APPLICATION;
+  event.waitUntil(clients.openWindow(url));
+});
 
 /* Message du front (« mise à jour disponible ») : on active tout de suite. */
 self.addEventListener('message', (event) => {

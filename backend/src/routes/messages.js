@@ -30,6 +30,7 @@ import Conversation from '../models/Conversation.js';
 import Message, { LONGUEUR_MAX_MESSAGE } from '../models/Message.js';
 import User from '../models/User.js';
 import Establishment from '../models/Establishment.js';
+import { envoyerNotification } from '../services/notifications.js';
 import { protect } from '../middleware/auth.js';
 import { requireDb } from '../config/db.js';
 import { asyncHandler, ApiError } from '../middleware/errorHandler.js';
@@ -489,6 +490,16 @@ router.post(
     conversation.dernierMessage = contenu.replace(/\s+/g, ' ').slice(0, 140);
     conversation.derniereActivite = message.createdAt || new Date();
     await conversation.save();
+
+    // Notification push au destinataire (ne retarde pas la réponse HTTP en cas
+    // d'échec : une notification non livrée ne doit pas bloquer l'affichage du
+    // message déjà envoyé).
+    envoyerNotification(
+      autreId,
+      'Nouveau message',
+      `Vous avez reçu un nouveau message de ${req.user.nomComplet || req.user.telephone}`,
+      '/messages'
+    ).catch(() => null);
 
     res.status(201).json({
       message: message.toJSONFor({ moi: req.user._id }),

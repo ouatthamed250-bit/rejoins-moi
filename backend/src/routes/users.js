@@ -23,6 +23,7 @@ import User from '../models/User.js';
 import Subscription from '../models/Subscription.js';
 import ListeAttente from '../models/ListeAttente.js';
 import Establishment from '../models/Establishment.js';
+import AbonnementPush from '../models/AbonnementPush.js';
 import { estSansPublicite } from '../config/categories.js';
 import { signToken, protect, optionalAuth } from '../middleware/auth.js';
 import { requireDb } from '../config/db.js';
@@ -532,6 +533,28 @@ router.post(
     await cible.save();
 
     res.status(201).json({ noteMoyenne: cible.noteMoyenne, nombreAvis: cible.nombreAvis });
+  })
+);
+
+/**
+ * POST /api/users/push-subscribe — enregistre ou met à jour l'abonnement Web Push
+ * du téléphone de l'utilisateur connecté.
+ * body: { subscription } (PushSubscription du navigateur)
+ */
+router.post(
+  '/push-subscribe',
+  protect,
+  asyncHandler(async (req, res) => {
+    const { subscription } = req.body || {};
+    if (!subscription || !subscription.endpoint) {
+      throw new ApiError(400, 'Abonnement push invalide (endpoint manquant).');
+    }
+    await AbonnementPush.findOneAndUpdate(
+      { user: req.user._id },
+      { user: req.user._id, subscription },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    res.json({ ok: true, message: 'Abonnement aux notifications enregistré.' });
   })
 );
 

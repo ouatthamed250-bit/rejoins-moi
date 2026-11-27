@@ -25,6 +25,8 @@ import {
 } from '../utils/api/client.js';
 import { ecrireAbonnementLocal } from '../utils/abonnement.js';
 import { CLE_CONTACTS } from '../utils/contactsLocaux.js';
+import { demanderPermissionNotification, souscrireAuxNotifications } from '../utils/notifications.js';
+import { CHEMIN_SERVICE_WORKER } from '../utils/pwa.js';
 import { PROFIL_DEMO } from '../data/demoData.js';
 
 const AuthContext = createContext(null);
@@ -46,6 +48,25 @@ export function AuthProvider({ children }) {
     setProfil(nouveauProfil);
     setProfilLocal(nouveauProfil);
   }, []);
+
+  /**
+   * Enregistre le service worker, demande la permission de notifications et,
+   * si accordée, souscrit l'appareil aux notifications push (Web Push).
+   * Ne fait rien sans service worker ni sans clé VAPID. Les erreurs sont
+   * ignorées : une notification non livrée ne doit jamais bloquer l'app.
+   */
+  async function initialiserNotifications() {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+    try {
+      const registration = await navigator.serviceWorker.register(CHEMIN_SERVICE_WORKER);
+      const permission = await demanderPermissionNotification();
+      if (permission === 'granted') {
+        await souscrireAuxNotifications(registration);
+      }
+    } catch {
+      /* les notifications ne sont pas critiques */
+    }
+  }
 
   // ── Restauration de session : on revérifie le profil auprès du serveur ──
   useEffect(() => {
@@ -91,6 +112,7 @@ export function AuthProvider({ children }) {
         setTokenState(donnees.token);
         memoriser(donnees.user);
         setModeDemo(false);
+        await initialiserNotifications();
         return { ok: true, user: donnees.user };
       } catch (err) {
         if (err instanceof ApiError && err.offline) {
@@ -119,6 +141,7 @@ export function AuthProvider({ children }) {
       setTokenState(reponse.token);
       memoriser(reponse.user);
       setModeDemo(false);
+      await initialiserNotifications();
       return reponse.user;
     },
     [memoriser]

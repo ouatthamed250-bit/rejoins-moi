@@ -273,7 +273,18 @@
 //       Admin.jsx et RegisterEstablishment.jsx changent : nouveau nom de cache
 //       obligatoire, sinon un téléphone déjà installé garderait l'ancien
 //       formulaire — sans champ code agent ni case de consentement.
-const VERSION = 'v32';
+// v33 : onglet « Modération des messages » réparé (26/11)
+//       — dans le back-office, l'écran de modération avait été enfermé dans une
+//       autre vue par une accolade décalée : au clic sur son onglet, le rendu
+//       levait « VueModerationMessages is not defined » et tout le back-office
+//       tombait. Le composant est revenu au niveau du module, là où la fonction
+//       est visible depuis l'aiguillage des onglets.
+//       Ce numéro de version existe pour les appareils qui gardaient encore
+//       l'ancien Admin-*.js en cache : à la prochaine ouverture, l'app remplace
+//       la coquille et les paquets périmés, puis l'onglet s'ouvre normalement.
+//       (La recherche par nom/numéro, l'aperçu et l'export JSON, eux, étaient
+//       déjà écrits : c'est bien la portée du composant qui était en cause.)
+const VERSION = 'v33';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

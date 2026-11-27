@@ -9,6 +9,10 @@
 // /main-doeuvre          -> JobBoard
 // /messages              -> Messages
 // /profil                -> Profile
+// /connexion             -> Login
+// /mentions-legales      -> MentionsLegales
+// /admin                 -> Admin (back-office)
+// /agent                 -> AgentApp (espace agent de terrain, plein écran)
 //
 // Organisation :
 //  - <AuthProvider> enveloppe tout (profil + jeton accessibles partout via useAuth).
@@ -62,11 +66,14 @@ const Messages = lazy(() => import('./pages/Messages.jsx'));
 const Profile = lazy(() => import('./pages/Profile.jsx'));
 const Login = lazy(() => import('./pages/Login.jsx'));
 const Admin = lazy(() => import('./pages/Admin.jsx'));
+// Espace agent de terrain : son propre jeton, sa propre feuille de route. Chargé à
+// la demande — les clients n'ouvrent jamais cette page, inutile de la livrer.
+const AgentApp = lazy(() => import('./pages/AgentApp.jsx'));
 const MentionsLegales = lazy(() => import('./pages/MentionsLegales.jsx'));
 const NotFound = lazy(() => import('./pages/NotFound.jsx'));
 
 /** Routes affichées en plein écran : ni TopBar ni BottomNav. */
-const ROUTES_PLEIN_ECRAN = [/^\/etablissement\//, /^\/admin\/?$/];
+const ROUTES_PLEIN_ECRAN = [/^\/etablissement\//, /^\/admin\/?$/, /^\/agent\/?$/];
 
 /**
  * Routes où l'assistant virtuel n'est pas monté : le BACK-OFFICE. C'est un outil
@@ -76,7 +83,7 @@ const ROUTES_PLEIN_ECRAN = [/^\/etablissement\//, /^\/admin\/?$/];
  * se pose vraiment — l'assistant reste disponible. Sa position est calculée sur
  * la hauteur MESURÉE du bloc du bas (voir components/AssistantBot.jsx).
  */
-const ROUTES_SANS_ASSISTANT = [/^\/admin\/?$/];
+const ROUTES_SANS_ASSISTANT = [/^\/admin\/?$/, /^\/agent\/?$/];
 
 /**
  * Base de déploiement de l'app, telle que Vite l'a compilée :
@@ -168,6 +175,10 @@ function Structure() {
             <Route path="/mentions-legales" element={<MentionsLegales />} />
             {/* Back-office : écran plein écran, jeton admin distinct du compte utilisateur. */}
             <Route path="/admin" element={<Admin />} />
+            {/* Espace agent de terrain : plein écran, sans navigation publique ni
+                assistant. Un agent en tournée doit voir son service et son bouton
+                « Inscrire un commerce », rien d'autre. */}
+            <Route path="/agent" element={<AgentApp />} />
             {/* Toute route inconnue affiche la page 404. */}
             <Route path="*" element={<NotFound />} />
           </Routes>

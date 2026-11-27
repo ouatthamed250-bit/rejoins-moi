@@ -25,12 +25,13 @@
 // Aucun déblocage « automatique » : valider un dépôt écrit `viaDepot: true` dans
 // Job.contactDebloquePar côté serveur. Le front déclenche, il ne décide pas.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Icon } from '../components/Icons.jsx';
 import { api } from '../utils/api/client.js';
 import { adminApi, getAdminToken, setAdminToken } from '../utils/api/admin.js';
 import { libelleFamille } from '../config/categories.js';
+import { CENTRE_DEFAUT } from '../utils/position.js';
 import { formatDateRelative, formatFcfa, formatNote, formatTelephone, initiales } from '../utils/format.js';
 
 /* ─────────────────────────── Repères de navigation ─────────────────────────── */
@@ -72,6 +73,16 @@ const SECTIONS = [
     libelle: 'Agents de terrain',
     icone: 'mapPin',
     sous: 'Codes agents, fiches créées, export CSV de paie et fiches à vérifier',
+    groupe: 'Suivi',
+  },
+  {
+    // Prompt 9 : la carte répond à une question que le tableau ne sait pas dire —
+    // QUI travaille en ce moment, et où. Elle n'affiche que les agents en service
+    // et activés, jamais tous les téléphones de l'équipe.
+    cle: 'carteAgents',
+    libelle: 'Carte des agents',
+    icone: 'mapPin',
+    sous: 'Agents en service et leur dernière position GPS',
     groupe: 'Suivi',
   },
   {
@@ -857,6 +868,14 @@ export default function Admin() {
             <VueAgentsDeTerrain
               cle={cle}
               onMessage={setMessage}
+              onGererErreur={gererErreur}
+              onRafraichir={rafraichir}
+            />
+          ) : null}
+
+          {section === 'carteAgents' ? (
+            <VueCarteAgents
+              cle={cle}
               onGererErreur={gererErreur}
               onRafraichir={rafraichir}
             />
@@ -3574,11 +3593,15 @@ function VueModerationMessages({ cle, onMessage, onGererErreur }) {
 }
 
 /* ─── Agents de terrain (prompt 9) ────────────────────────────────────────────
-   Trois gestes, dans l'ordre où ils servent :
-     1. créer un agent et lui lire son code à 6 caractères (le serveur le tire au
-        sort : personne ne choisit le code d'un collègue) ;
-     2. suivre ce que chaque code a produit, puis télécharger le CSV de paie ;
-     3. vider la file des fiches marquées par l'anti-fraude.
+   Quatre gestes, dans l'ordre où ils servent :
+     1. recruter : nom + téléphone, le serveur tire au sort le code agent ET le
+        code d'activation (personne ne choisit le code d'un collègue) ;
+     2. remettre le code d'activation — affiché UNE seule fois — à un agent qui
+        s'est inscrit lui-même depuis /agent (compte « en attente ») ;
+     3. suivre ce que chaque code a produit, puis télécharger le CSV de paie ;
+     4. suspendre (accès et pointage coupés au prochain appel), réactiver, ou
+        supprimer une erreur de recrutement — la carte des agents est dans sa
+        propre section (« Carte des agents »).
 
    Aucun écran ne calcule un montant : la paie se fait sur le nombre de fiches
    par jour et sur le fichier produit par le serveur, jamais sur un total
@@ -3591,10 +3614,13 @@ function VueAgentsDeTerrain({ cle, onMessage, onGererErreur, onRafraichir }) {
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState('');
   const [nom, setNom] = useState('');
+  const [telephoneAgent, setTelephoneAgent] = useState('');
   const [creation, setCreation] = useState(false);
-  // Code du dernier agent créé : affiché en grand une fois, pour qu'on puisse le
-  // recopier sans chercher la ligne dans le tableau (le code est la clé de paie).
-  const [dernierCode, setDernierCode] = useState('');
+  // Dernier code d'ACTIVATION remis : affiché en grand une seule fois, parce que
+  // le serveur ne le renverra plus jamais (champ `select: false`). On y joint le
+  // code agent (6 caractères), qui est la clé de la paie : les deux se dictent
+  // dans la même conversation, il serait absurde de les séparer.
+  const [codeRemis, setCodeRemis] = useState(null);
   const [exportEnCours, setExportEnCours] = useState(false);
   const [idEnCours, setIdEnCours] = useState('');
   const [rechargement, setRechargement] = useState(0);
@@ -3627,41 +3653,109 @@ function VueAgentsDeTerrain({ cle, onMessage, onGererErreur, onRafraichir }) {
     onRafraichir?.();
   }
 
-  async function creerAgent(evt) {
+  /**
+   * Recrutement direct : on saisit le nom et le téléphone, le serveur tire au sort
+   * le code agent (6 caractères, la paie) ET le code d'activation (8 caractères,
+   * l'accès). Le second n'est renvoyé qu'ici, une seule fois.
+   */
+  async function genererCode(evt) {
     evt.preventDefault();
     const valeur = nom.trim();
     if (valeur.length < 2) {
-      setErreur('Indiquez le nom de l’agent avant de créer son code.');
+      setErreur('Indiquez le nom de l’agent (2 caractères minimum).');
+      return;
+    }
+    if (telephoneAgent.trim().length < 8) {
+      setErreur('Indiquez le téléphone de l’agent : c’est son identifiant de connexion sur /agent.');
       return;
     }
     setCreation(true);
     setErreur('');
     try {
-      const reponse = await adminApi.creerAgent(valeur);
+      const reponse = await adminApi.genererCodeAgent({
+        nom: valeur,
+        telephone: telephoneAgent.trim(),
+      });
       setNom('');
-      setDernierCode(reponse?.agent?.code || '');
+      setTelephoneAgent('');
+      setCodeRemis({
+        nom: reponse?.agent?.nom || valeur,
+        code: reponse?.agent?.code || '',
+        codeActivation: reponse?.codeActivation || '',
+      });
       rechargerTout();
-      onMessage(`Agent « ${reponse?.agent?.nom} » créé — code ${reponse?.agent?.code}.`);
+      onMessage(`Code d’activation généré pour ${reponse?.agent?.nom || valeur}.`);
     } catch (err) {
-      if (!onGererErreur(err)) setErreur(err?.message || 'Création de l’agent impossible.');
+      if (!onGererErreur(err)) setErreur(err?.message || 'Génération du code impossible.');
     } finally {
       setCreation(false);
     }
   }
 
-  async function basculerAgent(agent) {
+  /** L'agent s'est inscrit lui-même : on génère un code pour SON compte existant. */
+  async function remettreCode(agent) {
     setIdEnCours(agent.id);
     setErreur('');
     try {
-      await adminApi.modifierAgent(agent.id, { actif: !agent.actif });
+      const reponse = await adminApi.genererCodeAgent({ agentId: agent.id });
+      setCodeRemis({
+        nom: reponse?.agent?.nom || agent.nom,
+        code: reponse?.agent?.code || agent.code,
+        codeActivation: reponse?.codeActivation || '',
+      });
+      rechargerTout();
+      onMessage(`Nouveau code d’activation pour ${agent.nom}.`);
+    } catch (err) {
+      if (!onGererErreur(err)) setErreur(err?.message || 'Génération du code impossible.');
+    } finally {
+      setIdEnCours('');
+    }
+  }
+
+  /**
+   * Suspendre / réactiver. La suspension coupe la connexion ET le pointage au
+   * prochain appel : le serveur relit le statut en base, aucun jeton n'est exilé
+   * « à la main » ici.
+   */
+  async function changerStatut(agent) {
+    const cible = agent.statut === 'actif' ? 'suspendu' : 'actif';
+    setIdEnCours(agent.id);
+    setErreur('');
+    try {
+      const reponse = await adminApi.changerStatutAgent(agent.id, cible);
       rechargerTout();
       onMessage(
-        agent.actif
-          ? `${agent.nom} est désactivé : ses fiches déjà créées restent payables.`
-          : `${agent.nom} est de nouveau actif.`
+        reponse?.message ||
+          (cible === 'actif' ? `${agent.nom} peut de nouveau se connecter.` : `${agent.nom} est suspendu.`)
       );
     } catch (err) {
-      if (!onGererErreur(err)) setErreur(err?.message || 'Modification de l’agent impossible.');
+      if (!onGererErreur(err)) setErreur(err?.message || 'Modification du statut impossible.');
+    } finally {
+      setIdEnCours('');
+    }
+  }
+
+  /**
+   * Suppression définitive : réservée aux erreurs de recrutement. Les fiches déjà
+   * créées gardent le code (la paie passée reste vérifiable), d'où la confirmation
+   * qui rappelle combien de fiches resteront rattachées au code.
+   */
+  async function retirerAgent(agent) {
+    const fichesRattachees = agent.totalFiches || 0;
+    const question =
+      fichesRattachees > 0
+        ? `Supprimer ${agent.nom} (code ${agent.code}) ?\n\nSes ${fichesRattachees} fiche(s) restent dans la paie sous ce code, mais plus aucune nouvelle fiche ne pourra lui être attribuée.`
+        : `Supprimer ${agent.nom} (code ${agent.code}) ?\n\nAucune fiche n'est rattachée à ce code. Cette action est définitive.`;
+    if (!window.confirm(question)) return;
+
+    setIdEnCours(agent.id);
+    setErreur('');
+    try {
+      const reponse = await adminApi.supprimerAgent(agent.id);
+      rechargerTout();
+      onMessage(reponse?.message || `${agent.nom} est supprimé.`);
+    } catch (err) {
+      if (!onGererErreur(err)) setErreur(err?.message || 'Suppression de l’agent impossible.');
     } finally {
       setIdEnCours('');
     }
@@ -3712,10 +3806,22 @@ function VueAgentsDeTerrain({ cle, onMessage, onGererErreur, onRafraichir }) {
         </Alerte>
       ) : null}
 
-      {dernierCode ? (
-        <Alerte variante="succes" icone="check" onFermer={() => setDernierCode('')}>
-          Code du nouvel agent : <strong style={{ letterSpacing: 2 }}>{dernierCode}</strong> — recopiez-le sur
-          chaque fiche qu’il fait inscrire. Il reste visible dans le tableau ci-dessous.
+      {codeRemis ? (
+        <Alerte variante="succes" icone="check" onFermer={() => setCodeRemis(null)}>
+          <div style={{ display: 'grid', gap: 4 }}>
+            <span>
+              <strong>{codeRemis.nom}</strong> — dictez ces deux codes à l’agent, ils ne seront
+              plus affichés ensuite :
+            </span>
+            <span>
+              Code d’activation (accès à /agent, une seule fois) :{' '}
+              <strong style={{ letterSpacing: 3, fontSize: 18 }}>{codeRemis.codeActivation}</strong>
+            </span>
+            <span>
+              Code agent (à recopier sur chaque fiche, clé de la paie) :{' '}
+              <strong style={{ letterSpacing: 2 }}>{codeRemis.code}</strong>
+            </span>
+          </div>
         </Alerte>
       ) : null}
 
@@ -3725,6 +3831,20 @@ function VueAgentsDeTerrain({ cle, onMessage, onGererErreur, onRafraichir }) {
           valeur={totaux.agentsActifs || 0}
           note={`${totaux.agents || 0} code(s) au total`}
           icone="users"
+        />
+        <Tuile
+          libelle="En attente d’activation"
+          valeur={totaux.agentsEnAttente || 0}
+          note="Code d’activation à remettre"
+          icone="key"
+          couleur={(totaux.agentsEnAttente || 0) > 0 ? 'accent' : ''}
+        />
+        <Tuile
+          libelle="En service maintenant"
+          valeur={totaux.agentsEnService || 0}
+          note="Position suivie sur la carte"
+          icone="mapPin"
+          couleur={(totaux.agentsEnService || 0) > 0 ? 'vert' : ''}
         />
         <Tuile
           libelle="Fiches attribuées"
@@ -3762,7 +3882,7 @@ function VueAgentsDeTerrain({ cle, onMessage, onGererErreur, onRafraichir }) {
           </button>
         }
       >
-        <form className="bo-barre-outils" onSubmit={creerAgent}>
+        <form className="bo-barre-outils" onSubmit={genererCode}>
           <div className="bo-recherche">
             <input
               className="bo-entree"
@@ -3774,11 +3894,29 @@ function VueAgentsDeTerrain({ cle, onMessage, onGererErreur, onRafraichir }) {
               aria-label="Nom du nouvel agent"
             />
           </div>
+          <div className="bo-recherche">
+            <input
+              className="bo-entree"
+              type="tel"
+              placeholder="Téléphone (ex. 07 07 12 34 56)"
+              value={telephoneAgent}
+              onChange={(e) => setTelephoneAgent(e.target.value)}
+              maxLength={20}
+              aria-label="Téléphone du nouvel agent"
+            />
+          </div>
           <button type="submit" className="bo-btn bo-btn--principal" disabled={creation}>
-            <Icon name="plus" size={14} />
-            {creation ? 'Création…' : 'Créer l’agent'}
+            <Icon name="key" size={14} />
+            {creation ? 'Génération…' : 'Générer le code d’activation'}
           </button>
         </form>
+        <p className="bo-doux" style={{ margin: '0 0 10px' }}>
+          Le téléphone est obligatoire : c’est l’identifiant de connexion de l’agent sur{' '}
+          <strong>/agent</strong>. Le code d’activation (8 caractères) n’est affiché qu’une seule
+          fois, juste après la génération — notez-le avant de fermer le bandeau. Un agent déjà
+          inscrit depuis son téléphone apparaît ci-dessous en « En attente » : utilisez le bouton
+          « Code d’activation » de sa ligne.
+        </p>
 
         {codesInconnus.length > 0 ? (
           <Alerte variante="alerte" icone="alert">
@@ -3799,21 +3937,52 @@ function VueAgentsDeTerrain({ cle, onMessage, onGererErreur, onRafraichir }) {
             <table className="bo-tableau">
               <thead>
                 <tr>
-                  <th>Code</th>
                   <th>Nom</th>
-                  <th>Total fiches</th>
+                  <th>Code</th>
+                  <th>Téléphone</th>
+                  <th>Statut</th>
+                  <th>Fiches</th>
                   <th>À vérifier</th>
-                  <th>Dernière activité</th>
-                  <th>État</th>
+                  <th>Dernière fiche</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {liste.map((agent) => (
                   <tr key={agent.id}>
                     <td>
+                      <strong>{agent.nom}</strong>
+                      <div className="bo-doux">
+                        {agent.enService ? 'En service — position suivie' : 'Hors service'}
+                      </div>
+                    </td>
+                    <td>
                       <strong style={{ letterSpacing: 1.5 }}>{agent.code}</strong>
                     </td>
-                    <td>{agent.nom}</td>
+                    <td>
+                      {agent.telephone ? (
+                        formatTelephone(agent.telephone)
+                      ) : (
+                        <span className="bo-doux">Aucun numéro</span>
+                      )}
+                    </td>
+                    <td>
+                      <Badge
+                        variante={
+                          agent.statut === 'actif' ? 'ok' : agent.statut === 'en_attente' ? 'attente' : 'ko'
+                        }
+                        icone={agent.statut === 'actif' ? 'check' : agent.statut === 'en_attente' ? 'clock' : 'ban'}
+                      >
+                        {agent.statut === 'actif'
+                          ? 'Actif'
+                          : agent.statut === 'en_attente'
+                            ? 'En attente'
+                            : 'Suspendu'}
+                      </Badge>
+                      {!agent.aCompte ? (
+                        <div className="bo-doux">Aucun mot de passe : connexion impossible</div>
+                      ) : null}
+                    </td>
                     <td>{agent.totalFiches}</td>
                     <td>
                       {agent.fichesAVerifier > 0 ? (
@@ -3826,16 +3995,38 @@ function VueAgentsDeTerrain({ cle, onMessage, onGererErreur, onRafraichir }) {
                     </td>
                     <td>{agent.derniereActivite ? formatDateHeure(agent.derniereActivite) : '—'}</td>
                     <td className="bo-tableau-actions">
-                      <Badge variante={agent.actif ? 'ok' : 'ko'} icone={agent.actif ? 'check' : 'ban'}>
-                        {agent.actif ? 'Actif' : 'Désactivé'}
-                      </Badge>
                       <button
                         type="button"
                         className="bo-btn bo-btn--petit"
-                        disabled={idEnCours === agent.id}
-                        onClick={() => basculerAgent(agent)}
+                        disabled={idEnCours === agent.id || agent.statut === 'actif' || !agent.telephone}
+                        title={
+                          agent.statut === 'actif'
+                            ? 'Ce compte est déjà actif : aucun code d’activation n’est nécessaire.'
+                            : 'Générer un code d’activation à dicter à l’agent'
+                        }
+                        onClick={() => remettreCode(agent)}
                       >
-                        {agent.actif ? 'Désactiver' : 'Réactiver'}
+                        <Icon name="key" size={13} />
+                        Code d’activation
+                      </button>
+                      <button
+                        type="button"
+                        className={`bo-btn bo-btn--petit ${agent.statut === 'actif' ? 'bo-btn--danger' : 'bo-btn--ok'}`}
+                        disabled={idEnCours === agent.id}
+                        onClick={() => changerStatut(agent)}
+                      >
+                        <Icon name={agent.statut === 'actif' ? 'ban' : 'check'} size={13} />
+                        {agent.statut === 'actif' ? 'Suspendre' : 'Activer'}
+                      </button>
+                      <button
+                        type="button"
+                        className="bo-btn bo-btn--petit bo-btn--danger"
+                        disabled={idEnCours === agent.id}
+                        title="Supprimer définitivement (erreur de recrutement)"
+                        onClick={() => retirerAgent(agent)}
+                      >
+                        <Icon name="close" size={13} />
+                        Supprimer
                       </button>
                     </td>
                   </tr>
@@ -3948,6 +4139,299 @@ function VueAgentsDeTerrain({ cle, onMessage, onGererErreur, onRafraichir }) {
     </div>
   );
 }
+
+/* ─── Carte des agents (suivi GPS du service) ──────────────────────────────────
+   La question posée ici n'est pas « qui existe ? » (c'est le tableau) mais « qui
+   travaille en ce moment, et où ? ». Le serveur ne renvoie donc que les agents
+   `enService` ET `actif` : un agent au repos n'est pas surveillé, sa dernière
+   position ne quitte pas la base. Rafraîchissement toutes les 30 s, sans bouton à
+   toucher : une position de terrain vieillit vite. */
+
+/** Fond de carte : mêmes tuiles que la carte de choix de position (aucune clé). */
+const TUILES_CARTE = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+/** Repère d'un agent : le `mapPin` de l'application, en vert « en service ». */
+const ICONE_AGENT = `<svg width="30" height="30" viewBox="0 0 24 24" aria-hidden="true" style="display:block">
+  <path d="M12 22s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11Z" fill="#16a34a" stroke="#14532d" stroke-width="1.6" stroke-linejoin="round" />
+  <circle cx="12" cy="10" r="2.6" fill="#ffffff" />
+</svg>`;
+
+function VueCarteAgents({ cle, onGererErreur, onRafraichir }) {
+  const [donnees, setDonnees] = useState(null);
+  const [erreur, setErreur] = useState('');
+  const [chargement, setChargement] = useState(true);
+  const [rechargement, setRechargement] = useState(0);
+
+  useEffect(() => {
+    let vivant = true;
+    // Pas de `setChargement(true)` à chaque tour : le rafraîchissement automatique
+    // ferait clignoter la carte toutes les 30 s. L'indicateur ne sert qu'au premier
+    // chargement (état initial à `true`).
+    adminApi
+      .carteAgents()
+      .then((reponse) => {
+        if (!vivant) return;
+        setDonnees(reponse);
+        setErreur('');
+      })
+      .catch((err) => {
+        if (!vivant || onGererErreur(err)) return;
+        setErreur(err?.message || 'La carte des agents est indisponible pour le moment.');
+      })
+      .finally(() => {
+        if (vivant) setChargement(false);
+      });
+    return () => {
+      vivant = false;
+    };
+  }, [cle, rechargement, onGererErreur]);
+
+  useEffect(() => {
+    const minuteur = setInterval(() => setRechargement((n) => n + 1), 30000);
+    return () => clearInterval(minuteur);
+  }, []);
+
+  const agents = donnees?.agents || [];
+
+  return (
+    <div className="bo-empile bo-apparition">
+      {erreur ? (
+        <Alerte variante="erreur" icone="alert" onFermer={() => setErreur('')}>
+          {erreur}
+        </Alerte>
+      ) : null}
+
+      <div className="bo-tuiles">
+        <Tuile
+          libelle="Agents en service"
+          valeur={agents.length}
+          note="Position suivie toutes les 5 min"
+          icone="mapPin"
+          couleur={agents.length > 0 ? 'vert' : ''}
+        />
+        <Tuile
+          libelle="Dernière remontée"
+          valeur={
+            donnees?.horodatage
+              ? new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' }).format(
+                  new Date(donnees.horodatage)
+                )
+              : '—'
+          }
+          note="Heure du dernier appel au serveur"
+          icone="clock"
+        />
+      </div>
+
+      <Panneau
+        titre="Qui travaille en ce moment"
+        sous="Seuls les agents qui ont pris leur service et dont le compte est actif apparaissent. Rien n’est enregistré ici : la carte lit la dernière position envoyée par le téléphone de l’agent."
+        serre
+        actions={
+          <button
+            type="button"
+            className="bo-btn bo-btn--petit"
+            onClick={() => {
+              setRechargement((n) => n + 1);
+              onRafraichir?.();
+            }}
+          >
+            <Icon name="refresh" size={13} />
+            Actualiser
+          </button>
+        }
+      >
+        {chargement && !donnees ? (
+          <EtatChargement texte="Recherche des agents en service…" />
+        ) : (
+          <>
+            <CarteAgentsLeaflet agents={agents} />
+            {agents.length === 0 ? (
+              <p className="bo-doux" style={{ marginTop: 10 }}>
+                Aucun agent en service pour l’instant : personne n’a appuyé sur « Prendre mon
+                service » depuis son téléphone.
+              </p>
+            ) : (
+              <div className="bo-tableau-enveloppe" style={{ marginTop: 12 }}>
+                <table className="bo-tableau">
+                  <thead>
+                    <tr>
+                      <th>Agent</th>
+                      <th>Code</th>
+                      <th>Téléphone</th>
+                      <th>Dernier pointage</th>
+                      <th>Position</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {agents.map((agent) => (
+                      <tr key={agent.id}>
+                        <td>{agent.nom}</td>
+                        <td>
+                          <strong style={{ letterSpacing: 1.5 }}>{agent.code}</strong>
+                        </td>
+                        <td>{agent.telephone ? formatTelephone(agent.telephone) : '—'}</td>
+                        <td>
+                          {agent.dernierePosition?.updatedAt
+                            ? formatDateRelative(agent.dernierePosition.updatedAt)
+                            : '—'}
+                        </td>
+                        <td className="bo-doux">
+                          {agent.dernierePosition
+                            ? `${agent.dernierePosition.lat.toFixed(4)}, ${agent.dernierePosition.lng.toFixed(4)}`
+                            : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+      </Panneau>
+    </div>
+  );
+}
+/**
+ * La carte elle-même. Leaflet est chargé à la demande : l'administration ne pèse
+ * pas 40 ko de plus pour tout le monde, et la carte des agents n'existe que dans
+ * cette section. Le nettoyage retire la carte du DOM, sinon un changement d'onglet
+ * laisse des écouteurs et des tuiles en mémoire.
+ */
+function CarteAgentsLeaflet({ agents }) {
+  const conteneur = useRef(null);
+  const carte = useRef(null);
+  const couche = useRef(null);
+  const leaflet = useRef(null);
+  const [etat, setEtat] = useState('chargement');
+
+  useEffect(() => {
+    let abandonne = false;
+    (async () => {
+      let module;
+      try {
+        const [mod] = await Promise.all([import('leaflet'), import('leaflet/dist/leaflet.css')]);
+        module = mod.default || mod;
+      } catch {
+        if (!abandonne) setEtat('echec');
+        return;
+      }
+      if (abandonne || !conteneur.current) return;
+
+      leaflet.current = module;
+      const instance = module.map(conteneur.current, {
+        center: [CENTRE_DEFAUT.lat, CENTRE_DEFAUT.lng],
+        zoom: 11,
+        zoomControl: true,
+        scrollWheelZoom: false,
+      });
+      module
+        .tileLayer(TUILES_CARTE, {
+          maxZoom: 19,
+          attribution: '© OpenStreetMap',
+        })
+        .addTo(instance);
+      couche.current = module.layerGroup().addTo(instance);
+      carte.current = instance;
+      setEtat('prete');
+      // Le panneau vient d'apparaître : sans ce recalcul, Leaflet garde la taille
+      // qu'il avait avant la mise en page et n'affiche que des tuiles grises.
+      window.setTimeout(() => instance.invalidateSize(), 120);
+    })();
+
+    return () => {
+      abandonne = true;
+      if (carte.current) {
+        carte.current.remove();
+        carte.current = null;
+      }
+      couche.current = null;
+      leaflet.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const L = leaflet.current;
+    if (etat !== 'prete' || !L || !carte.current || !couche.current) return;
+
+    couche.current.clearLayers();
+    const points = [];
+
+    agents.forEach((agent) => {
+      const lat = agent.dernierePosition?.lat;
+      const lng = agent.dernierePosition?.lng;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      points.push([lat, lng]);
+
+      const repere = L.marker([lat, lng], {
+        icon: L.divIcon({
+          className: 'bo-repere-agent',
+          html: ICONE_AGENT,
+          iconSize: [30, 30],
+          iconAnchor: [15, 29],
+          popupAnchor: [0, -26],
+        }),
+        title: agent.nom,
+        keyboard: false,
+      });
+
+      // Popup construit avec l'API DOM : le nom et le numéro viennent d'une saisie
+      // libre et ne doivent jamais être interprétés comme du HTML par Leaflet.
+      const bulle = document.createElement('div');
+      bulle.style.minWidth = '150px';
+      const titre = document.createElement('strong');
+      titre.textContent = agent.nom;
+      const code = document.createElement('div');
+      code.textContent = `Code ${agent.code}${
+        agent.telephone ? ` · ${formatTelephone(agent.telephone)}` : ''
+      }`;
+      const vue = document.createElement('div');
+      vue.style.color = '#6b6b5e';
+      vue.textContent = agent.dernierePosition?.updatedAt
+        ? `Position ${formatDateRelative(agent.dernierePosition.updatedAt)}`
+        : 'Position non datée';
+      bulle.append(titre, code, vue);
+
+      repere.bindPopup(bulle, { closeButton: false });
+      repere.addTo(couche.current);
+    });
+
+    if (points.length === 1) {
+      carte.current.setView(points[0], 15);
+    } else if (points.length > 1) {
+      carte.current.fitBounds(points, { padding: [40, 40], maxZoom: 14 });
+    }
+  }, [agents, etat]);
+
+  if (etat === 'echec') {
+    return (
+      <Alerte variante="erreur" icone="alert">
+        La carte n’a pas pu être chargée (bibliothèque indisponible). Vérifiez la connexion, puis
+        actualisez.
+      </Alerte>
+    );
+  }
+
+  return (
+    <div
+      ref={conteneur}
+      className="bo-carte-agents"
+      style={{
+        height: 420,
+        borderRadius: 12,
+        overflow: 'hidden',
+        border: '1px solid #e6e1d5',
+        background: '#efeee8',
+      }}
+      role="img"
+      aria-label="Carte des agents en service"
+    />
+  );
+}
+
+
+
 
 /* ─── Mises en avant (file d'attente) ─────────────────────────────────────────
    Pendant la période gratuite, la mise en avant est OFFERTE : le bouton du profil

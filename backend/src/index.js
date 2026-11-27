@@ -24,6 +24,7 @@ import jobsRouter from './routes/jobs.js';
 import subscriptionsRouter from './routes/subscriptions.js';
 import healthFacilitiesRouter from './routes/healthFacilities.js';
 import messagesRouter from './routes/messages.js';
+import agentsRouter from './routes/agents.js';
 import adminRouter from './routes/admin.js';
 import { isPaymentConfigured, getUnlockFee } from './services/cinetpay.js';
 import {
@@ -165,6 +166,7 @@ app.get('/api', (req, res) => {
       '/api/subscriptions',
       '/api/health-facilities',
       '/api/messages',
+      '/api/agents',
     ],
   });
 });
@@ -220,6 +222,10 @@ app.use('/api/health-facilities', healthFacilitiesRouter);
 // Messagerie interne (prompt B) : chat privé entre deux comptes, recherche d'un
 // destinataire, et lecture des conversations du compte connecté.
 app.use('/api/messages', messagesRouter);
+// Espace AGENT DE TERRAIN (26/11) : connexion/activation par code, pointage GPS
+// pendant le service, et création des fiches (compte gérant + établissement).
+// Jeton distinct de celui des utilisateurs (middleware/auth.js → protectAgent).
+app.use('/api/agents', agentsRouter);
 // Back-office administrateur (dépôts + validation des déblocages + comptes).
 app.use('/api/admin', adminRouter);
 

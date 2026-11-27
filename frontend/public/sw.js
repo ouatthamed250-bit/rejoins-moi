@@ -284,7 +284,21 @@
 //       la coquille et les paquets périmés, puis l'onglet s'ouvre normalement.
 //       (La recherche par nom/numéro, l'aperçu et l'export JSON, eux, étaient
 //       déjà écrits : c'est bien la portée du composant qui était en cause.)
-const VERSION = 'v33';
+// v34 : espace AGENT DE TERRAIN + suivi GPS (27/11)
+//       — nouvelle route plein écran /agent (AgentApp.jsx) : connexion par numéro
+//       et mot de passe, activation par code remis par l'administrateur, prise et
+//       fin de service, pointage GPS toutes les 5 minutes UNIQUEMENT en service,
+//       inscription d'un commerce avec le compte du gérant (mot de passe tapé par
+//       le gérant), puis fermeture automatique de la session ;
+//       — back-office : « Agents de terrain » gère désormais le cycle de vie
+//       complet (génération du code d'activation affiché une seule fois, statut
+//       actif / en attente / suspendu, suppression) et une nouvelle section
+//       « Carte des agents » suit en temps réel les agents en service (Leaflet
+//       chargé à la demande, rafraîchissement toutes les 30 s).
+//       App.jsx, AgentApp.jsx, Admin.jsx et le client admin changent : sans
+//       nouveau nom de cache, un téléphone déjà installé n'aurait ni la route
+//       /agent ni la carte — l'ancien index.html resterait servi en secours.
+const VERSION = 'v34';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

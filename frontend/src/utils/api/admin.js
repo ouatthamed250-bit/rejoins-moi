@@ -157,6 +157,24 @@ export const adminApi = {
   agents: () => requeteAdmin('/agents'),
   creerAgent: (nom) => requeteAdmin('/agents', { method: 'POST', body: { nom } }),
   modifierAgent: (id, patch) => requeteAdmin(`/agents/${id}`, { method: 'PATCH', body: patch }),
+  // Qui travaille en ce moment (agents `enService` + statut `actif`), avec la
+  // dernière position GPS. La carte du back-office s'appuie dessus.
+  carteAgents: () => requeteAdmin('/agents/carte'),
+  // Code d'activation à 8 caractères, renvoyé UNE SEULE FOIS (il vit sur un champ
+  // `select: false`) : l'écran doit l'afficher tout de suite, jamais le remettre en
+  // cache. `{ agentId }` = compte déjà inscrit ; `{ nom, telephone }` = recrutement
+  // saisi directement par l'administrateur (le code agent est tiré au sort).
+  genererCodeAgent: ({ agentId = '', nom = '', telephone = '' } = {}) =>
+    requeteAdmin('/agents/generer-code', {
+      method: 'POST',
+      body: agentId ? { agentId } : { nom, telephone },
+    }),
+  // « actif » | « suspendu » | « en_attente ». La suspension coupe la connexion ET
+  // le pointage au prochain appel (le serveur relit le statut en base).
+  changerStatutAgent: (id, statut) =>
+    requeteAdmin(`/agents/${id}/statut`, { method: 'PATCH', body: { statut } }),
+  // Les fiches déjà créées gardent leur `codeAgent` : la paie passée reste vérifiable.
+  supprimerAgent: (id) => requeteAdmin(`/agents/${id}`, { method: 'DELETE' }),
   // Fiches créées par agent et par jour (30 jours par défaut) : c'est la vue de paie.
   rapportAgents: (jours = 30) => requeteAdmin(`/agents/rapport${chaineParametres({ jours })}`),
   // CSV de paie : la route répond un FICHIER (text/csv), pas du JSON — d'où `brut`.

@@ -7,6 +7,7 @@
 
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import Agent from '../models/Agent.js';
 
 const FALLBACK_SECRET = 'rejoins-moi-dev-secret-non-securise';
 
@@ -57,6 +58,72 @@ function extractToken(req) {
 }
 
 /**
+ * Jeton d'un AGENT DE TERRAIN (espace /agent, 26/11).
+ *
+ * Volontairement DISTINCT de celui d'un utilisateur : le jeton porte
+ * `role: 'agent'`, et `protect`/`protectAdmin` refusent ce rôle. Sans ce marqueur,
+ * un identifiant d'agent et un identifiant d'utilisateur vivent dans deux
+ * collections différentes : une collision d'ObjectId (très improbable, mais pas
+ * impossible à écrire dans un test) ouvrirait un espace pour l'autre.
+ *
+ * Durée courte (12 h par défaut) : un agent travaille une journée, et son jeton
+ * ouvre la création de comptes gérants — le laisser vivre 30 jours sur un
+ * téléphone partagé pendant une tournée serait inutilement risqué.
+ */
+export function signAgentToken(agent) {
+  return jwt.sign(
+    { sub: String(agent._id), role: 'agent', code: agent.code },
+    getJwtSecret(),
+    { expiresIn: process.env.AGENT_JWT_EXPIRES_IN || '12h' }
+  );
+}
+
+/**
+ * Authentification OBLIGATOIRE d'un agent de terrain.
+ * Injecte `req.agent` (document Mongoose, avec le hash chargé pour que les
+ * routes puissent vérifier un mot de passe) ou répond 401/403.
+ *
+ * Le statut est RELU EN BASE à chaque requête : une suspension décidée par
+ * l'administrateur coupe l'accès immédiatement, sans attendre l'expiration du
+ * jeton (même raisonnement que pour les comptes utilisateurs suspendus).
+ */
+export async function protectAgent(req, res, next) {
+  try {
+    const token = extractToken(req);
+    if (!token) return res.status(401).json({ error: 'Authentification agent requise.' });
+
+    const payload = jwt.verify(token, getJwtSecret());
+    if (payload.role !== 'agent') {
+      return res.status(401).json({ error: 'Jeton agent invalide.' });
+    }
+    const agent = await Agent.findById(payload.sub).select('+motDePasseHash');
+    if (!agent) return res.status(401).json({ error: 'Compte agent introuvable.' });
+
+    const statut = agent.statutEffectif();
+    if (statut === 'suspendu') {
+      return res.status(403).json({
+        error: 'Compte agent suspendu. Contactez l’équipe Rejoins’Moi.',
+        details: { code: 'AGENT_SUSPENDU' },
+      });
+    }
+    if (statut !== 'actif') {
+      return res.status(403).json({
+        error: 'Compte agent en attente d’activation : saisissez le code fourni par l’administrateur.',
+        details: { code: 'AGENT_EN_ATTENTE' },
+      });
+    }
+
+    req.agent = agent;
+    return next();
+  } catch (err) {
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Session agent expirée, reconnectez-vous.', code: 'TOKEN_EXPIRED' });
+    }
+    return res.status(401).json({ error: 'Jeton agent invalide.' });
+  }
+}
+
+/**
  * Authentification ADMINISTRATEUR (back-office).
  * Vérifie le JWT PUIS que le compte porte `estAdmin: true` (relu en base à chaque
  * requête : retirer le rôle d'un compte coupe l'accès immédiatement). Répond 403 — et
@@ -71,6 +138,11 @@ export async function protectAdmin(req, res, next) {
     if (!token) return res.status(401).json({ error: 'Authentification administrateur requise.' });
 
     const payload = jwt.verify(token, getJwtSecret());
+    // Un jeton d'AGENT DE TERRAIN n'ouvre jamais le back-office, même si son
+    // porteur connaît un ObjectId de compte administrateur.
+    if (payload.role === 'agent') {
+      return res.status(401).json({ error: 'Jeton agent refusé sur le back-office.' });
+    }
     const user = await User.findById(payload.sub);
     // `supprimeAt` = compte anonymisé (droit à l'effacement). Le document existe
     // encore pour les paiements, mais il ne doit plus rien ouvrir.
@@ -109,6 +181,11 @@ export async function protect(req, res, next) {
     if (!token) return res.status(401).json({ error: 'Authentification requise.' });
 
     const payload = jwt.verify(token, getJwtSecret());
+    // Un jeton d'agent de terrain n'ouvre pas une session utilisateur : les deux
+    // espaces restent étanches (voir signAgentToken ci-dessus).
+    if (payload.role === 'agent') {
+      return res.status(401).json({ error: 'Jeton agent refusé : espace utilisateur.' });
+    }
     const user = await User.findById(payload.sub);
     if (!user) return res.status(401).json({ error: 'Compte introuvable ou supprimé.' });
     // Compte anonymisé (droit à l'effacement) : le jeton émis avant la
@@ -152,6 +229,8 @@ export async function optionalAuth(req, res, next) {
     const token = extractToken(req);
     if (!token) return next();
     const payload = jwt.verify(token, getJwtSecret());
+    // Jeton d'agent : traité comme un visiteur anonyme sur les routes publiques.
+    if (payload.role === 'agent') return next();
     req.user = await User.findById(payload.sub);
     // Un compte anonymisé est traité comme un visiteur : ses favoris et son
     // carnet de visites n'existent plus, il n'a rien à personnaliser.
@@ -170,4 +249,13 @@ export async function optionalAuth(req, res, next) {
  * ou sur la présence d'un abonnement (voir routes/subscriptions.js).
  */
 
-export default { protect, optionalAuth, protectAdmin, signToken, getJwtSecret, DUREE_JETON_ADMIN };
+export default {
+  protect,
+  optionalAuth,
+  protectAdmin,
+  protectAgent,
+  signToken,
+  signAgentToken,
+  getJwtSecret,
+  DUREE_JETON_ADMIN,
+};

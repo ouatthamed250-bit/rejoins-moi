@@ -27,10 +27,14 @@
 //   GET    /api/admin/conversations              -> chercher les conversations d'un compte (messagerie, prompt B)
 //   GET    /api/admin/conversations/:id/export   -> EXTRAIRE une conversation (réquisition légale)
 //   POST   /api/admin/agents                     -> créer un agent de terrain (code tiré au sort, prompt 9)
-//   GET    /api/admin/agents                     -> agents + fiches créées / à vérifier / dernière activité
+//   POST   /api/admin/agents/generer-code        -> générer un CODE D'ACTIVATION (compte agent, 26/11)
+//   GET    /api/admin/agents                     -> agents + statut + fiches créées / à vérifier
+//   GET    /api/admin/agents/carte               -> agents EN SERVICE et leur dernière position GPS
 //   GET    /api/admin/agents/rapport             -> nombre de fiches par agent ET par jour (paie)
 //   GET    /api/admin/agents/export-csv          -> CSV de paie (date, agent, code, fiche, téléphone…)
-//   PATCH  /api/admin/agents/:id                 -> renommer un agent ou le désactiver
+//   PATCH  /api/admin/agents/:id                 -> renommer un agent
+//   PATCH  /api/admin/agents/:id/statut          -> ACTIVER / SUSPENDRE un compte agent
+//   DELETE /api/admin/agents/:id                 -> supprimer un agent (erreur de recrutement)
 //   GET    /api/admin/fiches-a-verifier          -> fiches marquées par l'anti-fraude (prompt 9)
 //   PATCH  /api/admin/etablissements/:id/verification -> lever le doute (aVerifier = false)
 //
@@ -1584,6 +1588,127 @@ router.patch(
 );
 
 /**
+ * POST /api/admin/agents/generer-code — remettre un CODE D'ACTIVATION.
+ *
+ * Deux usages, un seul geste côté terrain :
+ *   • body { agentId } — un agent s'est inscrit lui-même sur /agent (compte
+ *     `en_attente`) ; l'administrateur génère le code à lui dicter ;
+ *   • body { nom, telephone? } — l'administrateur saisit directement le
+ *     recrutement et repart avec le code, sans attendre que l'agent s'inscrive.
+ *
+ * Le code n'est renvoyé QU'ICI, une seule fois : il vit sur un champ
+ * `select: false` et n'apparaît donc jamais dans la liste des agents.
+ */
+router.post(
+  '/agents/generer-code',
+  protectAdmin,
+  asyncHandler(async (req, res) => {
+    const agentId = String(req.body?.agentId ?? '').trim();
+
+    if (agentId) {
+      if (!mongoose.isValidObjectId(agentId)) throw new ApiError(404, 'Agent introuvable.');
+      const agent = await Agent.findById(agentId).select('+codeActivation');
+      if (!agent) throw new ApiError(404, 'Agent introuvable.');
+      if (agent.statutEffectif() === 'actif') {
+        throw new ApiError(409, `${agent.nom} a déjà un compte actif : aucun code d’activation n’est nécessaire.`);
+      }
+      if (!agent.telephone) {
+        throw new ApiError(
+          400,
+          'Ce code agent n’a pas de numéro de téléphone : impossible d’y rattacher un compte. Créez un nouvel agent avec son numéro.'
+        );
+      }
+      const codeActivation = Agent.genererCodeActivation();
+      agent.codeActivation = codeActivation;
+      await agent.save();
+      return res.json({ agent: agent.toPublicJSON(), codeActivation });
+    }
+
+    const nom = String(req.body?.nom ?? '').trim();
+    if (nom.length < 2) throw new ApiError(400, 'Indiquez le nom de l’agent (2 caractères minimum).');
+    if (nom.length > 80) throw new ApiError(400, 'Le nom de l’agent est trop long (80 caractères maximum).');
+
+    // Le numéro est FACULTATIF à la création (on peut préparer un recrutement
+    // avant de l'avoir), mais s'il est fourni il doit être valide : c'est lui
+    // qui servira d'identifiant de connexion à l'agent.
+    let telephone = null;
+    if (req.body?.telephone != null && String(req.body.telephone).trim() !== '') {
+      telephone = normalizePhone(req.body.telephone);
+      if (!telephone) throw new ApiError(400, 'Numéro de téléphone de l’agent invalide (ex. 07 07 12 34 56).');
+      const dejaPris = await Agent.findOne({ telephone });
+      if (dejaPris) {
+        throw new ApiError(409, 'Un agent utilise déjà ce numéro de téléphone.', {
+          agent: dejaPris.toPublicJSON(),
+        });
+      }
+    }
+
+    const homonyme = await Agent.findOne({ nom: new RegExp(`^${escapeRegex(nom)}$`, 'i') });
+    if (homonyme) {
+      throw new ApiError(
+        409,
+        `Un agent nommé « ${homonyme.nom} » existe déjà (code ${homonyme.code}). Utilisez sa fiche plutôt que d’en créer un second.`,
+        { agent: homonyme.toPublicJSON() }
+      );
+    }
+
+    const codeActivation = Agent.genererCodeActivation();
+    let agent = null;
+    for (let essai = 0; essai < 5 && !agent; essai += 1) {
+      try {
+        agent = await Agent.create({
+          code: Agent.genererCode(),
+          nom,
+          telephone: telephone || undefined,
+          statut: 'en_attente',
+          // Tant que le compte n'est pas activé, le code agent ne doit pas
+          // attribuer de fiches payables.
+          actif: false,
+          codeActivation,
+          creeParUserId: req.user?._id || null,
+        });
+      } catch (err) {
+        if (err?.code === 11000) continue; // code agent déjà pris : on retire
+        throw err;
+      }
+    }
+    if (!agent) throw new ApiError(503, 'Impossible de générer un code agent libre. Réessayez dans un instant.');
+
+    res.status(201).json({ agent: agent.toPublicJSON(), codeActivation });
+  })
+);
+
+/**
+ * GET /api/admin/agents/carte — qui travaille en ce moment, et où.
+ *
+ * Seuls les agents `enService: true` ET au statut `actif` sont renvoyés : la
+ * carte est un outil de contrôle du travail, pas une surveillance permanente des
+ * téléphones personnels. Un agent qui a terminé son service disparaît de la
+ * carte ; sa dernière position reste en base pour l'historique de la paie.
+ */
+router.get(
+  '/agents/carte',
+  protectAdmin,
+  asyncHandler(async (req, res) => {
+    const agents = await Agent.find({ enService: true, statut: 'actif' }).select(
+      'nom code telephone enService dernierePosition'
+    );
+
+    const liste = agents
+      .map((agent) => agent.toPublicJSON())
+      .filter((agent) => agent.dernierePosition)
+      // Le plus récemment vu d'abord : c'est celui qu'on cherche des yeux.
+      .sort(
+        (a, b) =>
+          new Date(b.dernierePosition.updatedAt || 0).getTime() -
+          new Date(a.dernierePosition.updatedAt || 0).getTime()
+      );
+
+    res.json({ agents: liste, horodatage: new Date().toISOString() });
+  })
+);
+
+/**
  * GET /api/admin/agents — tableau des agents de terrain.
  *
  * Une seule agrégation calcule, pour chaque code : le nombre de fiches créées,
@@ -1599,7 +1724,10 @@ router.get(
   protectAdmin,
   asyncHandler(async (req, res) => {
     const [agents, parCode] = await Promise.all([
-      Agent.find().sort({ actif: -1, nom: 1 }),
+      // `+motDePasseHash` : le tableau affiche « compte créé / pas encore de mot
+      // de passe » (voir aCompte dans toPublicJSON). Le hash lui-même ne sort
+      // jamais de la route — il n'est pas recopié dans la réponse.
+      Agent.find().select('+motDePasseHash').sort({ nom: 1 }),
       Establishment.aggregate([
         { $match: FILTRE_FICHES_TERRAIN },
         {
@@ -1643,9 +1771,97 @@ router.get(
       totaux: {
         agents: liste.length,
         agentsActifs: liste.filter((agent) => agent.actif).length,
+        // Comptes créés mais PAS encore activés (code d'activation à remettre) :
+        // c'est la file d'attente du recrutement, elle doit se voir d'un coup d'œil.
+        agentsEnAttente: liste.filter((agent) => agent.statut === 'en_attente').length,
+        agentsSuspendus: liste.filter((agent) => agent.statut === 'suspendu').length,
+        agentsEnService: liste.filter((agent) => agent.enService).length,
         fiches: liste.reduce((somme, agent) => somme + agent.totalFiches, 0),
         fichesAVerifier: liste.reduce((somme, agent) => somme + agent.fichesAVerifier, 0),
       },
+    });
+  })
+);
+
+/**
+ * PATCH /api/admin/agents/:id/statut — ACTIVER ou SUSPENDRE un compte agent.
+ * body: { statut: 'actif' | 'suspendu' | 'en_attente' }
+ *
+ * La suspension est immédiate : `protectAgent` relit le statut en base à chaque
+ * requête, donc le téléphone de l'agent perd l'accès au prochain appel (pointage
+ * compris). Elle remet aussi `enService` à false : un agent suspendu ne doit pas
+ * rester affiché sur la carte comme s'il travaillait.
+ */
+router.patch(
+  '/agents/:id/statut',
+  protectAdmin,
+  asyncHandler(async (req, res) => {
+    if (!mongoose.isValidObjectId(req.params.id)) throw new ApiError(404, 'Agent introuvable.');
+    const agent = await Agent.findById(req.params.id);
+    if (!agent) throw new ApiError(404, 'Agent introuvable.');
+
+    const statut = String(req.body?.statut ?? '').trim();
+    if (!['actif', 'suspendu', 'en_attente'].includes(statut)) {
+      throw new ApiError(400, 'Statut attendu : « actif », « suspendu » ou « en_attente ».');
+    }
+    if (statut === 'actif' && !agent.motDePasseHash) {
+      // On ne peut pas activer un compte que personne ne peut ouvrir : il faut
+      // d'abord un mot de passe (inscription de l'agent, ou activation par code).
+      throw new ApiError(
+        409,
+        'Ce compte agent n’a pas encore de mot de passe : l’agent doit d’abord s’inscrire ou activer son compte avec le code fourni.',
+        { code: 'AGENT_SANS_MOT_DE_PASSE' }
+      );
+    }
+
+    agent.statut = statut;
+    // Le booléen historique suit toujours le statut (paie, anti-fraude).
+    agent.actif = statut === 'actif';
+    if (statut !== 'actif') agent.enService = false;
+    await agent.save();
+
+    res.json({
+      agent: agent.toPublicJSON(),
+      message:
+        statut === 'actif'
+          ? `${agent.nom} peut de nouveau se connecter.`
+          : statut === 'suspendu'
+            ? `${agent.nom} est suspendu : sa connexion et son pointage sont coupés.`
+            : `${agent.nom} repasse en attente d’activation.`,
+    });
+  })
+);
+
+/**
+ * DELETE /api/admin/agents/:id — supprimer définitivement un agent.
+ *
+ * Réservé au cas « erreur de recrutement » (mauvais nom, doublon créé par
+ * inadvertance). Les fiches déjà créées GARDENT leur `codeAgent` : elles ne sont
+ * jamais effacées, et la paie passée doit rester vérifiable. La réponse indique
+ * combien de fiches restent rattachées au code (elles apparaîtront comme « code
+ * inconnu » dans le tableau de paie — c'est le signal qu'il faut recréer l'agent
+ * avec le même code si la suppression était une erreur).
+ */
+router.delete(
+  '/agents/:id',
+  protectAdmin,
+  asyncHandler(async (req, res) => {
+    if (!mongoose.isValidObjectId(req.params.id)) throw new ApiError(404, 'Agent introuvable.');
+    const agent = await Agent.findById(req.params.id);
+    if (!agent) throw new ApiError(404, 'Agent introuvable.');
+
+    const fichesRattachees = await Establishment.countDocuments({ codeAgent: agent.code, test: { $ne: true } });
+    await Agent.deleteOne({ _id: agent._id });
+
+    res.json({
+      supprime: true,
+      code: agent.code,
+      nom: agent.nom,
+      fichesConservees: fichesRattachees,
+      message:
+        fichesRattachees > 0
+          ? `${agent.nom} est supprimé. ${fichesRattachees} fiche(s) gardent son code ${agent.code} : elles restent dans la paie sous « code inconnu ».`
+          : `${agent.nom} est supprimé.`,
     });
   })
 );

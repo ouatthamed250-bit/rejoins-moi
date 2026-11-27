@@ -10,6 +10,10 @@
 //  - le serveur démarre même sans MongoDB : les routes répondent alors 503 et le
 //    frontend bascule sur ses données de démo (mode tournée terrain).
 
+// Note de déploiement (27/11/2026) : ce commit force un redémarrage du service
+// Render afin de recharger les clés VAPID (VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY)
+// saisies dans le tableau de bord de l'hébergeur. Aucun changement de comportement.
+
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';

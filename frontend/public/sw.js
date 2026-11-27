@@ -338,7 +338,15 @@
 //       abonnement valide. Nouveau nom de cache obligatoire — sinon un
 //       téléphone déjà installé servirait encore l'ancien index-*.js, sans le
 //       code d'abonnement aux notifications.
-const VERSION = 'v40';
+// v41 : clé publique VAPID servie par l'API et abonnement réparé (27/11).
+//       • Le bundle ne dépend plus de la clé compilée : celle qui signe les
+//         envois est servie par GET /api/push/public-key, et le backend la
+//         déduit de VAPID_PRIVATE_KEY si VAPID_PUBLIC_KEY manque. Un
+//         abonnement créé avec l'ancienne clé est automatiquement remplacé au
+//         lieu de provoquer un InvalidStateError silencieux.
+//       • Nouveau nom de cache : sans lui, un téléphone déjà installé
+//         garderait l'ancien index-*.js, incapable de réparer l'abonnement.
+const VERSION = 'v41';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

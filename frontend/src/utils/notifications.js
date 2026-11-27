@@ -42,6 +42,18 @@ async function resoudreCleVapidPublique() {
 }
 
 /**
+ * Convertit la clé `applicationServerKey` d'un abonnement existant (ArrayBuffer)
+ * en base64 URL-safe, pour pouvoir la comparer à la clé VAPID actuelle.
+ */
+function arrayBufferVersBase64Url(buffer) {
+  if (!buffer) return '';
+  const octets = new Uint8Array(buffer);
+  let binaire = '';
+  for (let i = 0; i < octets.length; i++) binaire += String.fromCharCode(octets[i]);
+  return btoa(binaire).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/**
  * Convertit une clé VAPID encodée en base64 URL-safe en Uint8Array, comme l'exige
  * `PushManager.subscribe({ applicationServerKey })`.
  */
@@ -95,6 +107,28 @@ export async function souscrireAuxNotifications(registration) {
 
   let abonnement;
   try {
+    // Un abonnement peut déjà exister sur cet appareil. S'il a été créé avec une
+    // AUTRE clé VAPID (clé changée sur le serveur depuis), il ne pourra jamais
+    // être signé : le service de push répondrait 403 à chaque envoi. Et rappeler
+    // `subscribe()` avec une clé différente lève `InvalidStateError`. On le
+    // remplace donc explicitement avant de s'abonner à nouveau.
+    const existant = await registration.pushManager.getSubscription();
+    if (existant) {
+      const cleExistante = arrayBufferVersBase64Url(existant.options?.applicationServerKey);
+      if (!cleExistante || cleExistante === clePublique) {
+        // Même clé : rien à recréer, on réenregistre simplement l'abonnement
+        // (le serveur a pu le perdre lors d'un nettoyage de base).
+        try {
+          await api.post('/users/push-subscribe', { subscription: existant });
+          return { ok: true, abonnement: existant };
+        } catch {
+          /* on retombe sur la création d'un nouvel abonnement */
+        }
+      } else {
+        await existant.unsubscribe();
+      }
+    }
+
     // `userVisibleOnly: true` obligatoire : le serveur ne peut envoyer que des
     // notifications visibles par l'utilisateur (pas de push silencieux).
     abonnement = await registration.pushManager.subscribe({

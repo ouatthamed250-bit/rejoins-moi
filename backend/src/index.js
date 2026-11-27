@@ -31,7 +31,7 @@ import messagesRouter from './routes/messages.js';
 import agentsRouter from './routes/agents.js';
 import adminRouter from './routes/admin.js';
 import { isPaymentConfigured, getUnlockFee } from './services/cinetpay.js';
-import { etatNotifications } from './services/notifications.js';
+import { etatNotifications, cleVapidPublique } from './services/notifications.js';
 import {
   ABONNEMENT,
   getFormules,
@@ -233,7 +233,9 @@ app.get('/api/health', (req, res) => {
 // que le frontend servi est à jour. Aucune clé privée n'est exposée ici.
 app.get('/api/push/public-key', (req, res) => {
   res.set('Cache-Control', 'no-store');
-  res.json({ publicKey: process.env.VAPID_PUBLIC_KEY || '' });
+  // Clé effectivement utilisée pour signer : si VAPID_PUBLIC_KEY manque dans
+  // l'hébergeur, elle est déduite de VAPID_PRIVATE_KEY (voir services/notifications.js).
+  res.json({ publicKey: cleVapidPublique() });
 });
 
 // ── Routes API ──

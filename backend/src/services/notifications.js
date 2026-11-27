@@ -16,6 +16,7 @@
 // (« does not provide an export named 'default' »), et l'hébergeur conserve
 // alors silencieusement l'ancienne version. On importe donc l'espace de noms.
 import * as webpush from 'web-push';
+import { createECDH } from 'node:crypto';
 import AbonnementPush from '../models/AbonnementPush.js';
 
 /**
@@ -33,11 +34,70 @@ function nettoyerCle(valeur, retirerEspacesInternes = false) {
   return propre;
 }
 
+/**
+ * Déduit la clé publique VAPID de la clé privée.
+ *
+ * Une clé VAPID est une paire sur la courbe P-256 : la clé publique n'est rien
+ * d'autre que le point obtenu en multipliant la clé privée par le point de base.
+ * La calculer ici évite deux pannes très réelles :
+ *   • `VAPID_PUBLIC_KEY` oubliée dans l'hébergeur alors que la clé privée est bien
+ *     là (le cas constaté sur Render) — sans elle, `web-push` refuse de signer ;
+ *   • clé publique recopiée d'une AUTRE paire que la clé privée, qui produirait
+ *     des abonnements silencieusement rejetés (403 du service de push).
+ * Aucun secret n'est exposé : la clé publique est, par définition, publique.
+ *
+ * @param {string} clePrivee clé privée VAPID (base64url)
+ * @returns {string} clé publique base64url, ou '' si la clé privée est illisible
+ */
+export function deduireClePublique(clePrivee) {
+  if (!clePrivee) return '';
+  try {
+    const ecdh = createECDH('prime256v1');
+    ecdh.setPrivateKey(Buffer.from(clePrivee, 'base64url'));
+    return ecdh.getPublicKey().toString('base64url');
+  } catch {
+    return '';
+  }
+}
+
+const CLE_PUBLIQUE_FOURNIE = nettoyerCle(process.env.VAPID_PUBLIC_KEY, true);
+const CLE_PRIVEE = nettoyerCle(process.env.VAPID_PRIVATE_KEY, true);
+const CLE_PUBLIQUE_DEDUITE = CLE_PRIVEE ? deduireClePublique(CLE_PRIVEE) : '';
+
+/** D'où vient la clé publique retenue : 'fournie', 'deduite' ou 'absente'. */
+let sourcePublique = 'absente';
+let clePubliqueRetenue = '';
+
+if (CLE_PUBLIQUE_FOURNIE && CLE_PUBLIQUE_DEDUITE) {
+  if (CLE_PUBLIQUE_FOURNIE === CLE_PUBLIQUE_DEDUITE) {
+    sourcePublique = 'fournie';
+    clePubliqueRetenue = CLE_PUBLIQUE_FOURNIE;
+  } else {
+    // Les deux clés ne forment PAS une paire : on garde celle qui correspond à la
+    // clé privée, seule à pouvoir signer des abonnements acceptés.
+    sourcePublique = 'deduite';
+    clePubliqueRetenue = CLE_PUBLIQUE_DEDUITE;
+    console.warn(
+      '[notifications] VAPID_PUBLIC_KEY ne correspond pas à VAPID_PRIVATE_KEY : ' +
+        'la clé publique déduite de la clé privée est utilisée à la place.'
+    );
+  }
+} else if (CLE_PUBLIQUE_FOURNIE) {
+  sourcePublique = 'fournie';
+  clePubliqueRetenue = CLE_PUBLIQUE_FOURNIE;
+} else if (CLE_PUBLIQUE_DEDUITE) {
+  sourcePublique = 'deduite';
+  clePubliqueRetenue = CLE_PUBLIQUE_DEDUITE;
+  console.warn(
+    '[notifications] VAPID_PUBLIC_KEY absente : clé publique déduite de VAPID_PRIVATE_KEY.'
+  );
+}
+
 const VAPID_DETAILS = {
   subject:
     nettoyerCle(process.env.VAPID_MAILTO) || 'mailto:admin@rejoins-moi.example',
-  publicKey: nettoyerCle(process.env.VAPID_PUBLIC_KEY, true),
-  privateKey: nettoyerCle(process.env.VAPID_PRIVATE_KEY, true),
+  publicKey: clePubliqueRetenue,
+  privateKey: CLE_PRIVEE,
 };
 
 /** Vrai seulement si `web-push` a accepté les clés : sans cela, aucun envoi. */
@@ -82,11 +142,25 @@ if (VAPID_DETAILS.publicKey && VAPID_DETAILS.privateKey) {
 export function etatNotifications() {
   return {
     pret: vapidPret,
-    publiqueDefinie: Boolean(VAPID_DETAILS.publicKey),
+    publiqueDisponible: Boolean(VAPID_DETAILS.publicKey),
+    // 'fournie' (variable de l'hébergeur), 'deduite' (calculée depuis la clé
+    // privée) ou 'absente' : indique sur quoi le serveur s'appuie réellement.
+    publiqueSource: sourcePublique,
     priveeDefinie: Boolean(VAPID_DETAILS.privateKey),
     sujet: VAPID_DETAILS.subject,
     erreur: vapidErreur || null,
   };
+}
+
+/**
+ * Clé publique VAPID à servir au navigateur (GET /api/push/public-key).
+ * C'est exactement celle qui correspond à la clé privée utilisée pour signer :
+ * un abonnement créé avec elle sera donc accepté par le service de push.
+ *
+ * @returns {string} clé base64url, ou '' si aucune clé n'est configurée
+ */
+export function cleVapidPublique() {
+  return VAPID_DETAILS.publicKey || '';
 }
 
 /**

@@ -316,7 +316,14 @@
 //       config/categories.js change pour TOUS les écrans : sans nouveau nom de
 //       cache, un téléphone déjà installé garderait l'ancien bundle (donc les
 //       anciens onglets) pendant toute la durée de grâce.
-const VERSION = 'v36';
+// v37 : page « Pharmacies & Cliniques » réparée (27/11)
+//       — la page lisait la seule collection HealthFacility (0 fiche) et affichait
+//       « Aucune pharmacie » alors que 2 277 fiches `sante` étaient en base depuis
+//       l'import OSM ; elle lit désormais les deux sources et filtre côté serveur
+//       (compteur exact : 2 277 fiches, 967 pharmacies, 1 310 cliniques) ;
+//       — PharmaciesCliniques.jsx change : nouveau nom de cache obligatoire, sinon
+//       les téléphones déjà installés garderaient la page vide pendant la grâce.
+const VERSION = 'v37';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

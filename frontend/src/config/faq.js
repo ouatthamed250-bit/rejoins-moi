@@ -39,8 +39,14 @@ export const FAQ_DATA = [
         texteLien: 'Créer ma fiche maintenant',
       },
       {
-        q: "Est-ce que c'est payant ?",
-        r: "Non, l'inscription et la publication de votre fiche sont totalement gratuites.",
+        q: "Mon commerce est déjà dans l'application (fiche importée), comment la récupérer ?",
+        r: "Quand vous créez votre fiche, après le nom et la position, l'application cherche les fiches qui existent déjà. Si la vôtre s'affiche (« C'est votre établissement ? »), cliquez sur « Oui, c'est le mien » : vous reprenez la fiche au lieu d'en créer une deuxième, puis vous modifiez vos photos, horaires et numéro.",
+        lien: '/inscription',
+        texteLien: 'Reprendre ma fiche',
+      },
+      {
+        q: "Est-ce que l'application est payante ?",
+        r: "L'application et l'inscription sont gratuites : aucun paiement n'est demandé pour créer votre fiche, publier une annonce ou contacter quelqu'un pendant la période de gratuité en cours.",
       },
       {
         q: 'Puis-je ajouter des photos plus tard ?',
@@ -64,8 +70,24 @@ export const FAQ_DATA = [
         r: "Autorisez la localisation sur votre téléphone. L'application triera automatiquement les résultats du plus proche au plus loin.",
       },
       {
+        q: 'Comment actualiser ma position ?',
+        r: "Si vous vous êtes déplacé, cliquez sur le bouton « Actualiser ma position » en haut des listes. L'application recalculera les distances.",
+        lien: '/recherche',
+        texteLien: 'Aller à la recherche',
+      },
+      {
+        q: 'Pourquoi les distances sont-elles différentes de Google Maps ?',
+        r: "Nous affichons la distance à vol d'oiseau. Google Maps affiche la distance par la route. Les deux sont correctes, mais différentes.",
+      },
+      {
         q: 'Puis-je chercher une pharmacie ou une clinique ?',
         r: 'Oui : la section "Pharmacies & cliniques" liste les pharmacies et les cliniques du quartier. Le badge vert "De garde" signale celles qui se déclarent de garde, et elles apparaissent en premier.',
+        lien: '/pharmacies-cliniques',
+        texteLien: 'Voir les pharmacies et cliniques',
+      },
+      {
+        q: 'Je cherche une pharmacie ou une banque',
+        r: "Utilisez les onglets « Pharmacies & Cliniques » ou choisissez la catégorie « Banque » dans le filtre des catégories. Plus de 33 000 lieux sont référencés.",
         lien: '/pharmacies-cliniques',
         texteLien: 'Voir les pharmacies et cliniques',
       },
@@ -74,15 +96,15 @@ export const FAQ_DATA = [
   {
     id: 'contact',
     titre: 'Contacter un artisan',
-    icone: 'whatsapp',
+    icone: 'message',
     questions: [
       {
-        q: 'Comment appeler ou envoyer un message ?',
-        r: 'Sur la fiche d\'un établissement ou d\'une annonce, cliquez sur le bouton vert "WhatsApp" ou "Appeler". Le contact s\'affiche immédiatement.',
+        q: 'Comment envoyer un message à un établissement ?',
+        r: 'Sur la fiche de l\'établissement, cliquez sur le bouton « Message ». Vous pouvez discuter directement dans l\'application sans donner votre numéro.',
       },
       {
         q: 'Le numéro est masqué, comment faire ?',
-        r: "Si un cadenas est affiché, cela signifie que l'auteur a choisi de ne pas publier son numéro. Vous pouvez lui envoyer une demande via l'application.",
+        r: "Si un cadenas est affiché, l'auteur a choisi de ne pas publier son numéro. Utilisez le bouton « Message » pour lui écrire en privé. Il recevra une notification.",
       },
       {
         q: 'Le contact ne répond pas, que faire ?',
@@ -121,10 +143,14 @@ export const FAQ_DATA = [
     icone: 'briefcase',
     questions: [
       {
-        q: "Comment publier une offre d'emploi ou de stage ?",
-        r: 'Allez dans la section "Emplois" via le menu, cliquez sur "Publier une annonce" et remplissez les détails.',
-        lien: '/main-doeuvre',
+        q: "Comment publier une offre ?",
+        r: "Allez dans l'onglet « Emplois » ou « Main-d'œuvre », puis cliquez sur « Publier une annonce ». C'est gratuit.",
+        lien: '/main-doeuvre?mode=poster',
         texteLien: 'Publier une annonce',
+      },
+      {
+        q: 'Comment contacter un artisan ?',
+        r: "Cliquez sur son profil pour voir ses détails et utilisez le bouton « Envoyer un message » ou « Appeler » s'il a rendu son numéro public.",
       },
       {
         q: 'Puis-je chercher un plombier pour un travail ?',

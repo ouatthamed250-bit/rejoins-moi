@@ -346,7 +346,17 @@
 //         lieu de provoquer un InvalidStateError silencieux.
 //       • Nouveau nom de cache : sans lui, un téléphone déjà installé
 //         garderait l'ancien index-*.js, incapable de réparer l'abonnement.
-const VERSION = 'v41';
+// v42 : assistant (FAQ) réécrit pour la messagerie interne, le GPS et les
+//       fiches importées (27/11).
+//       • config/faq.js change de contenu, pas de mécanique : les réponses
+//         citent les libellés réellement affichés (« Message », « Actualiser ma
+//         position », « C'est votre établissement ? » / « Oui, c'est le mien »)
+//         et les liens d'action ouvrent /inscription, /recherche,
+//         /pharmacies-cliniques et /main-doeuvre?mode=poster.
+//       • Nouveau nom de cache : un téléphone déjà installé doit recevoir le
+//         nouveau bundle, sinon il afficherait encore les anciennes réponses
+//         (WhatsApp au lieu de la messagerie, aucun mot sur l'import).
+const VERSION = 'v42';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

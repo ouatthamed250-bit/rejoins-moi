@@ -57,7 +57,10 @@ function identifiantValide(valeur) {
  * cohérent avec middleware/rateLimit.js (qui gère, lui, l'authentification).
  */
 const FENETRE_ENVOI_MS = 60_000;
-const MAX_ENVOIS = Number(process.env.MESSAGES_RATE_MAX) || 30;
+// 10/min par compte (au lieu de 30) : correctif du 27/11. À 30/min, un compte créé
+// sans vérification de numéro pouvait noyer les boîtes de réception ; 10/min reste
+// largement au-dessus d'une conversation humaine normale.
+const MAX_ENVOIS = Number(process.env.MESSAGES_RATE_MAX) || 10;
 const envoisParCompte = new Map();
 
 function limiteurEnvoi(req, res, next) {

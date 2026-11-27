@@ -1,19 +1,23 @@
 // verifier-reclamations.js — PREUVE du bloc D (doublons et « réclamer ma fiche »).
 //
+// ⚠️ Mis à jour le 27/11 avec le correctif de sécurité : la demande n'est PLUS jamais
+// acceptée automatiquement sur la foi de coordonnées GPS envoyées par le client.
+//
 // CE QU'ON VÉRIFIE, sur la BASE RÉELLE et via les VRAIS routeurs :
-//   1. un gérant À 150 m OU MOINS reprend sa fiche : réclamation acceptée TOUT DE SUITE,
-//      la fiche EXISTANTE est rattachée à son compte et AUCUNE copie n'est créée ;
-//   2. un gérant À DISTANCE arrive dans la file d'attente du back-office, distance mesurée
-//      à l'appui, SANS aucune modification de la fiche avant décision ;
-//   3. la file d'attente se traite : l'équipe ACCEPTE (rattachement) ou REFUSE (la fiche
-//      reste réclamable) ;
+//   1. une demande de reprise, MÊME À 45 m DE LA FICHE, entre en file d'attente (202)
+//      et ne modifie RIEN tant qu'un humain n'a pas tranché ;
+//   2. le message renvoyé annonce l'examen « sous 24h » ; un second appel est idempotent ;
+//   3. le back-office liste les demandes (`GET /api/admin/demandes-revendication`),
+//      les VALIDE (rattachement de la fiche existante, aucune copie, aucun écrasement)
+//      ou les REJETTE (la fiche reste réclamable, motif conservé) ;
 //   4. une fiche DÉJÀ réclamée est refusée (409) ;
 //   5. un DOUBLON EXACT (même nom normalisé à moins de 50 m) est refusé à la création (409),
 //      alors qu'un commerce VOISIN au nom différent reste possible.
 //
-// TOUTES les données du test sont créées puis SUPPRIMÉES : fiches préfixées « ZZ TEST » et
-// comptes de test. Le compte administrateur RÉEL n'est ni créé, ni modifié, ni utilisé : un
-// compte admin jetable sert à la file d'attente, puis il est supprimé.
+// TOUTES les données du test sont créées puis SUPPRIMÉES : fiches préfixées « ZZ TEST »,
+// comptes de test et demandes de revendication associées. Le compte administrateur RÉEL
+// n'est ni créé, ni modifié, ni utilisé : un compte admin jetable sert à la file
+// d'attente, puis il est supprimé.
 //
 // Lancement (depuis /backend) : node scripts/verifier-reclamations.js
 
@@ -27,6 +31,7 @@ import usersRouter from '../src/routes/users.js';
 import adminRouter from '../src/routes/admin.js';
 import Establishment from '../src/models/Establishment.js';
 import User from '../src/models/User.js';
+import DemandeRevendication from '../src/models/DemandeRevendication.js';
 import { normalizePhone } from '../src/utils/validators.js';
 import { errorHandler, notFound } from '../src/middleware/errorHandler.js';
 
@@ -182,8 +187,8 @@ async function principal() {
       candidat ? `${candidat.distanceMetres} m` : 'absente'
     );
 
-    // ── 2) Réclamation ACCEPTÉE automatiquement (sur place) ──────────────────
-    console.log('\n  2) Gérant sur place (≤ 150 m) : réclamation acceptée tout de suite');
+    // ── 2) AUCUNE acceptation automatique, MÊME à 45 m de la fiche ───────────
+    console.log('\n  2) Gérant sur place (≤ 150 m) : demande EN ATTENTE, pas d’attribution');
     const avant = await Establishment.countDocuments({ nom: new RegExp(`^${PREFIXE_TEST}`) });
     const reclamationProche = await appel(`/api/establishments/${ficheProche._id}/reclamer`, {
       methode: 'POST',
@@ -193,18 +198,42 @@ async function principal() {
     const apres = await Establishment.countDocuments({ nom: new RegExp(`^${PREFIXE_TEST}`) });
     const ficheProcheApres = await Establishment.findById(ficheProche._id).lean();
     const compteProcheEnBase = await User.findById(compteProche.id).select('etablissementId').lean();
+    const demandeProche = await DemandeRevendication.findOne({
+      etablissementId: ficheProche._id,
+      userId: compteProche.id,
+    }).lean();
     verifier(
-      'la réclamation est acceptée sans intervention humaine',
-      reclamationProche.statut === 200 && reclamationProche.corps?.statut === 'acceptee',
+      'la revendication est mise en attente, jamais acceptée d’office',
+      reclamationProche.statut === 202 && reclamationProche.corps?.statut === 'en_attente',
       `HTTP ${reclamationProche.statut}`
     );
     verifier(
-      'la fiche EXISTANTE est rattachée au compte',
-      ficheProcheApres.reclame === true && String(ficheProcheApres.createdByUserId) === String(compteProche.id),
-      `reclame=${ficheProcheApres.reclame}`
+      'le message annonce l’examen sous 24 h',
+      /sous 24h/.test(String(reclamationProche.corps?.message || '')),
+      reclamationProche.corps?.message || 'absent'
     );
-    verifier('le compte pointe sur la fiche', String(compteProcheEnBase?.etablissementId) === String(ficheProche._id));
+    verifier(
+      'la fiche n’est PAS rattachée par la simple déclaration GPS',
+      ficheProcheApres.reclame === false && !ficheProcheApres.createdByUserId
+    );
+    verifier('le compte ne pointe PAS encore sur la fiche', !compteProcheEnBase?.etablissementId);
     verifier('AUCUNE nouvelle fiche n’a été créée (pas de doublon)', avant === apres, `${avant} → ${apres}`);
+    verifier(
+      'la demande est tracée dans DemandeRevendication (en_attente)',
+      demandeProche?.statut === 'en_attente',
+      demandeProche ? String(demandeProche._id) : 'absente'
+    );
+
+    // Second appel identique : idempotent (une seule demande en attente par fiche).
+    await appel(`/api/establishments/${ficheProche._id}/reclamer`, {
+      methode: 'POST',
+      token: tokenProche,
+      corps: { ...POSITION_SUR_PLACE, nomDeclare: 'Kiosque Awa' },
+    });
+    verifier(
+      'un second appel ne crée pas de doublon de demande',
+      (await DemandeRevendication.countDocuments({ etablissementId: ficheProche._id })) === 1
+    );
 
     // ── 3) Un utilisateur À DISTANCE n'écrase rien : il entre dans la file ───
     console.log('\n  3) Gérant à distance : demande EN ATTENTE, rien n’est modifié');
@@ -223,7 +252,7 @@ async function principal() {
     );
     verifier('la fiche n’est PAS réclamée tant que personne n’a tranché', ficheLoinApres.reclame === false);
     verifier(
-      'la distance mesurée est conservée pour la décision',
+      'la distance déclarée est conservée (indication, jamais une preuve)',
       ficheLoinApres.reclamation?.distanceMetres > 1000,
       `${ficheLoinApres.reclamation?.distanceMetres} m`
     );
@@ -236,48 +265,89 @@ async function principal() {
     });
 
     // ── 4) La file d'attente du back-office ─────────────────────────────────
-    console.log('\n  4) Back-office : la file d’attente, puis une décision humaine');
-    const file = await appel('/api/admin/reclamations', { token: tokenAdmin });
-    const lignes = file.corps?.reclamations || [];
-    const ligneLoin = lignes.find((l) => l.etablissementId === String(ficheLoin._id));
-    const ligneLoin2 = lignes.find((l) => l.etablissementId === String(ficheLoin2._id));
-    verifier('les deux demandes à distance sont dans la file', Boolean(ligneLoin && ligneLoin2), `${lignes.length} ligne(s)`);
+    console.log('\n  4) Back-office : file des demandes, puis une décision humaine');
+    const sansJeton = await appel('/api/admin/demandes-revendication');
     verifier(
-      'chaque ligne porte de quoi décider (nom déclaré, distance, demandeur)',
-      Boolean(ligneLoin?.nomDeclare) && ligneLoin?.distanceMetres > 1000 && Boolean(ligneLoin?.demandeur?.telephone),
-      ligneLoin ? `${ligneLoin.nomDeclare}, ${ligneLoin.distanceMetres} m` : 'absente'
+      'la file d’attente exige un administrateur (401 sans jeton)',
+      sansJeton.statut === 401,
+      `HTTP ${sansJeton.statut}`
     );
 
-    const acceptation = await appel(`/api/admin/reclamations/${ficheLoin._id}`, {
-      methode: 'POST',
-      token: tokenAdmin,
-      corps: { decision: 'accepter' },
-    });
-    const ficheLoinAcceptee = await Establishment.findById(ficheLoin._id).lean();
+    const file = await appel('/api/admin/demandes-revendication', { token: tokenAdmin });
+    const lignes = file.corps?.demandes || [];
+    const ligneProche = lignes.find((l) => l.etablissementId === String(ficheProche._id));
+    const ligneLoin = lignes.find((l) => l.etablissementId === String(ficheLoin._id));
+    const ligneLoin2 = lignes.find((l) => l.etablissementId === String(ficheLoin2._id));
     verifier(
-      'accepter rattache la fiche au demandeur',
-      acceptation.corps?.statut === 'acceptee' && ficheLoinAcceptee.reclame === true
+      'les trois demandes en attente sont dans la file',
+      Boolean(ligneProche && ligneLoin && ligneLoin2),
+      `${lignes.length} ligne(s)`
+    );
+    verifier(
+      'chaque ligne porte de quoi décider (nom déclaré, distance, demandeur)',
+      Boolean(ligneLoin?.nomDeclare) &&
+        ligneLoin?.distanceDeclareeMetres > 1000 &&
+        Boolean(ligneLoin?.demandeur?.telephone),
+      ligneLoin ? `${ligneLoin.nomDeclare}, ${ligneLoin.distanceDeclareeMetres} m` : 'absente'
+    );
+
+    const acceptation = await appel(
+      `/api/admin/demandes-revendication/${ligneProche?.id}/valider`,
+      { methode: 'PATCH', token: tokenAdmin }
+    );
+    const ficheProcheValidee = await Establishment.findById(ficheProche._id).lean();
+    const compteProcheValide = await User.findById(compteProche.id).select('etablissementId').lean();
+    verifier(
+      'valider rattache la fiche existante au demandeur',
+      acceptation.corps?.reclame === true &&
+        ficheProcheValidee.reclame === true &&
+        String(ficheProcheValidee.createdByUserId) === String(compteProche.id)
+    );
+    verifier(
+      'le compte pointe sur la fiche',
+      String(compteProcheValide?.etablissementId) === String(ficheProche._id)
     );
     verifier(
       'la fiche garde ses informations publiques (aucun écrasement)',
-      ficheLoinAcceptee.sourceImport === 'test-verifier-reclamations' && ficheLoinAcceptee.tags.length === 3
+      ficheProcheValidee.sourceImport === 'test-verifier-reclamations' &&
+        ficheProcheValidee.tags.length === 3
+    );
+    const revalidation = await appel(
+      `/api/admin/demandes-revendication/${ligneProche?.id}/valider`,
+      { methode: 'PATCH', token: tokenAdmin }
+    );
+    verifier(
+      'une demande déjà validée ne peut pas être revalidée (409)',
+      revalidation.statut === 409,
+      `HTTP ${revalidation.statut}`
     );
 
-    const refus = await appel(`/api/admin/reclamations/${ficheLoin2._id}`, {
-      methode: 'POST',
+    const refus = await appel(`/api/admin/demandes-revendication/${ligneLoin2?.id}/rejeter`, {
+      methode: 'PATCH',
       token: tokenAdmin,
-      corps: { decision: 'refuser' },
+      corps: { noteAdmin: 'Nom différent de la fiche' },
     });
     const ficheLoin2Refusee = await Establishment.findById(ficheLoin2._id).lean();
-    verifier('refuser laisse la fiche réclamable', refus.corps?.statut === 'refusee' && ficheLoin2Refusee.reclame === false);
-    const decisionInvalide = await appel(`/api/admin/reclamations/${ficheLoin2._id}`, {
-      methode: 'POST',
+    const demandeLoin2 = await DemandeRevendication.findById(ligneLoin2?.id).lean();
+    verifier(
+      'rejeter laisse la fiche réclamable',
+      refus.corps?.demande?.statut === 'rejetee' && ficheLoin2Refusee.reclame === false
+    );
+    verifier(
+      'le motif du rejet est conservé',
+      demandeLoin2?.noteAdmin === 'Nom différent de la fiche',
+      demandeLoin2?.noteAdmin || 'absent'
+    );
+
+    const idInvalide = await appel('/api/admin/demandes-revendication/pas-un-id/valider', {
+      methode: 'PATCH',
       token: tokenAdmin,
-      corps: { decision: 'peut-être' },
     });
-    verifier('une décision hors « accepter »/« refuser » est refusée (400)', decisionInvalide.statut === 400, `HTTP ${decisionInvalide.statut}`);
-    const sansJeton = await appel('/api/admin/reclamations');
-    verifier('la file d’attente exige un administrateur (401 sans jeton)', sansJeton.statut === 401, `HTTP ${sansJeton.statut}`);
+    verifier(
+      'un identifiant de demande invalide est refusé (400)',
+      idInvalide.statut === 400,
+      `HTTP ${idInvalide.statut}`
+    );
 
     // ── 5) Fiche DÉJÀ réclamée : refusée ────────────────────────────────────
     console.log('\n  5) Fiche déjà réclamée : refusée');
@@ -336,13 +406,19 @@ async function principal() {
     // ── Nettoyage : rien ne doit rester de ce test en base ──────────────────
     const ids = fichesCreees.map((f) => f._id).filter(Boolean);
     const { deletedCount } = await Establishment.deleteMany({ _id: { $in: ids } }).catch(() => ({ deletedCount: 0 }));
+    // Demandes de revendication liées aux fiches de test (collection ajoutée le 27/11).
+    const { deletedCount: demandesSupprimees } = await DemandeRevendication.deleteMany({
+      etablissementId: { $in: ids },
+    }).catch(() => ({ deletedCount: 0 }));
     // Comptes : suppression par identifiant, PLUS un filet sur les numéros de test
     // (0700000001/2/3) pour qu'un passage interrompu ne laisse rien derrière lui.
     const { deletedCount: comptesSupprimes } = await User.deleteMany({
       $or: [{ _id: { $in: comptesCrees } }, { telephone: { $regex: '070000000[123]$' } }],
     }).catch(() => ({ deletedCount: 0 }));
     const reste = await Establishment.countDocuments({ nom: new RegExp(`^${PREFIXE_TEST}`) }).catch(() => 0);
-    console.log(`\n  Nettoyage : ${deletedCount} fiche(s) et ${comptesSupprimes} compte(s) de test supprimés.`);
+    console.log(
+      `\n  Nettoyage : ${deletedCount} fiche(s), ${comptesSupprimes} compte(s) et ${demandesSupprimees} demande(s) de test supprimés.`
+    );
     console.log(`  Fiches « ${PREFIXE_TEST} » restantes : ${reste}.`);
 
     console.log(`\n${'─'.repeat(72)}`);

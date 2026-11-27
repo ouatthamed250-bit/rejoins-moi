@@ -31,6 +31,8 @@ import { asyncHandler, ApiError } from '../middleware/errorHandler.js';
 import { normalizePhone, escapeRegex, validatePhoto } from '../utils/validators.js';
 import { getDistanceKm, parseCoords } from '../utils/geo.js';
 import { limiteurAuth } from '../middleware/rateLimit.js';
+// Assainissement des textes libres (correctif XSS stocké du 27/11).
+import { assainirChamps } from '../middleware/sanitize.js';
 import { anonymiserOuSupprimerCompte, NOM_COMPTE_SUPPRIME } from '../services/suppressionCompte.js';
 
 const router = express.Router();
@@ -50,6 +52,8 @@ router.post(
   '/register',
   // Anti-spam d'inscriptions : 8 requêtes/minute par IP + numéro (voir middleware/rateLimit.js).
   limiteurAuth(),
+  // Nom, prénom et métier sont affichés publiquement : nettoyés AVANT validation.
+  assainirChamps(['nom', 'prenom', 'metier', 'quartier', 'commune']),
   asyncHandler(async (req, res) => {
     const {
       motDePasse,
@@ -185,6 +189,8 @@ router.get(
 router.patch(
   '/me',
   protect,
+  // Biographie, nom, métier, quartier : nettoyés avant écriture (XSS stocké).
+  assainirChamps(['nom', 'prenom', 'metier', 'bio', 'quartier', 'commune']),
   asyncHandler(async (req, res) => {
     // Plafond photo (bloc F) : contrôlé AVANT toute écriture, et seulement si le
     // client envoie une photo (un simple changement de quartier n'est jamais bloqué).
@@ -512,6 +518,8 @@ router.get(
 router.post(
   '/:id/avis',
   protect,
+  // Le commentaire est affiché publiquement : nettoyé avant enregistrement.
+  assainirChamps(['commentaire']),
   asyncHandler(async (req, res) => {
     const note = Number(req.body?.note);
     if (!Number.isFinite(note) || note < 1 || note > 5) {
@@ -525,7 +533,8 @@ router.post(
 
     cible.avis.push({
       auteurId: req.user._id,
-      auteurNom: req.user.nomComplet || req.user.telephone,
+      // Jamais le numéro : il apparaissait dans les avis publics d'un compte sans nom.
+      auteurNom: req.user.nomComplet || 'Utilisateur',
       note: Math.round(note),
       commentaire: String(req.body?.commentaire || '').slice(0, 600),
     });

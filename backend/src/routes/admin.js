@@ -55,6 +55,10 @@ import Subscription from '../models/Subscription.js';
 import Depot from '../models/Depot.js';
 import ListeAttente from '../models/ListeAttente.js';
 import DemandeCategorie from '../models/DemandeCategorie.js';
+// Demandes de revendication de fiche : file d'attente du back-office (27/11).
+import DemandeRevendication from '../models/DemandeRevendication.js';
+// Nettoyage des notes libres saisies dans le back-office (27/11).
+import { assainirChamps } from '../middleware/sanitize.js';
 import Conversation from '../models/Conversation.js';
 import Message from '../models/Message.js';
 import Agent from '../models/Agent.js';
@@ -566,6 +570,24 @@ router.post(
     fiche.reclamation.traiteeLe = new Date();
     fiche.reclamation.traiteeParUserId = req.user._id;
 
+    // Cohérence des deux files (27/11) : la décision prise depuis l'onglet
+    // historique doit aussi clore la demande correspondante dans la nouvelle
+    // collection. On ne change qu'un statut — aucune donnée n'est supprimée.
+    await DemandeRevendication.updateMany(
+      {
+        etablissementId: fiche._id,
+        userId: fiche.reclamation.demandeurUserId,
+        statut: 'en_attente',
+      },
+      {
+        $set: {
+          statut: decision === 'accepter' ? 'validee' : 'rejetee',
+          traiteLe: fiche.reclamation.traiteeLe,
+          traiteParUserId: req.user._id,
+        },
+      }
+    );
+
     if (decision === 'accepter') {
       fiche.reclamation.statut = 'acceptee';
       fiche.reclame = true;
@@ -582,6 +604,209 @@ router.post(
     fiche.reclamation.statut = 'refusee';
     await fiche.save();
     res.json({ statut: fiche.reclamation.statut, etablissementId: String(fiche._id), reclame: false });
+  })
+);
+
+/* ─── Revendications de fiche : file d'attente (correctif du 27/11) ───────────
+   `POST /api/establishments/:id/reclamer` ne décide PLUS rien : elle enregistre
+   une demande `en_attente` dans `DemandeRevendication`. C'est ici qu'un humain
+   tranche, avec le contexte complet (fiche visée, nom déclaré, demandeur).
+
+   Pourquoi ce changement : la route acceptait auparavant la revendication dès que
+   les coordonnées GPS ENVOYÉES PAR LE CLIENT tombaient à moins de 150 m de la
+   fiche. Ces coordonnées sont publiques et falsifiables : n'importe quel compte
+   pouvait donc prendre le contrôle de n'importe quelle fiche importée non réclamée.
+
+   Aucune ligne n'est jamais supprimée : une demande rejetée reste consultable. */
+
+/**
+ * GET /api/admin/demandes-revendication — file des revendications.
+ * Query : { statut? = 'en_attente' | 'validee' | 'rejetee' | 'toutes', limit? }
+ */
+router.get(
+  '/demandes-revendication',
+  protectAdmin,
+  asyncHandler(async (req, res) => {
+    const statut = String(req.query.statut || 'en_attente');
+    const autorises = ['en_attente', 'validee', 'rejetee'];
+    const filtre =
+      statut === 'toutes' ? {} : { statut: autorises.includes(statut) ? statut : 'en_attente' };
+    const limite = Math.min(Math.max(Number(req.query.limit) || 100, 1), 300);
+
+    const [demandes, compteurs] = await Promise.all([
+      DemandeRevendication.find(filtre)
+        // En attente : la plus ancienne d'abord (personne ne doit attendre 24 h pour
+        // rien). Traitées : la plus récente d'abord (audit).
+        .sort({ date: statut === 'en_attente' ? 1 : -1, _id: 1 })
+        .limit(limite)
+        .populate('userId', 'nom prenom telephone supprimeAt')
+        .populate('etablissementId', 'nom categorie quartier commune reclame')
+        .lean(),
+      Promise.all([
+        DemandeRevendication.countDocuments({ statut: 'en_attente' }),
+        DemandeRevendication.countDocuments({ statut: 'validee' }),
+        DemandeRevendication.countDocuments({ statut: 'rejetee' }),
+      ]),
+    ]);
+
+    res.json({
+      demandes: demandes.map((d) => ({
+        id: String(d._id),
+        etablissementId: d.etablissementId ? String(d.etablissementId._id) : null,
+        nomFiche: d.etablissementId?.nom || 'Fiche indisponible',
+        categorie: d.etablissementId?.categorie || '',
+        quartier: d.etablissementId?.quartier || '',
+        commune: d.etablissementId?.commune || '',
+        dejaReclamee: Boolean(d.etablissementId?.reclame),
+        statut: d.statut,
+        nomDeclare: d.nomDeclare || '',
+        // Distance DÉCLARÉE par le client : indicative, jamais une preuve.
+        distanceDeclareeMetres: d.distanceDeclareeMetres ?? null,
+        date: d.date,
+        traiteLe: d.traiteLe || null,
+        noteAdmin: d.noteAdmin || '',
+        demandeur: d.userId
+          ? {
+              id: String(d.userId._id),
+              nomComplet:
+                [d.userId.prenom, d.userId.nom].filter(Boolean).join(' ') || 'Compte sans nom',
+              telephone: d.userId.telephone || '',
+              compteSupprime: Boolean(d.userId.supprimeAt),
+            }
+          : null,
+      })),
+      compteurs: { enAttente: compteurs[0], validees: compteurs[1], rejetees: compteurs[2] },
+    });
+  })
+);
+
+/**
+ * PATCH /api/admin/demandes-revendication/:id/valider — la fiche est attribuée.
+ *
+ * L'attribution rattache la fiche EXISTANTE au demandeur : aucune copie n'est
+ * créée, et aucune information publique (photos, horaires, description) n'est
+ * écrasée. Si d'autres demandes visent la même fiche, elles sont clôturées au
+ * statut `rejetee` — jamais supprimées.
+ */
+router.patch(
+  '/demandes-revendication/:id/valider',
+  protectAdmin,
+  asyncHandler(async (req, res) => {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      throw new ApiError(400, 'Identifiant de demande invalide.');
+    }
+
+    const demande = await DemandeRevendication.findById(req.params.id);
+    if (!demande) throw new ApiError(404, 'Demande introuvable.');
+    if (demande.statut === 'validee') throw new ApiError(409, 'Cette demande est déjà validée.');
+    if (demande.statut === 'rejetee') {
+      throw new ApiError(409, 'Cette demande a été rejetée : elle ne peut plus être validée.');
+    }
+
+    const fiche = await Establishment.findById(demande.etablissementId);
+    if (!fiche) throw new ApiError(404, 'Établissement introuvable.');
+    if (fiche.reclame) {
+      throw new ApiError(409, 'Cette fiche est déjà réclamée : elle a un responsable.');
+    }
+
+    const maintenant = new Date();
+
+    fiche.reclame = true;
+    fiche.createdByUserId = demande.userId;
+    // On reflète la décision dans le sous-document historique (onglet ancien).
+    fiche.reclamation = {
+      statut: 'acceptee',
+      demandeurUserId: demande.userId,
+      nomDeclare: demande.nomDeclare || '',
+      distanceMetres: demande.distanceDeclareeMetres ?? null,
+      demandeeLe: demande.date,
+      traiteeLe: maintenant,
+      traiteeParUserId: req.user._id,
+    };
+    await fiche.save();
+
+    const demandeur = await User.findById(demande.userId);
+    if (demandeur && !demandeur.etablissementId) {
+      demandeur.etablissementId = fiche._id;
+      await demandeur.save();
+    }
+
+    demande.statut = 'validee';
+    demande.traiteLe = maintenant;
+    demande.traiteParUserId = req.user._id;
+    await demande.save();
+
+    const autres = await DemandeRevendication.updateMany(
+      { etablissementId: fiche._id, statut: 'en_attente', _id: { $ne: demande._id } },
+      {
+        $set: {
+          statut: 'rejetee',
+          traiteLe: maintenant,
+          traiteParUserId: req.user._id,
+          noteAdmin: 'Fiche attribuée à un autre demandeur.',
+        },
+      }
+    );
+
+    res.json({
+      demande: demande.toPublicJSON(),
+      etablissementId: String(fiche._id),
+      reclame: true,
+      autresRejetees: autres.modifiedCount || 0,
+      message: `« ${fiche.nom} » est désormais rattachée à ${
+        demandeur?.nomComplet || 'son gérant'
+      }.`,
+    });
+  })
+);
+
+/**
+ * PATCH /api/admin/demandes-revendication/:id/rejeter — la fiche reste libre.
+ * body: { noteAdmin? } (motif libre, 300 caractères maximum)
+ */
+router.patch(
+  '/demandes-revendication/:id/rejeter',
+  protectAdmin,
+  // Motif de rejet : texte libre affiché dans le back-office, nettoyé à l'entrée.
+  assainirChamps(['noteAdmin']),
+  asyncHandler(async (req, res) => {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      throw new ApiError(400, 'Identifiant de demande invalide.');
+    }
+
+    const demande = await DemandeRevendication.findById(req.params.id);
+    if (!demande) throw new ApiError(404, 'Demande introuvable.');
+    if (demande.statut === 'rejetee') throw new ApiError(409, 'Cette demande est déjà rejetée.');
+    if (demande.statut === 'validee') {
+      throw new ApiError(409, 'Cette demande est déjà validée : elle ne peut plus être rejetée.');
+    }
+
+    const maintenant = new Date();
+    demande.statut = 'rejetee';
+    demande.noteAdmin = String(req.body?.noteAdmin || '').trim().slice(0, 300);
+    demande.traiteLe = maintenant;
+    demande.traiteParUserId = req.user._id;
+    await demande.save();
+
+    // La fiche redevient réclamable : on ne touche au sous-document historique que
+    // s'il décrit ENCORE cette demande-là, pour ne pas effacer celle d'un autre.
+    const fiche = await Establishment.findById(demande.etablissementId);
+    if (
+      fiche &&
+      !fiche.reclame &&
+      String(fiche.reclamation?.demandeurUserId || '') === String(demande.userId) &&
+      fiche.reclamation?.statut === 'en_attente'
+    ) {
+      fiche.reclamation.statut = 'refusee';
+      fiche.reclamation.traiteeLe = maintenant;
+      fiche.reclamation.traiteParUserId = req.user._id;
+      await fiche.save();
+    }
+
+    res.json({
+      demande: demande.toPublicJSON(),
+      message: 'Demande rejetée : la fiche reste disponible pour son gérant légitime.',
+    });
   })
 );
 

@@ -23,6 +23,8 @@ import { protect, optionalAuth } from '../middleware/auth.js';
 import { requireDb } from '../config/db.js';
 import { asyncHandler, ApiError } from '../middleware/errorHandler.js';
 import { limiteurAuth } from '../middleware/rateLimit.js';
+// Assainissement des textes libres (correctif XSS stocké du 27/11).
+import { assainirChamps } from '../middleware/sanitize.js';
 import {
   validateEstablishmentPhotos,
   sanitizeTags,
@@ -41,6 +43,9 @@ import {
 import { decoderPhoto, estImageIntegree, estUrlDistante } from '../utils/photos.js';
 import CompteurJournalier from '../models/CompteurJournalier.js';
 import DemandeCategorie from '../models/DemandeCategorie.js';
+// Demandes de revendication : la fiche n'est plus jamais attribuée sur la seule
+// déclaration GPS du client (voir POST /:id/reclamer).
+import DemandeRevendication from '../models/DemandeRevendication.js';
 import {
   CATEGORIES,
   CATEGORIES_FILTRABLES,
@@ -821,6 +826,19 @@ router.post(
   // Anti-spam de fiches : 8 créations par minute et par IP + numéro
   // (même middleware que /login et /register — voir middleware/rateLimit.js).
   limiteurAuth(),
+  // Textes libres de la fiche : balises et gestionnaires d'événements retirés
+  // AVANT enregistrement (correctif XSS stocké du 27/11).
+  assainirChamps([
+    'nom',
+    'sousCategorie',
+    'description',
+    'commune',
+    'quartier',
+    'adresse',
+    'texteBoutonAction',
+    'whatsapp',
+    'horaires',
+  ]),
   asyncHandler(async (req, res) => {
     const {
       nom,
@@ -1086,19 +1104,33 @@ router.get(
 /**
  * POST /api/establishments/:id/reclamer — « C'est mon établissement » (bloc D).
  *
- * DÉCISIONS, toutes expliquées au gérant :
- *   - demandeur à 150 m ou moins (position de son téléphone) → réclamation ACCEPTÉE tout
- *     de suite : il est sur place, aucune paperasse n'est nécessaire ;
- *   - au-delà, la demande passe EN ATTENTE et une personne de l'équipe tranche
- *     (`/api/admin/reclamations`) : jamais d'écrasement silencieux ;
- *   - fiche DÉJÀ réclamée → refusée (409) : elle a un responsable ;
- *   - l'acceptation ne crée AUCUNE copie : elle rattache la fiche existante au compte
- *     (`reclame = true`, `createdByUserId`, `user.etablissementId`).
+ * ⚠️ CORRECTIF DE SÉCURITÉ (27/11). Cette route ACCEPTAIT auparavant la demande
+ * automatiquement dès que les coordonnées envoyées par le client tombaient à 150 m
+ * ou moins de la fiche (`surPlace`). Or ces coordonnées sont PUBLIQUES (`GET
+ * /api/establishments` les sert) et c'est le client qui choisit ce qu'il envoie :
+ * n'importe quel compte pouvait donc revendiquer n'importe quelle fiche importée
+ * non réclamée, puis en modifier le nom, le téléphone et les photos.
+ *
+ * Désormais AUCUNE revendication n'est automatique :
+ *   1. la demande est enregistrée dans `DemandeRevendication` à l'état `en_attente` ;
+ *   2. l'équipe la voit dans le back-office (onglet « Revendications ») ;
+ *   3. seule `PATCH /api/admin/demandes-revendication/:id/valider` rattache la fiche
+ *      au compte (`reclame = true`, `createdByUserId`, `user.etablissementId`).
+ *
+ * La position déclarée est conservée à titre INDICATIF (priorisation), jamais comme
+ * preuve : elle ne décide plus de rien.
+ *
+ * Réponses : 202 demande enregistrée (ou déjà en attente) · 404 fiche inconnue ·
+ * 409 fiche déjà réclamée.
  */
 router.post(
   '/:id/reclamer',
   protect,
+  // `nomDeclare` est un texte libre affiché dans le back-office : nettoyé à l'entrée.
+  assainirChamps(['nomDeclare']),
   asyncHandler(async (req, res) => {
+    const MESSAGE = 'Votre demande a été envoyée. Elle sera examinée par notre équipe sous 24h.';
+
     const coords = parseCoords(req.query) || parseCoords(req.body || {});
     const fiche = await Establishment.findById(req.params.id);
     if (!fiche) throw new ApiError(404, 'Établissement introuvable.');
@@ -1106,39 +1138,54 @@ router.post(
       throw new ApiError(409, 'Cette fiche est déjà réclamée : elle a un responsable.');
     }
 
+    // Distance INDICATIVE : coordonnées fournies par le client, donc falsifiables.
+    // Elle est stockée pour l'affichage et n'entre dans aucune décision.
     const distance = distanceMetresEntre(
       { lat: coords?.lat, lng: coords?.lng },
       { lat: fiche.localisation?.lat, lng: fiche.localisation?.lng }
     );
-    const surPlace = distance != null && distance <= DISTANCE_RECLAMATION_M;
+    const nomDeclare = String(req.body?.nomDeclare || fiche.nom).trim().slice(0, 120);
 
+    // Une seule demande EN ATTENTE par compte et par fiche : un second appel est
+    // idempotent (même message, aucune ligne en double).
+    const existante = await DemandeRevendication.findOne({
+      userId: req.user._id,
+      etablissementId: fiche._id,
+      statut: 'en_attente',
+    });
+
+    const demande =
+      existante ||
+      (await DemandeRevendication.create({
+        userId: req.user._id,
+        etablissementId: fiche._id,
+        date: new Date(),
+        statut: 'en_attente',
+        nomDeclare,
+        distanceDeclareeMetres: distance != null && distance >= 0 ? Math.round(distance) : null,
+      }));
+
+    // Compatibilité avec l'onglet « Réclamations » historique, qui lit
+    // `fiche.reclamation` : on y reflète la demande EN ATTENTE pour que les deux
+    // écrans racontent la même histoire — sans jamais attribuer la fiche ici.
+    // (L'onglet « Revendications » reste la source de vérité : il liste TOUS les
+    // demandeurs d'une même fiche, ce sous-document ne garde que le dernier.)
     fiche.reclamation = {
-      statut: surPlace ? 'acceptee' : 'en_attente',
+      statut: 'en_attente',
       demandeurUserId: req.user._id,
-      nomDeclare: String(req.body?.nomDeclare || fiche.nom).trim().slice(0, 120),
+      nomDeclare,
       distanceMetres: distance,
-      demandeeLe: new Date(),
-      traiteeLe: surPlace ? new Date() : null,
+      demandeeLe: demande.date || new Date(),
+      traiteeLe: null,
       traiteeParUserId: null,
     };
-
-    if (surPlace) {
-      fiche.reclame = true;
-      fiche.createdByUserId = req.user._id;
-      await fiche.save();
-      if (!req.user.etablissementId) {
-        req.user.etablissementId = fiche._id;
-        await req.user.save();
-      }
-      return res.json({
-        statut: 'acceptee',
-        distanceMetres: distance,
-        etablissement: fiche.toCardJSON({ base: basePublique(req) }),
-      });
-    }
-
     await fiche.save();
-    res.status(202).json({ statut: 'en_attente', distanceMetres: distance });
+
+    res.status(202).json({
+      statut: 'en_attente',
+      message: MESSAGE,
+      demande: demande.toPublicJSON(),
+    });
   })
 );
 
@@ -1341,6 +1388,8 @@ router.post(
   protect,
   // Anti-spam d'avis : même limiteur que les inscriptions (8/minute par IP + numéro).
   limiteurAuth(),
+  // Le commentaire d'avis est un texte libre public : nettoyé à l'entrée.
+  assainirChamps(['commentaire']),
   asyncHandler(async (req, res) => {
     const note = clampNote(req.body?.note);
     if (note == null) throw new ApiError(400, 'La note doit être un entier entre 1 et 5.');
@@ -1352,7 +1401,9 @@ router.post(
     const dejaIndex = doc.avis.findIndex((a) => String(a.auteurId) === String(req.user._id));
     const avis = {
       auteurId: req.user._id,
-      auteurNom: req.user.nomComplet || req.user.telephone,
+      // Jamais le numéro de téléphone : un compte sans nom publié apparaissait avec
+      // son numéro dans la liste publique des avis (fuite relevée par le pentest).
+      auteurNom: req.user.nomComplet || 'Utilisateur',
       auteurPhoto: req.user.photoProfil || '',
       note,
       commentaire: String(req.body?.commentaire || '').slice(0, 600),
@@ -1377,6 +1428,16 @@ router.post(
 router.patch(
   '/:id',
   protect,
+  // Champs texte modifiables par le gérant : nettoyés avant écriture.
+  assainirChamps([
+    'nom',
+    'description',
+    'commune',
+    'quartier',
+    'adresse',
+    'whatsapp',
+    'horaires',
+  ]),
   asyncHandler(async (req, res) => {
     const doc = await Establishment.findById(req.params.id);
     if (!doc) throw new ApiError(404, 'Établissement introuvable.');

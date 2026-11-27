@@ -356,7 +356,7 @@
 //       • Nouveau nom de cache : un téléphone déjà installé doit recevoir le
 //         nouveau bundle, sinon il afficherait encore les anciennes réponses
 //         (WhatsApp au lieu de la messagerie, aucun mot sur l'import).
-const VERSION = 'v42';
+const VERSION = 'v43';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

@@ -109,6 +109,16 @@ const SECTIONS = [
     groupe: 'Suivi',
   },
   {
+    // Correctif du 27/11 : la revendication d'une fiche n'est JAMAIS automatique.
+    // Chaque demande arrive ici à l'état « en attente » et un humain tranche, avec
+    // la fiche visée, le nom déclaré et le compte demandeur sous les yeux.
+    cle: 'revendications',
+    libelle: 'Revendications',
+    icone: 'shieldCheck',
+    sous: 'Demandes “c’est mon établissement” à valider ou rejeter à la main',
+    groupe: 'Suivi',
+  },
+  {
     cle: 'categories',
     libelle: 'Catégories proposées',
     icone: 'grid',
@@ -910,6 +920,15 @@ export default function Admin() {
 
           {section === 'reclamations' ? (
             <VueReclamations
+              cle={cle}
+              onMessage={setMessage}
+              onGererErreur={gererErreur}
+              onRafraichir={rafraichir}
+            />
+          ) : null}
+
+          {section === 'revendications' ? (
+            <VueRevendications
               cle={cle}
               onMessage={setMessage}
               onGererErreur={gererErreur}
@@ -2892,6 +2911,260 @@ function VueReclamations({ cle, onMessage, onGererErreur, onRafraichir }) {
                       >
                         {ligne.statut === 'acceptee' ? 'Acceptée' : 'Refusée'}
                       </Badge>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Panneau>
+  );
+}
+
+/* ─── Revendications de fiche : décision HUMAINE (correctif du 27/11) ──────────
+   Avant : `POST /api/establishments/:id/reclamer` acceptait la revendication dès
+   que les coordonnées envoyées par le client tombaient à moins de 150 m de la
+   fiche. Ces coordonnées sont publiques et falsifiables : n'importe quel compte
+   pouvait donc prendre le contrôle de n'importe quelle fiche importée non réclamée.
+
+   Maintenant : chaque demande attend ICI. « Valider » rattache la fiche au
+   demandeur (aucune copie créée, aucune donnée publique écrasée) ; « Rejeter »
+   laisse la fiche disponible pour son gérant légitime. La distance affichée est
+   DÉCLARÉE par le demandeur : elle aide à prioriser, elle ne prouve rien. */
+function VueRevendications({ cle, onMessage, onGererErreur, onRafraichir }) {
+  const [statut, setStatut] = useState('en_attente');
+  const [donnees, setDonnees] = useState(null);
+  const [chargement, setChargement] = useState(true);
+  const [erreur, setErreur] = useState('');
+  const [idEnCours, setIdEnCours] = useState('');
+  // Rejet : motif facultatif, un seul formulaire ouvert à la fois.
+  const [rejetOuvert, setRejetOuvert] = useState('');
+  const [motif, setMotif] = useState('');
+
+  useEffect(() => {
+    let vivant = true;
+    setChargement(true);
+    adminApi
+      .demandesRevendication(statut)
+      .then((reponse) => {
+        if (!vivant) return;
+        setDonnees(reponse);
+        setErreur('');
+      })
+      .catch((err) => {
+        if (!vivant || onGererErreur(err)) return;
+        setErreur(err?.message || 'Revendications indisponibles pour le moment.');
+      })
+      .finally(() => {
+        if (vivant) setChargement(false);
+      });
+    return () => {
+      vivant = false;
+    };
+  }, [statut, cle, onGererErreur]);
+
+  const lignes = donnees?.demandes || [];
+  const compteurs = donnees?.compteurs || {};
+
+  async function valider(ligne) {
+    setIdEnCours(ligne.id);
+    try {
+      await adminApi.validerRevendication(ligne.id);
+      // Recharger la file PUIS annoncer le résultat (le rafraîchissement efface
+      // le message précédent).
+      onRafraichir();
+      onMessage(
+        `« ${ligne.nomFiche} » est désormais rattachée à ${
+          ligne.demandeur?.nomComplet || 'son gérant'
+        }.`
+      );
+    } catch (err) {
+      if (!onGererErreur(err)) setErreur(err?.message || 'Validation impossible sur cette demande.');
+    } finally {
+      setIdEnCours('');
+    }
+  }
+
+  async function rejeter(ligne) {
+    setIdEnCours(ligne.id);
+    try {
+      await adminApi.rejeterRevendication(ligne.id, motif.trim());
+      setRejetOuvert('');
+      setMotif('');
+      onRafraichir();
+      onMessage(`Demande rejetée pour « ${ligne.nomFiche} » : la fiche reste disponible.`);
+    } catch (err) {
+      if (!onGererErreur(err)) setErreur(err?.message || 'Rejet impossible sur cette demande.');
+    } finally {
+      setIdEnCours('');
+    }
+  }
+
+  return (
+    <Panneau
+      titre="Revendications de fiche"
+      sous="Un compte affirme être le gérant d’une fiche. Aucune revendication n’est automatique : valider rattache la fiche existante au demandeur (aucune fiche en double, aucune information publique écrasée), rejeter la laisse disponible. La distance affichée est déclarée par le demandeur — elle ne prouve rien."
+      actions={
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className={`bo-btn${statut === 'en_attente' ? ' bo-btn--principal' : ''}`}
+            onClick={() => setStatut('en_attente')}
+          >
+            À traiter
+            {compteurs.enAttente ? <span className="bo-onglet-compte">{compteurs.enAttente}</span> : null}
+          </button>
+          <button
+            type="button"
+            className={`bo-btn${statut === 'validee' ? ' bo-btn--principal' : ''}`}
+            onClick={() => setStatut('validee')}
+          >
+            Validées
+          </button>
+          <button
+            type="button"
+            className={`bo-btn${statut === 'rejetee' ? ' bo-btn--principal' : ''}`}
+            onClick={() => setStatut('rejetee')}
+          >
+            Rejetées
+          </button>
+        </div>
+      }
+    >
+      {erreur ? (
+        <Alerte variante="erreur" icone="alert" onFermer={() => setErreur('')}>
+          {erreur}
+        </Alerte>
+      ) : null}
+
+      {chargement ? (
+        <EtatChargement texte="Chargement des revendications…" />
+      ) : lignes.length === 0 ? (
+        <EtatVide
+          texte={
+            statut === 'en_attente'
+              ? 'Aucune revendication en attente.'
+              : statut === 'validee'
+                ? 'Aucune revendication validée pour le moment.'
+                : 'Aucune revendication rejetée pour le moment.'
+          }
+          icone="check"
+        />
+      ) : (
+        <div className="bo-tableau-enveloppe">
+          <table className="bo-tableau">
+            <thead>
+              <tr>
+                <th>Fiche</th>
+                <th>Nom déclaré</th>
+                <th>Distance déclarée</th>
+                <th>Demandeur</th>
+                <th>Demandée</th>
+                <th>{statut === 'en_attente' ? 'Décision' : 'Statut'}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lignes.map((ligne) => (
+                <tr key={ligne.id}>
+                  <td>
+                    <strong>{ligne.nomFiche}</strong>
+                    <div>{[ligne.quartier, ligne.commune].filter(Boolean).join(', ')}</div>
+                    {ligne.dejaReclamee ? (
+                      <span className="bo-sous-ligne bo-petit bo-doux">fiche déjà attribuée</span>
+                    ) : null}
+                  </td>
+                  <td>{ligne.nomDeclare || '—'}</td>
+                  <td>
+                    {ligne.distanceDeclareeMetres == null
+                      ? 'non fournie'
+                      : `${ligne.distanceDeclareeMetres} m`}
+                  </td>
+                  <td>
+                    {ligne.demandeur ? (
+                      <>
+                        {ligne.demandeur.nomComplet}
+                        {ligne.demandeur.telephone ? (
+                          <div className="bo-petit bo-doux">
+                            {formatTelephone(ligne.demandeur.telephone)}
+                          </div>
+                        ) : null}
+                        {ligne.demandeur.compteSupprime ? (
+                          <div className="bo-petit bo-doux">compte effacé</div>
+                        ) : null}
+                      </>
+                    ) : (
+                      'compte supprimé'
+                    )}
+                  </td>
+                  <td>{ligne.date ? formatDateRelative(ligne.date) : '—'}</td>
+                  <td className="bo-tableau-actions">
+                    {statut !== 'en_attente' ? (
+                      <>
+                        <Badge
+                          variante={ligne.statut === 'validee' ? 'ok' : 'ko'}
+                          icone={ligne.statut === 'validee' ? 'check' : 'ban'}
+                        >
+                          {ligne.statut === 'validee' ? 'Validée' : 'Rejetée'}
+                        </Badge>
+                        {ligne.noteAdmin ? (
+                          <span className="bo-sous-ligne bo-petit bo-doux" title={ligne.noteAdmin}>
+                            motif : {ligne.noteAdmin}
+                          </span>
+                        ) : null}
+                      </>
+                    ) : rejetOuvert === ligne.id ? (
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <input
+                          className="bo-entree"
+                          style={{ minWidth: 140 }}
+                          value={motif}
+                          onChange={(e) => setMotif(e.target.value.slice(0, 300))}
+                          placeholder="Motif (facultatif)"
+                          aria-label={`Motif du rejet pour ${ligne.nomFiche}`}
+                        />
+                        <button
+                          type="button"
+                          className="bo-btn bo-btn--danger"
+                          disabled={idEnCours === ligne.id}
+                          onClick={() => rejeter(ligne)}
+                        >
+                          Confirmer
+                        </button>
+                        <button
+                          type="button"
+                          className="bo-btn"
+                          onClick={() => {
+                            setRejetOuvert('');
+                            setMotif('');
+                          }}
+                        >
+                          Annuler
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          className="bo-btn bo-btn--ok"
+                          disabled={idEnCours === ligne.id || ligne.dejaReclamee}
+                          onClick={() => valider(ligne)}
+                        >
+                          Valider
+                        </button>
+                        <button
+                          type="button"
+                          className="bo-btn bo-btn--danger"
+                          disabled={idEnCours === ligne.id}
+                          onClick={() => {
+                            setRejetOuvert(ligne.id);
+                            setMotif('');
+                          }}
+                        >
+                          Rejeter
+                        </button>
+                      </>
                     )}
                   </td>
                 </tr>

@@ -128,6 +128,15 @@ export const adminApi = {
   reclamations: (statut = 'en_attente') => requeteAdmin(`/reclamations${chaineParametres({ statut })}`),
   deciderReclamation: (etablissementId, decision) =>
     requeteAdmin(`/reclamations/${etablissementId}`, { method: 'POST', body: { decision } }),
+  // Revendications de fiche (correctif du 27/11) : la demande n'est plus jamais
+  // acceptée automatiquement sur la foi de coordonnées GPS envoyées par le client.
+  // L'admin tranche ici, à la main.
+  demandesRevendication: (statut = 'en_attente') =>
+    requeteAdmin(`/demandes-revendication${chaineParametres({ statut })}`),
+  validerRevendication: (id) =>
+    requeteAdmin(`/demandes-revendication/${id}/valider`, { method: 'PATCH' }),
+  rejeterRevendication: (id, noteAdmin = '') =>
+    requeteAdmin(`/demandes-revendication/${id}/rejeter`, { method: 'PATCH', body: { noteAdmin } }),
   // Catégories PROPOSÉES par les gérants (« Autre (précisez) ») : file de modération.
   // La taxonomie locale ne peut pas être inventée depuis un bureau — on valide ce que
   // le terrain demande, famille par famille (prompt 6).

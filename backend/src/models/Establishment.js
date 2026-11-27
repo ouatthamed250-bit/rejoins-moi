@@ -276,7 +276,10 @@ const establishmentSchema = new mongoose.Schema(
     reclame: { type: Boolean, default: false, index: true },
     // RÉCLAMATION (bloc D) : un gérant reconnaît une fiche importée comme la sienne.
     // `statut: ''` = aucune demande. « en_attente » = une personne de l'équipe doit
-    // trancher (`/api/admin/reclamations`) ; « acceptee » / « refusee » = décision prise.
+    // trancher (`/api/admin/demandes-revendication` depuis le 27/11 ; l'ancienne file
+    // `/api/admin/reclamations` reste alimentée pour compatibilité) ; « acceptee » /
+    // « refusee » = décision prise. La source de vérité est la collection
+    // `DemandeRevendication` : ce sous-document ne garde que le DERNIER demandeur.
     // L'acceptation ne CRÉE jamais de copie : elle rattache la fiche EXISTANTE au compte
     // (`reclame` passe à true, `createdByUserId` devient le demandeur).
     reclamation: {

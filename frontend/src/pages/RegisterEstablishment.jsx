@@ -196,8 +196,10 @@ export default function RegisterEstablishment() {
 
   /**
    * « Oui, c'est le mien » : on REPREND la fiche existante au lieu d'en créer une seconde.
-   * Acceptée tout de suite si le gérant est sur place (150 m ou moins, décidé par le
-   * serveur) ; sinon la demande part en file d'attente et l'équipe tranche.
+   *
+   * ⚠️ Depuis le correctif du 27/11, la reprise n'est JAMAIS automatique : le serveur
+   * enregistre une demande « en attente » et l'équipe tranche à la main (les
+   * coordonnées envoyées par le client ne prouvent rien — elles sont publiques).
    */
   async function reprendreFiche(candidat) {
     setReclamationEnvoi(candidat.id);
@@ -209,15 +211,17 @@ export default function RegisterEstablishment() {
         lng: coords?.lng,
       });
       if (reponse?.statut === 'acceptee') {
-        // Le serveur vient de rattacher la fiche au compte (`etablissementId`) :
-        // on relit le profil pour que la fiche propose tout de suite l'édition
-        // des photos, sans recharger l'application.
+        // Compatibilité : une ancienne version du serveur pouvait accepter tout de
+        // suite. Dans ce cas elle a rattaché la fiche au compte (`etablissementId`) :
+        // on relit le profil pour que la fiche propose immédiatement l'édition des
+        // photos, sans recharger l'application.
         await rafraichirProfil().catch(() => {});
         navigate(`/etablissement/${candidat.id}`, { replace: true });
         return;
       }
       setReclamationInfo(
-        'Demande envoyée : l’équipe vérifie que cette fiche est bien la vôtre, puis vous la rattache. Aucune fiche en double n’a été créée.'
+        reponse?.message ||
+          'Votre demande a été envoyée. Elle sera examinée par notre équipe sous 24h.'
       );
       setCandidats([]);
     } catch (err) {

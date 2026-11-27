@@ -262,7 +262,11 @@ userSchema.methods.toPublicJSON = function toPublicJSON({
     photoProfil: this.photoProfil,
     estArtisan: Boolean(this.estArtisan),
     chercheTravail: Boolean(this.chercheTravail),
-    estAdmin: Boolean(this.estAdmin),
+    // `estAdmin` n'est PLUS dans la partie publique (correctif du 27/11) : le pentest
+    // a montré que `GET /api/users/artisans` et `GET /api/users/:id` permettaient
+    // d'identifier nominativement les comptes administrateur. Le drapeau est
+    // désormais servi uniquement avec `{ prive: true }` (le compte lui-même et le
+    // back-office), voir plus bas.
     roles: this.roles,
     metier: this.metier,
     bio: this.bio,
@@ -283,6 +287,10 @@ userSchema.methods.toPublicJSON = function toPublicJSON({
     // qui appelle `toPublicJSON()` sans option ne peut PAS les laisser fuir.
     ...(prive
       ? {
+          // Rôle administrateur : nécessaire au propriétaire du compte (menu
+          // « Back-office ») et au back-office lui-même (badges, filtres), jamais au
+          // public — c'était une fuite d'information relevée par le pentest.
+          estAdmin: Boolean(this.estAdmin),
           statutCompte: this.statutCompte || 'actif',
           suspendu: (this.statutCompte || 'actif') === 'suspendu',
           motifSuspension: this.motifSuspension || '',

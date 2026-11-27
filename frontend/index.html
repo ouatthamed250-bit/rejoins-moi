@@ -60,10 +60,11 @@
 
     <!-- Typographie (v45, 27/11) : Poppins (titres ET texte courant) + Nunito
          (repli), servies par NOTRE origine depuis public/fonts/.
-         Les <link> vers fonts.googleapis.com / fonts.gstatic.com ont été
-         retirés : deux domaines tiers à résoudre, deux connexions TLS à ouvrir
-         AVANT le premier pixel de texte — un surcoût absurde sur un réseau
-         mobile d'Abidjan, et la feuille distante bloquait l'affichage du texte.
+         Les deux <link> vers la feuille de style distante de Google Fonts
+         (preconnect + stylesheet) ont été retirés : deux domaines tiers à
+         résoudre, deux connexions TLS à ouvrir AVANT le premier pixel de texte —
+         un surcoût absurde sur un réseau mobile d'Abidjan, et la feuille
+         distante bloquait l'affichage du texte.
          Les six fichiers WOFF2 sont déclarés en @font-face dans
          src/styles/theme.css et précachés par le service worker (public/sw.js).
          `rel="preload"` : Poppins est la police PRINCIPALE (à la fois

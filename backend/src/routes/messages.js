@@ -93,10 +93,15 @@ function limiteurEnvoi(req, res, next) {
  * Résumé d'une conversation pour son participant : l'interlocuteur est extrait du
  * tableau `participants` (déjà peuplé par l'appelant).
  */
-function resumerConversation(conversation, moi, nonLus = 0) {
+function resumerConversation(conversation, moi, nonLus = 0, dernierMessageLu = false) {
   const autre =
     (conversation.participants || []).find((p) => String(p?._id || p) !== String(moi)) || null;
-  return conversation.toJSONFor({ moi, interlocuteur: autre, nonLus });
+  return conversation.toJSONFor({
+    moi,
+    interlocuteur: autre,
+    nonLus,
+    dernierMessageLu,
+  });
 }
 
 /** Nom affichable d'un compte, sans jamais retomber sur le numéro. */
@@ -317,27 +322,52 @@ router.get(
 
     const ids = conversations.map((c) => c._id);
     let nonLusParConversation = new Map();
+    let dernierMessageLuParConversation = new Map();
     if (ids.length) {
+      // nonLus : messages reçus pas encore ouverts par moi.
       const comptes = await Message.aggregate([
         {
           $match: {
             conversationId: { $in: ids },
             expediteurId: { $ne: req.user._id },
-            // `$ne` sur un tableau = « aucun élément ne correspond » : exactement
-            // les messages que ce compte n'a pas encore ouverts.
             luPar: { $ne: req.user._id },
           },
         },
         { $group: { _id: '$conversationId', total: { $sum: 1 } } },
       ]);
       nonLusParConversation = new Map(comptes.map((c) => [String(c._id), c.total]));
+
+      // Dernier message de chaque conversation : qui l'a envoyé, lu par l'autre ?
+      const derniers = await Message.aggregate([
+        { $match: { conversationId: { $in: ids } } },
+        { $sort: { createdAt: -1 } },
+        {
+          $group: {
+            _id: '$conversationId',
+            expediteurId: { $first: '$expediteurId' },
+            luPar: { $first: '$luPar' },
+          },
+        },
+      ]);
+      const moi = String(req.user._id);
+      for (const d of derniers) {
+        const expediteur = String(d.expediteurId);
+        const luPar = (d.luPar || []).map(String);
+        const luParAutre = luPar.some((id) => id !== expediteur);
+        // Témoin "lu" : notre dernier message a été lu par l'interlocuteur.
+        dernierMessageLuParConversation.set(
+          String(d._id),
+          expediteur === moi && luParAutre
+        );
+      }
     }
 
     const items = conversations.map((conversation) =>
       resumerConversation(
         conversation,
         req.user._id,
-        nonLusParConversation.get(String(conversation._id)) || 0
+        nonLusParConversation.get(String(conversation._id)) || 0,
+        dernierMessageLuParConversation.get(String(conversation._id)) || false
       )
     );
 

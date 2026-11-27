@@ -41,7 +41,7 @@ import HealthListItem from '../components/HealthListItem.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import InfoBanner from '../components/InfoBanner.jsx';
 import PromptLocalisation from '../components/PromptLocalisation.jsx';
-import { Icon } from '../components/Icons.jsx';
+import { Icon, IconLoader } from '../components/Icons.jsx';
 import { api } from '../utils/api/client.js';
 import { urlItineraire, distanceDepuis } from '../utils/distance.js';
 import { AVERTISSEMENT_GARDE } from '../data/demoData.js';
@@ -287,6 +287,25 @@ export default function PharmaciesCliniques() {
           Distances basées sur votre dernière position enregistrée.
         </InfoBanner>
       )}
+
+      {/* Bouton d'actualisation de la position GPS : force une nouvelle mesure et relance la recherche par proximité. */}
+      <button
+        type="button"
+        onClick={() => position.actualiser?.()}
+        className="btn-health-ghost w-full flex items-center justify-center gap-1.5 py-2 text-xs font-bold text-health-dark border border-health/40 rounded-md mb-3"
+        disabled={position.loading}
+      >
+        {position.loading ? (
+          <>
+            <IconLoader size={14} className="animate-spin shrink-0" /> Actualisation…
+          </>
+        ) : (
+          <>
+            <Icon name="mapPin" size={15} className="shrink-0" />
+            Actualiser ma position
+          </>
+        )}
+      </button>
 
       {chargement && bruts.length === 0 ? (
         <EmptyState chargement titre="Recherche des établissements de santé…" />

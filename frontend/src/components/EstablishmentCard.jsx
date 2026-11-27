@@ -180,10 +180,13 @@ export default function EstablishmentCard({
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
             <StarRating note={e.noteMoyenne} nombreAvis={e.nombreAvis} taille={13} />
             {distance != null && (
-              <span className="flex items-center gap-1 text-[11px] font-semibold text-ink-muted">
-                <Icon name="mapPin" size={13} />
-                {formatDistanceKm(distance)}
-              </span>
+              <div className="flex flex-col items-start gap-0.5 text-ink-muted">
+                <span className="flex items-center gap-1 text-[11px] font-semibold text-ink-muted">
+                  <Icon name="mapPin" size={13} />
+                  {formatDistanceKm(distance)}
+                </span>
+                <span className="text-[10px] text-ink-muted">Distance à vol d'oiseau</span>
+              </div>
             )}
           </div>
 
@@ -241,10 +244,13 @@ export default function EstablishmentCard({
           </span>
         )}
         {distance != null && (
-          <span className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-black/55 px-2 py-1 text-[10px] font-bold text-white">
-            <Icon name="mapPin" size={12} />
-            {formatDistanceKm(distance)}
-          </span>
+          <div className="absolute bottom-2 left-2 flex flex-col items-center rounded-full bg-black/55 px-2 py-1.5 text-white">
+            <div className="flex items-center gap-1 text-[10px] font-bold">
+              <Icon name="mapPin" size={11} />
+              {formatDistanceKm(distance)}
+            </div>
+            <span className="text-[8px] leading-none">Distance à vol d'oiseau</span>
+          </div>
         )}
       </Link>
 

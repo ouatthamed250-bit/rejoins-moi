@@ -25,7 +25,7 @@ import EstablishmentCard from '../components/EstablishmentCard.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import InfoBanner from '../components/InfoBanner.jsx';
 import PromptLocalisation from '../components/PromptLocalisation.jsx';
-import { Icon } from '../components/Icons.jsx';
+import { Icon, IconLoader } from '../components/Icons.jsx';
 import { api } from '../utils/api/client.js';
 import { filtrerEtablissementsDemo, TAGS_PAR_CATEGORIE } from '../data/demoData.js';
 import { useGeolocation } from '../hooks/useGeolocation.js';
@@ -205,6 +205,25 @@ export default function Search() {
       )}
 
       <PromptLocalisation position={position} className="mb-3" />
+
+      {/* Bouton d'actualisation de la position GPS : force une nouvelle mesure et relance la recherche par proximité. */}
+      <button
+        type="button"
+        onClick={() => position.actualiser?.()}
+        className="btn-ghost w-full flex items-center justify-center gap-1.5 py-2 text-xs font-bold text-ink-muted border border-line rounded-md mb-3"
+        disabled={position.loading}
+      >
+        {position.loading ? (
+          <>
+            <IconLoader size={14} className="animate-spin shrink-0" /> Actualisation…
+          </>
+        ) : (
+          <>
+            <Icon name="mapPin" size={15} className="shrink-0" />
+            Actualiser ma position
+          </>
+        )}
+      </button>
 
       <p className="mb-2 text-[11px] font-semibold text-ink-muted">
         {chargement

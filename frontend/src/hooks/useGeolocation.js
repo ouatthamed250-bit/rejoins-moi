@@ -317,6 +317,23 @@ export function useGeolocation({ auto = true } = {}) {
     setDepuisCache(false);
   }, []);
 
+  /**
+   * Force une nouvelle mesure GPS : vide le cache mémorisé puis relance
+   * `getCurrentPosition`. Utilisé par le bouton "Actualiser ma position" des
+   * écrans de liste, afin que la distance soit recalculée sur la position
+   * actuelle de l'utilisateur et non sur une position datant jusqu'à 5 min.
+   */
+  const actualiser = useCallback(async () => {
+    oublierPosition();
+    setPosition(null);
+    setSource(null);
+    setAgeMinutes(null);
+    setPrecisionMetres(null);
+    setDepuisCache(false);
+    setError(null);
+    demander();
+  }, [demander]);
+
   useEffect(() => {
     monte.current = true;
     let desabonner = () => {};
@@ -401,6 +418,7 @@ export function useGeolocation({ auto = true } = {}) {
     // carte »), au lieu de laisser croire à une position fiable.
     precisionFaible: precisionMetres != null && precisionMetres > 500,
     relancer: demander,
+    actualiser,
     choisirPosition,
     oublier,
   };

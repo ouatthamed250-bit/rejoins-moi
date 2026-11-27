@@ -18,16 +18,17 @@
 // (voir scripts/verifier-permissions.mjs).
 //
 // Deux façons d'avoir une position, jamais mélangées :
-//   - `gps`    : donnée par le téléphone, valable 30 min (la position d'hier soir
-//                n'est plus fiable) ;
+//   - `gps`    : donnée par le téléphone, valable 5 min (la position d'hier soir
+//                n'est plus fiable ; la position d'il y a 30 min non plus quand on
+//                se déplace) ;
 //   - `manuel` : point choisi par l'utilisateur sur la carte, valable 30 jours :
 //                c'est un choix délibéré (quartier, ville), pas une mesure qui périme.
 // Aucun point n'est JAMAIS inventé : sans position, l'application affiche les fiches
 // sans distance plutôt que des distances fausses (décision déjà prise au 30/09).
 
 export const CLE_POSITION = 'rejoinsmoi.position';
-/** Une mesure GPS d'il y a plus de 30 min n'est pas réutilisée telle quelle. */
-export const DUREE_GPS_MS = 30 * 60 * 1000;
+/** Une mesure GPS d'il y a plus de 5 min n'est pas réutilisée telle quelle. */
+export const DUREE_GPS_MS = 5 * 60 * 1000;
 /** Un point choisi sur la carte reste valable 30 jours (choix explicite de l'utilisateur). */
 export const DUREE_MANUEL_MS = 30 * 24 * 60 * 60 * 1000;
 /** Événement émis localement quand la position change : tous les écrans se mettent à jour. */

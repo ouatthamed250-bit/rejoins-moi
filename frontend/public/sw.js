@@ -323,7 +323,13 @@
 //       (compteur exact : 2 277 fiches, 967 pharmacies, 1 310 cliniques) ;
 //       — PharmaciesCliniques.jsx change : nouveau nom de cache obligatoire, sinon
 //       les téléphones déjà installés garderaient la page vide pendant la grâce.
-const VERSION = 'v37';
+// v38 : géolocalisation + accusés de lecture (27/11)
+//       — le cache GPS passe de 30 min à 5 min (DUREE_GPS_MS) et un bouton
+//       « Actualiser ma position » force une nouvelle mesure sur Feed, Recherche
+//       et Pharmacies & Cliniques ; les distances sont précisées « à vol d'oiseau ».
+//       — la messagerie affiche ✓ (envoyé) / ✓✓ (lu) et un badge « Lu » dans la
+//       liste des conversations, rafraîchie toutes les 5 s.
+const VERSION = 'v38';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

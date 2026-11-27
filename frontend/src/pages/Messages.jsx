@@ -38,7 +38,7 @@ const SUPPORT = getSupportWhatsapp();
 
 /** Doit rester aligné sur LONGUEUR_MAX_MESSAGE côté serveur (models/Message.js). */
 const LONGUEUR_MAX = 1000;
-const INTERVALLE_RAFRAICHISSEMENT_MS = 10000;
+const INTERVALLE_RAFRAICHISSEMENT_MS = 5000;
 
 /** Nom affichable d'un interlocuteur — jamais un numéro de téléphone. */
 function nomAffiche(interlocuteur) {
@@ -412,7 +412,16 @@ export default function Messages() {
                   }`}
                 >
                   {formatDateRelative(message.createdAt) || 'à l’instant'}
-                  {message.moi ? (message.lu ? ' · Lu' : ' · Envoyé') : ''}
+                  {message.moi ? (
+                    <>
+                      {message.lu ? ' · Lu' : ' · Envoyé'}
+                      {message.lu ? (
+                        <Icon name="check" size={10} className="shrink-0 ml-0.5 text-white" />
+                      ) : (
+                        <Icon name="check" size={10} className="shrink-0 ml-0.5 text-white/60" />
+                      )}
+                    </>
+                  ) : ''}
                 </p>
               </div>
             ))
@@ -661,6 +670,14 @@ export default function Messages() {
                     {item.nonLus > 0 ? (
                       <span className="flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-white">
                         {item.nonLus}
+                      </span>
+                    ) : item.dernierMessageLu ? (
+                      <span
+                        className="flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full border border-primary/30 bg-primary/5 px-1.5 text-[10px] font-bold text-primary"
+                        title="Lu"
+                      >
+                        <Icon name="check" size={9} className="shrink-0" />
+                        <Icon name="check" size={9} className="shrink-0" />
                       </span>
                     ) : null}
                   </span>

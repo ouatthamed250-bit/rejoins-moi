@@ -99,7 +99,12 @@ conversationSchema.pre('validate', function normaliserParticipants(next) {
  *   `moi` = identifiant du lecteur (pour marquer `moi: true` côté message, jamais ici) ;
  *   `interlocuteur` = document User déjà peuplé, ou objet réduit à l'essentiel.
  */
-conversationSchema.methods.toJSONFor = function toJSONFor({ moi, interlocuteur = null, nonLus = 0 } = {}) {
+conversationSchema.methods.toJSONFor = function toJSONFor({
+  moi,
+  interlocuteur = null,
+  nonLus = 0,
+  dernierMessageLu = false,
+} = {}) {
   const autre = interlocuteur || null;
   return {
     id: this._id,
@@ -124,6 +129,7 @@ conversationSchema.methods.toJSONFor = function toJSONFor({ moi, interlocuteur =
     derniereActivite: this.derniereActivite,
     createdAt: this.createdAt,
     nonLus: Number(nonLus) || 0,
+    dernierMessageLu: Boolean(dernierMessageLu),
   };
 };
 

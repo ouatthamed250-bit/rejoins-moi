@@ -75,10 +75,13 @@ export default function HealthListItem({
           </span>
 
           {s.distanceKm != null && (
-            <span className="flex items-center gap-1 text-ink-muted">
-              <Icon name="mapPin" size={12} />
-              {formatDistanceKm(s.distanceKm)}
-            </span>
+            <div className="flex flex-col items-start gap-0.5 text-ink-muted">
+              <span className="flex items-center gap-1 text-[11px] font-semibold">
+                <Icon name="mapPin" size={12} />
+                {formatDistanceKm(s.distanceKm)}
+              </span>
+              <span className="text-[10px]">Distance à vol d'oiseau</span>
+            </div>
           )}
         </div>
 

@@ -56,9 +56,23 @@ export const FAMILLES = [
   { slug: 'sante', label: 'Santé', icone: 'heart', historique: true, masquee: true },
   { slug: 'spiritualite', label: 'Spiritualité', icone: 'church', historique: true, masquee: true },
   { slug: 'cultes', label: 'Lieux de culte et communautaires', icone: 'church', masquee: true },
+  // ── Familles de l'import OpenStreetMap (27/11) ──────────────────────────────
+  // L'extrait OSM (backend/data/base-complete-ci.geojson, script importer-osm.js)
+  // apporte des lieux qu'aucune famille locale ne couvrait : mairies, banques,
+  // gares, écoles, églises, hôtels, garages, lavages auto, cybercafés. Elles sont
+  // DÉMASQUÉES depuis l'import des 30 022 fiches : elles ont désormais des fiches
+  // et un onglet (sans `masquee`, elles apparaissent dans FAMILLES_VISIBLES).
+  { slug: 'administration', label: 'Administration', icone: 'shield' },
+  { slug: 'banque', label: 'Banque', icone: 'wallet' },
+  { slug: 'transport', label: 'Transport', icone: 'route' },
+  { slug: 'education', label: 'Éducation', icone: 'briefcase' },
+  { slug: 'culte', label: 'Culte', icone: 'church' },
+  { slug: 'hebergement', label: 'Hébergement', icone: 'home' },
+  { slug: 'service_auto', label: 'Services auto', icone: 'tools' },
   // Deux fiches de test laissées par les scripts de vérification (ZZ-TEST-…).
   { slug: 'autre', label: 'Autre', icone: 'dot', historique: true, masquee: true },
 ];
+
 
 /**
  * Onglets réellement affichés (CategoryFilter) : « Tous » + les familles qui

@@ -26,8 +26,20 @@ export const FAMILLES = [
   { slug: 'commerces', label: 'Commerces', icone: 'store' },
   { slug: 'proximite', label: 'Services de proximité', icone: 'tools' },
   { slug: 'cultes', label: 'Lieux de culte et communautaires', icone: 'church' },
+  // ── Familles de l'import OpenStreetMap (27/11) ──────────────────────────────
+  // Miroir EXACT de frontend/src/config/categories.js : l'API valide l'enum avec
+  // cette liste. Alimentées par scripts/importer-osm.js (mairies, banques, gares,
+  // écoles, lieux de culte, hôtels, garages).
+  { slug: 'administration', label: 'Administration', icone: 'shield' },
+  { slug: 'banque', label: 'Banque', icone: 'wallet' },
+  { slug: 'transport', label: 'Transport', icone: 'route' },
+  { slug: 'education', label: 'Éducation', icone: 'briefcase' },
+  { slug: 'culte', label: 'Culte', icone: 'church' },
+  { slug: 'hebergement', label: 'Hébergement', icone: 'home' },
+  { slug: 'service_auto', label: 'Services auto', icone: 'tools' },
   { slug: 'autre', label: 'Autre', icone: 'dot', historique: true },
 ];
+
 
 /**
  * Familles stockables dans `Establishment.categorie` : l'onglet « Tous » n'en est pas une.

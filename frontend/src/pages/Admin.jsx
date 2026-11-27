@@ -66,6 +66,15 @@ const SECTIONS = [
     groupe: 'Suivi',
   },
   {
+    // Import massif de la base OpenStreetMap (27/11). Rangé juste après le
+    // catalogue : c'est une opération SUR les fiches, pas un écran de suivi.
+    cle: 'import',
+    libelle: 'Import de données',
+    icone: 'download',
+    sous: 'Base OpenStreetMap de Côte d’Ivoire : simulation et import des fiches',
+    groupe: 'Suivi',
+  },
+  {
     // Prompt 9 : les agents qui inscrivent des commerces sur le terrain. Leur code
     // à 6 caractères est la seule clé de la paie — d'où un écran dédié, et non un
     // filtre de plus dans le catalogue.
@@ -859,6 +868,15 @@ export default function Admin() {
               cle={cle}
               stats={stats}
               onNaviguer={setSection}
+              onGererErreur={gererErreur}
+              onRafraichir={rafraichir}
+            />
+          ) : null}
+
+          {section === 'import' ? (
+            <VueImportDonnees
+              cle={cle}
+              stats={stats}
               onGererErreur={gererErreur}
               onRafraichir={rafraichir}
             />
@@ -3117,12 +3135,230 @@ function VueEtablissements({ cle, stats, onNaviguer, onGererErreur, onRafraichir
 
 
 
+/* ─── Import de données : base OpenStreetMap (27/11) ──────────────────────────
+   Le fichier backend/data/base-complete-ci.geojson contient 46 745 lieux publics
+   relevés par les contributeurs OSM (restaurants, pharmacies, mairies, banques,
+   écoles, lieux de culte, hôtels, stations-service…).
+
+   POURQUOI AUCUN BOUTON NE LANCE L'IMPORT : il écrit plusieurs dizaines de
+   milliers de fiches en lots, sur plusieurs minutes. Lancé depuis un navigateur,
+   un onglet fermé ou une 4G qui saute laisserait la base à moitié remplie sans
+   que personne ne le voie. Le script (backend/scripts/importer-osm.js) est donc
+   exécuté en local, en simulation d'abord. Cet écran sert à décider : il montre
+   ce que contient DÉJÀ chaque famille concernée, et rappelle la commande exacte. */
+
+const FAMILLES_IMPORT = [
+  { slug: 'commerce', libelle: 'Commerces', icone: 'store' },
+  { slug: 'restauration', libelle: 'Restauration', icone: 'utensils' },
+  { slug: 'sante', libelle: 'Santé', icone: 'hospital' },
+  { slug: 'education', libelle: 'Éducation', icone: 'briefcase' },
+  { slug: 'administration', libelle: 'Administration', icone: 'shield' },
+  { slug: 'culte', libelle: 'Culte', icone: 'church' },
+  { slug: 'banque', libelle: 'Banque', icone: 'wallet' },
+  { slug: 'hebergement', libelle: 'Hébergement', icone: 'home' },
+  { slug: 'service_auto', libelle: 'Services auto', icone: 'tools' },
+  { slug: 'transport', libelle: 'Transport', icone: 'route' },
+];
+
+const COMMANDE_SIMULATION = 'cd backend && npm run importer:osm';
+const COMMANDE_IMPORT = 'cd backend && npm run importer:osm -- --apply';
+
+function VueImportDonnees({ cle, stats, onGererErreur, onRafraichir }) {
+  const [compteurs, setCompteurs] = useState(null);
+  const [chargement, setChargement] = useState(true);
+  const [alerte, setAlerte] = useState('');
+  const [copiee, setCopiee] = useState('');
+
+  // Une requête par famille, avec `limit=1` : seule la valeur `total` nous
+  // intéresse, et 10 petits appels publics restent plus simples (donc plus
+  // sûrs) qu'une route d'administration dédiée à un simple comptage.
+  useEffect(() => {
+    let vivant = true;
+    setChargement(true);
+    Promise.all(
+      FAMILLES_IMPORT.map((famille) =>
+        api
+          .get(`/establishments?categorie=${famille.slug}&limit=1`, { auth: false })
+          .then((reponse) => Number(reponse?.total) || 0)
+          .catch(() => 0)
+      )
+    ).then((totaux) => {
+      if (!vivant) return;
+      setCompteurs(FAMILLES_IMPORT.map((famille, index) => ({ ...famille, total: totaux[index] })));
+      setChargement(false);
+    });
+    return () => {
+      vivant = false;
+    };
+  }, [cle, onGererErreur]);
+
+  const totalFamilles = (compteurs || []).reduce((somme, famille) => somme + famille.total, 0);
+
+  async function copier(commande) {
+    try {
+      await navigator.clipboard.writeText(commande);
+      setCopiee(commande);
+      setAlerte('');
+    } catch {
+      // Presse-papiers refusé (http, permission) : la commande reste lisible à l'écran.
+      setCopiee('');
+      setAlerte('Copie impossible dans ce navigateur : sélectionnez la commande à la main.');
+    }
+  }
+
+  return (
+    <div className="bo-empile bo-apparition">
+      <div className="bo-tuiles">
+        <Tuile
+          libelle="Fiches au catalogue"
+          valeur={stats?.etablissements || 0}
+          note="Toutes familles confondues"
+          icone="store"
+          couleur="accent"
+        />
+        <Tuile
+          libelle="Familles de l’import"
+          valeur={FAMILLES_IMPORT.length}
+          note="Celles que remplit la base OpenStreetMap"
+          icone="download"
+        />
+        <Tuile
+          libelle="Fiches dans ces familles"
+          valeur={chargement ? '…' : totalFamilles}
+          note="Ce que l’import viendra compléter"
+          icone="chart"
+        />
+      </div>
+
+      <Panneau
+        titre="Import OpenStreetMap"
+        sous="46 745 lieux publics, 30 022 fiches attendues après nettoyage"
+        actions={
+          <button type="button" className="bo-btn bo-btn--petit" onClick={onRafraichir}>
+            <Icon name="refresh" size={14} />
+            Actualiser
+          </button>
+        }
+      >
+        <p className="bo-petit bo-doux">
+          Le script écarte les lieux sans nom et les doublons (même nom à moins de 50 m), ramène
+          les numéros au format <strong>+225</strong>, classe chaque lieu dans sa famille et crée
+          les fiches avec <strong>estImporte</strong> et <strong>reclame : false</strong> — chaque
+          gérant pourra donc reprendre la sienne (« C’est mon établissement ? »).
+        </p>
+
+        <div className="bo-ligne-actions">
+          <button
+            type="button"
+            className="bo-btn bo-btn--principal"
+            onClick={() =>
+              setAlerte(
+                'Import massif : veuillez lancer le script en local (commande ci-dessous). ' +
+                  'Un navigateur ne peut pas écrire 30 000 fiches sans risquer de laisser la base à moitié remplie.'
+              )
+            }
+          >
+            <Icon name="download" size={15} />
+            Lancer l’import OSM
+          </button>
+        </div>
+
+        {alerte ? (
+          <Alerte variante="info" icone="info" onFermer={() => setAlerte('')}>
+            {alerte}
+          </Alerte>
+        ) : null}
+
+        <div className="bo-empile">
+          <p className="bo-petit">
+            <strong>1. Simuler (sans écrire)</strong> — affiche les compteurs, ne touche pas à la base.
+          </p>
+          <p className="bo-petit">
+            <code>{COMMANDE_SIMULATION}</code>{' '}
+            <button
+              type="button"
+              className="bo-btn bo-btn--petit"
+              onClick={() => copier(COMMANDE_SIMULATION)}
+            >
+              {copiee === COMMANDE_SIMULATION ? 'Copié' : 'Copier'}
+            </button>
+          </p>
+          <p className="bo-petit">
+            <strong>2. Écrire réellement</strong> — demande la phrase de confirmation du garde-fou
+            production, puis écrit par lots de 500 fiches.
+          </p>
+          <p className="bo-petit">
+            <code>{COMMANDE_IMPORT}</code>{' '}
+            <button
+              type="button"
+              className="bo-btn bo-btn--petit"
+              onClick={() => copier(COMMANDE_IMPORT)}
+            >
+              {copiee === COMMANDE_IMPORT ? 'Copié' : 'Copier'}
+            </button>
+          </p>
+        </div>
+      </Panneau>
+
+      <Panneau
+        titre="Fiches par famille"
+        sous="État actuel du catalogue, pour les familles que remplit la base OpenStreetMap"
+      >
+        {chargement ? (
+          <EtatChargement texte="Comptage des familles…" />
+        ) : (
+          <div className="bo-tableau-enveloppe">
+            <table className="bo-tableau">
+              <thead>
+                <tr>
+                  <th>Famille</th>
+                  <th>Fiches en base</th>
+                  <th>État</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(compteurs || []).map((famille) => (
+                  <tr key={famille.slug}>
+                    <td>
+                      <div className="bo-cellule-principale">
+                        <Icon name={famille.icone} size={15} />
+                        <div>
+                          <strong>{famille.libelle}</strong>
+                          <div className="bo-petit bo-doux">{famille.slug}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td>{famille.total}</td>
+                    <td>
+                      {famille.total === 0 ? (
+                        <Badge variante="attente" icone="download">
+                          À alimenter
+                        </Badge>
+                      ) : (
+                        <Badge variante="ok" icone="check">
+                          Déjà alimentée
+                        </Badge>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panneau>
+    </div>
+  );
+}
+
 /* ─── Annonces signalées (prompt 7) ───────────────────────────────────────────
    Le signalement est un geste de terrain : quelqu'un voit une annonce douteuse
    (fausse offre, numéro surtaxé, arnaque) et appuie sur le drapeau. Le serveur ne
    garde AUCUN nom de signaleur, seulement un compteur — cette file, triée par nombre
    de signalements, est donc le seul endroit où la décision se prend. « Retirer »
    supprime réellement l'annonce : une offre frauduleuse ne doit pas rester en pause. */
+
+
 function VueAnnoncesSignalees({ cle, onMessage, onGererErreur, onRafraichir }) {
   const [donnees, setDonnees] = useState(null);
   const [chargement, setChargement] = useState(true);

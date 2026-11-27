@@ -55,7 +55,20 @@ const establishmentSchema = new mongoose.Schema(
           'proximite',
           'cultes',
           'autre',
+          // ── Familles de l'import OpenStreetMap (27/11) ──
+          // L'extrait OSM couvre des lieux qui n'avaient aucune famille locale
+          // (mairies, banques, gares, écoles, églises, hôtels, garages). Sans ces
+          // slugs, l'import les aurait tous versés dans « autre » et la carte
+          // serait restée illisible. Libellés et icônes : src/config/categories.js.
+          'administration',
+          'banque',
+          'transport',
+          'education',
+          'culte',
+          'hebergement',
+          'service_auto',
         ],
+
         message: 'Catégorie inconnue : {VALUE}',
       },
       index: true,
@@ -283,6 +296,15 @@ const establishmentSchema = new mongoose.Schema(
     slugRecherche: { type: String, trim: true, maxlength: 90, default: '', index: true },
     // Provenance exacte : attribution OSM (ODbL) + jeu de données d'origine.
     sourceImport: { type: String, trim: true, maxlength: 160, default: '' },
+    // SOURCE MACHINE de la fiche (import GeoJSON OSM du 27/11) : `sourceImport`
+    // est un texte lisible pour l'humain, `source` une valeur STABLE sur laquelle
+    // on peut compter (`{ source: 'osm' }`). Vide pour une fiche créée dans
+    // l'application : c'est ce qui distingue un import d'une vraie inscription.
+    source: { type: String, trim: true, default: '', index: true },
+    // Fiche incomplète À COMPLÉTER par son gérant : mise à true par l'import quand
+    // aucun téléphone exploitable n'a été trouvé dans la source. Le gérant qui
+    // réclame sa fiche la complète ; le back-office peut lister ces fiches.
+    aCompleter: { type: Boolean, default: false, index: true },
   },
   { timestamps: true }
 );

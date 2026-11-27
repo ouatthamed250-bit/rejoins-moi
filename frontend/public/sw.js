@@ -298,7 +298,25 @@
 //       App.jsx, AgentApp.jsx, Admin.jsx et le client admin changent : sans
 //       nouveau nom de cache, un téléphone déjà installé n'aurait ni la route
 //       /agent ni la carte — l'ancien index.html resterait servi en secours.
-const VERSION = 'v34';
+// v35 : onglet « Import de données » du back-office (27/11)
+//       — nouvelle section Admin : état du catalogue par famille concernée par
+//       l'import OpenStreetMap, commande à lancer en local (le navigateur ne peut
+//       pas écrire 30 000 fiches), et rappel des deux règles de l'import
+//       (estImporte / reclame:false, donc chaque gérant peut reprendre sa fiche) ;
+//       — sept familles ajoutées à la taxonomie (administration, banque, transport,
+//       education, culte, hebergement, service_auto) : sans nouveau nom de cache,
+//       un poste déjà ouvert garderait l'ancien bundle et afficherait le slug brut
+//       « administration » au lieu de « Administration ».
+//       Admin.jsx, config/categories.js et le modèle changent : nouveau nom de cache.
+// v36 : import OSM appliqué + nouvelles familles dans la barre d'onglets (27/11)
+//       — les sept familles de l'import (administration, banque, transport,
+//       education, culte, hebergement, service_auto) ne sont plus masquées : elles
+//       apparaissent dans CategoryFilter, dans la recherche et dans le choix de
+//       famille de l'espace agent ; 30 022 fiches importées arrivent avec elles.
+//       config/categories.js change pour TOUS les écrans : sans nouveau nom de
+//       cache, un téléphone déjà installé garderait l'ancien bundle (donc les
+//       anciens onglets) pendant toute la durée de grâce.
+const VERSION = 'v36';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

@@ -12,6 +12,7 @@
     "admin:supprimer": "node scripts/supprimer-admin.js",
     "lister:inactifs": "node scripts/lister-inactifs.js",
     "importer:etablissements": "node scripts/importer-etablissements.js",
+    "importer:osm": "node scripts/importer-osm.js",
     "verifier": "npm run verifier:abonnement && npm run verifier:base",
     "verifier:abonnement": "node scripts/verifier-abonnement.js",
     "verifier:admin": "node scripts/verifier-admin.js",

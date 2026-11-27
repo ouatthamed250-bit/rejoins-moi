@@ -330,7 +330,15 @@
 //       de destination (ex. /messages) ;
 //       — le cache GPS de 30 min à 5 min et les accusés de lecture de la
 //       messagerie (v38) restent actifs.
-const VERSION = 'v39';
+// v40 : clés VAPID en production (27/11) — le backend déployé sur Render
+//       reçoit désormais VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY (variables
+//       d'environnement de l'hébergeur) et peut signer les envois Web Push.
+//       Côté navigateur, la clé publique est compilée dans le bundle à partir
+//       de VITE_VAPID_PUBLIC_KEY : toute réinstallation reprend donc un
+//       abonnement valide. Nouveau nom de cache obligatoire — sinon un
+//       téléphone déjà installé servirait encore l'ancien index-*.js, sans le
+//       code d'abonnement aux notifications.
+const VERSION = 'v40';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

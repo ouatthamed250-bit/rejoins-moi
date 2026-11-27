@@ -18,14 +18,32 @@
 import * as webpush from 'web-push';
 import AbonnementPush from '../models/AbonnementPush.js';
 
+/**
+ * Nettoie une valeur copiée depuis un tableau de bord d'hébergeur.
+ *
+ * Cause la plus fréquente d'un refus de `web-push` alors que la clé est bonne :
+ * des guillemets englobants (« "BONV…" »), un espace final ou un retour à la
+ * ligne ajouté par le copier-coller. On retire donc ces parasites, sans jamais
+ * modifier les caractères base64 eux-mêmes.
+ */
+function nettoyerCle(valeur, retirerEspacesInternes = false) {
+  if (valeur == null) return '';
+  let propre = String(valeur).trim().replace(/^["']|["']$/g, '').trim();
+  if (retirerEspacesInternes) propre = propre.replace(/\s+/g, '');
+  return propre;
+}
+
 const VAPID_DETAILS = {
-  subject: process.env.VAPID_MAILTO || 'mailto:admin@rejoins-moi.example',
-  publicKey: process.env.VAPID_PUBLIC_KEY,
-  privateKey: process.env.VAPID_PRIVATE_KEY,
+  subject:
+    nettoyerCle(process.env.VAPID_MAILTO) || 'mailto:admin@rejoins-moi.example',
+  publicKey: nettoyerCle(process.env.VAPID_PUBLIC_KEY, true),
+  privateKey: nettoyerCle(process.env.VAPID_PRIVATE_KEY, true),
 };
 
 /** Vrai seulement si `web-push` a accepté les clés : sans cela, aucun envoi. */
 let vapidPret = false;
+/** Raison courte du refus (`cles-absentes` ou message de web-push), pour le diagnostic. */
+let vapidErreur = '';
 
 if (VAPID_DETAILS.publicKey && VAPID_DETAILS.privateKey) {
   try {
@@ -39,11 +57,13 @@ if (VAPID_DETAILS.publicKey && VAPID_DETAILS.privateKey) {
     // Clé tronquée, caractère parasite, paire incohérente… : on le DIT dans les
     // journaux et le serveur démarre quand même (une notification manquée ne doit
     // pas empêcher l'application de fonctionner).
+    vapidErreur = err.message;
     console.warn('[notifications] clés VAPID refusées par web-push :', err.message);
   }
 } else {
   // En développement, les clés peuvent manquer : on désactive silencieusement
   // l'envoi plutôt que de faire planter le serveur au chargement.
+  vapidErreur = 'cles-absentes';
   console.warn(
     '[notifications] VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY absentes : les notifications push ne seront pas envoyées.'
   );
@@ -53,13 +73,20 @@ if (VAPID_DETAILS.publicKey && VAPID_DETAILS.privateKey) {
  * État public du service de notifications, exposé par GET /api/health.
  *
  * Permet de vérifier APRÈS DÉPLOIEMENT que les clés VAPID de l'hébergeur ont
- * bien été lues et acceptées, sans jamais transmettre la clé privée (le sujet
- * `mailto:` seul est renvoyé).
+ * bien été lues et acceptées, sans jamais transmettre la clé privée : seuls des
+ * booléens, le sujet `mailto:` et un message d'erreur générique sont renvoyés.
  *
- * @returns {{pret: boolean, sujet: string}}
+ * @returns {{pret: boolean, publiqueDefinie: boolean, priveeDefinie: boolean,
+ *            sujet: string, erreur: string|null}}
  */
 export function etatNotifications() {
-  return { pret: vapidPret, sujet: VAPID_DETAILS.subject };
+  return {
+    pret: vapidPret,
+    publiqueDefinie: Boolean(VAPID_DETAILS.publicKey),
+    priveeDefinie: Boolean(VAPID_DETAILS.privateKey),
+    sujet: VAPID_DETAILS.subject,
+    erreur: vapidErreur || null,
+  };
 }
 
 /**

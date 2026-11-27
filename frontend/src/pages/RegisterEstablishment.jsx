@@ -142,6 +142,15 @@ export default function RegisterEstablishment() {
   const [nomPersonne, setNomPersonne] = useState('');
   const [telephoneCompte, setTelephoneCompte] = useState('');
   const [motDePasse, setMotDePasse] = useState('');
+  // ── Prompt 9 : code agent et consentement de publication ──────────────────
+  // `codeAgent` est FACULTATIF : il ne concerne que les inscriptions accompagnées
+  // par un agent de terrain, et sert uniquement à rattacher la fiche à son code
+  // (paie de l'agent). Il reste dans cet écran, jamais dans le stockage local.
+  const [codeAgent, setCodeAgent] = useState('');
+  // `consentement` est OBLIGATOIRE avant publication : la fiche, les photos et le
+  // numéro deviennent visibles dans l'application. Un booléen coché par défaut ne
+  // serait pas un consentement — il est donc à false au départ.
+  const [consentement, setConsentement] = useState(false);
   // Photo de profil du compte créé (facultative, ajout du 16/11) : elle est
   // envoyée avec l'inscription, donc AUCUN écran ne la demandait jusqu'ici alors
   // qu'elle s'affiche sur les avis et dans l'annuaire des artisans.
@@ -317,6 +326,12 @@ export default function RegisterEstablishment() {
         if (!telephoneCompte.trim()) return 'Indiquez votre numéro de téléphone pour créer votre compte.';
         if (String(motDePasse).length < 8) return 'Choisissez un mot de passe de 8 caractères minimum.';
       }
+      // Consentement de publication (prompt 9) : la case est vérifiée ICI, au
+      // moment de valider la dernière étape, et pas seulement à l'affichage — un
+      // retour arrière suivi d'un nouvel appui ne doit pas contourner la case.
+      if (!consentement) {
+        return 'Cochez « J’accepte que ma fiche, mes photos et mon numéro soient visibles dans Rejoins’Moi » avant de publier.';
+      }
     }
     return '';
   }
@@ -370,6 +385,9 @@ export default function RegisterEstablishment() {
           chercheTravail: roleChoisi.chercheTravail,
           photoProfil: photoProfil || '',
         });
+        // Le compte existe : le mot de passe n'a plus aucune raison de rester en
+        // mémoire. On vide le state immédiatement (il n'a jamais été persisté).
+        setMotDePasse('');
       } else {
         // Compte déjà ouvert : on ne touche qu'aux capacités concernées.
         const patch = { chercheTravail: roleChoisi.chercheTravail };
@@ -400,6 +418,10 @@ export default function RegisterEstablishment() {
           nom: nomPersonne.trim(),
           photoProfil: photoProfil || '',
         });
+        // Le compte vient d'être créé : le mot de passe est effacé du state tout
+        // de suite. Il n'a jamais été écrit dans localStorage, un journal, ni une
+        // URL — le garder plus longtemps ne servirait qu'à l'exposer.
+        setMotDePasse('');
       }
       const reponse = await api.post('/establishments', {
         nom: nom.trim(),
@@ -416,6 +438,10 @@ export default function RegisterEstablishment() {
         // Galerie : URL https Cloudinary déjà téléversées depuis le téléphone.
         photos,
         tags,
+        // Code agent (prompt 9) : facultatif, envoyé tel quel. Le serveur le
+        // normalise (majuscules) et marque la fiche `aVerifier` si le code ne
+        // correspond à aucun agent — on ne perd jamais ce qui a été saisi.
+        codeAgent: codeAgent.trim(),
         localisation: coords,
         quartier,
         commune,
@@ -745,6 +771,37 @@ export default function RegisterEstablishment() {
         </label>
       </div>
 
+      {/* Code agent (prompt 9) : FACULTATIF. Sur le terrain, c'est l'agent qui
+          accompagne le commerçant qui recopie son code ici ; sans ce code, la
+          fiche ne peut pas lui être attribuée (donc pas payée). La saisie est
+          filtrée sur A-Z et 0-9 pour éviter les fautes de frappe évidentes. */}
+      <label className="block">
+        <span className="mb-1 block text-sm font-bold text-ink">
+          Code Agent <span className="font-normal text-ink-muted">(si vous êtes accompagné)</span>
+        </span>
+        <input
+          value={codeAgent}
+          onChange={(e) =>
+            setCodeAgent(
+              e.target.value
+                .toUpperCase()
+                .replace(/[^A-Z0-9]/g, '')
+                .slice(0, 6)
+            )
+          }
+          placeholder="Ex. AG42X1"
+          maxLength={6}
+          autoComplete="off"
+          autoCapitalize="characters"
+          spellCheck={false}
+          className="w-full rounded-md border border-line px-3 py-3 text-sm font-semibold uppercase tracking-widest outline-none focus:border-primary"
+        />
+        <span className="mt-1 block text-[11px] leading-snug text-ink-muted">
+          Le code à 6 caractères remis par l’agent de terrain qui vous accompagne. Laissez vide si vous vous
+          inscrivez seul.
+        </span>
+      </label>
+
       {/* Éditeur d'horaires (16/11) : sept jours, bascule Ouvert / Fermé, deux
           heures par jour ouvert. Le texte « Lun - Sam … » n'est plus saisi : il est
           déduit de cette grille (voir `horaires` plus haut) et reste ce qu'affiche
@@ -761,6 +818,28 @@ export default function RegisterEstablishment() {
         />
         <span className="mt-1 block text-[11px] text-ink-muted">
           C’est le bouton que les clients toucheront sur votre fiche (§5).
+        </span>
+      </label>
+
+      {/* Consentement OBLIGATOIRE (prompt 9) : la fiche, les photos et le numéro
+          sont PUBLIÉS. La case n'est pas pré-cochée et `validerEtape(2)` refuse la
+          publication tant qu'elle est vide : un simple `disabled` sur le bouton
+          serait contourné en revenant d'une étape précédente. */}
+      <label
+        className={`flex items-start gap-2 rounded-md border-2 p-3 ${
+          consentement ? 'border-primary bg-primary/5' : 'border-line bg-soft'
+        }`}
+      >
+        <input
+          type="checkbox"
+          checked={consentement}
+          onChange={(e) => setConsentement(e.target.checked)}
+          required
+          className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+        />
+        <span className="text-[11px] leading-snug text-ink">
+          <span className="text-danger">*</span> J’accepte que ma fiche, mes photos et mon numéro soient visibles
+          dans Rejoins’Moi.
         </span>
       </label>
     </div>

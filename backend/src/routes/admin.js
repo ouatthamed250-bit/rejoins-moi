@@ -26,6 +26,13 @@
 //   DELETE /api/admin/jobs/:id                   -> RETIRER une annonce signalée (prompt 7)
 //   GET    /api/admin/conversations              -> chercher les conversations d'un compte (messagerie, prompt B)
 //   GET    /api/admin/conversations/:id/export   -> EXTRAIRE une conversation (réquisition légale)
+//   POST   /api/admin/agents                     -> créer un agent de terrain (code tiré au sort, prompt 9)
+//   GET    /api/admin/agents                     -> agents + fiches créées / à vérifier / dernière activité
+//   GET    /api/admin/agents/rapport             -> nombre de fiches par agent ET par jour (paie)
+//   GET    /api/admin/agents/export-csv          -> CSV de paie (date, agent, code, fiche, téléphone…)
+//   PATCH  /api/admin/agents/:id                 -> renommer un agent ou le désactiver
+//   GET    /api/admin/fiches-a-verifier          -> fiches marquées par l'anti-fraude (prompt 9)
+//   PATCH  /api/admin/etablissements/:id/verification -> lever le doute (aVerifier = false)
 //
 // Suivi (ajout du 01/10) : le back-office n'est plus seulement une file de validation,
 // c'est l'écran de pilotage — d'où /activite (qui s'inscrit, qui se connecte, quels
@@ -46,6 +53,7 @@ import ListeAttente from '../models/ListeAttente.js';
 import DemandeCategorie from '../models/DemandeCategorie.js';
 import Conversation from '../models/Conversation.js';
 import Message from '../models/Message.js';
+import Agent from '../models/Agent.js';
 import { protectAdmin, signToken, DUREE_JETON_ADMIN } from '../middleware/auth.js';
 import { requireDb } from '../config/db.js';
 import { asyncHandler, ApiError } from '../middleware/errorHandler.js';
@@ -1455,6 +1463,385 @@ router.get(
     // `res.send` (et non `res.json`) pour ne pas réécrire l'en-tête Content-Type
     // déjà posé : le fichier doit sortir en JSON lisible, indenté.
     res.send(JSON.stringify(charge, null, 2));
+  })
+);
+
+/* ─── Agents de terrain (prompt 9) ────────────────────────────────────────────
+   Un agent inscrit des commerces dans les quartiers. Son CODE à 6 caractères est
+   recopié sur chaque fiche (Establishment.codeAgent) : c'est la seule clé de la
+   paie et des statistiques. Rien ici n'est public — tout passe par protectAdmin.
+
+   Pourquoi le code est TIRÉ AU SORT : un agent ne doit pas pouvoir choisir le
+   code d'un collègue (ou un code lisible comme « ADMIN1 ») pour s'attribuer des
+   fiches. Le tirage exclut O/0 et I/1, confondus à la saisie sur un téléphone.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Une cellule CSV sûre.
+ *
+ *   • les retours à la ligne sont aplatis (une fiche = une ligne de paie) ;
+ *   • `;` et `"` sont échappés selon la RFC 4180 (Excel FR attend le point-virgule) ;
+ *   • un contenu commençant par `=`, `@` ou une tabulation est neutralisé : sans
+ *     cela, un nom de commerce saisi « =1+1 » serait exécuté comme formule à
+ *     l'ouverture du fichier (injection CSV). Les numéros « +225… » sont
+ *     volontairement préservés : ce sont des données, pas des formules.
+ */
+function celluleCsv(valeur) {
+  let texte = String(valeur ?? '')
+    .replace(/\r?\n/g, ' ')
+    .trim();
+  if (/^[=@\t]/.test(texte)) texte = `'${texte}`;
+  if (/[;"\n]/.test(texte)) texte = `"${texte.replace(/"/g, '""')}"`;
+  return texte;
+}
+
+/** Date + heure d'Abidjan pour la colonne « Date » du CSV de paie. */
+function dateHeureCsv(valeur) {
+  const jour = dateLisible(valeur);
+  const heure = heureLisible(valeur);
+  return [jour, heure].filter(Boolean).join(' ');
+}
+
+/** Fiches réellement attribuables à un agent : les fiches `test` ne sont jamais payées. */
+const FILTRE_FICHES_TERRAIN = { codeAgent: { $exists: true, $nin: ['', null] }, test: { $ne: true } };
+
+/**
+ * POST /api/admin/agents — créer un agent de terrain.
+ * body: { nom }
+ * Le code est GÉNÉRÉ ici et renvoyé une seule fois à l'écran : c'est lui que
+ * l'agent recopiera sur les fiches. Un nom déjà utilisé est refusé (409) pour
+ * éviter de payer deux fois la même personne.
+ */
+router.post(
+  '/agents',
+  protectAdmin,
+  asyncHandler(async (req, res) => {
+    const nom = String(req.body?.nom ?? '').trim();
+    if (nom.length < 2) throw new ApiError(400, 'Indiquez le nom de l’agent (2 caractères minimum).');
+    if (nom.length > 80) throw new ApiError(400, 'Le nom de l’agent est trop long (80 caractères maximum).');
+
+    const homonyme = await Agent.findOne({ nom: new RegExp(`^${escapeRegex(nom)}$`, 'i') });
+    if (homonyme) {
+      throw new ApiError(
+        409,
+        `Un agent nommé « ${homonyme.nom} » existe déjà (code ${homonyme.code}). Utilisez ce code plutôt que d’en créer un second.`,
+        { agent: homonyme.toPublicJSON() }
+      );
+    }
+
+    // 5 essais : une collision de code est improbable (32^6 combinaisons) mais
+    // l'index unique reste seul juge — on ne suppose jamais qu'un tirage est libre.
+    let agent = null;
+    for (let essai = 0; essai < 5 && !agent; essai += 1) {
+      try {
+        agent = await Agent.create({
+          code: Agent.genererCode(),
+          nom,
+          creeParUserId: req.user?._id || null,
+        });
+      } catch (err) {
+        if (err?.code === 11000) continue; // code déjà pris : on retire
+        throw err;
+      }
+    }
+    if (!agent) {
+      throw new ApiError(503, 'Impossible de générer un code agent libre. Réessayez dans un instant.');
+    }
+
+    res.status(201).json({ agent: agent.toPublicJSON() });
+  })
+);
+
+/**
+ * PATCH /api/admin/agents/:id — renommer un agent ou le DÉSACTIVER.
+ * body: { nom?, actif? }
+ * Un départ ne supprime rien : les fiches déjà créées doivent rester rattachées
+ * au code pour que la paie passée reste juste.
+ */
+router.patch(
+  '/agents/:id',
+  protectAdmin,
+  asyncHandler(async (req, res) => {
+    if (!mongoose.isValidObjectId(req.params.id)) throw new ApiError(404, 'Agent introuvable.');
+    const agent = await Agent.findById(req.params.id);
+    if (!agent) throw new ApiError(404, 'Agent introuvable.');
+
+    if (req.body?.nom !== undefined) {
+      const nom = String(req.body.nom).trim();
+      if (nom.length < 2) throw new ApiError(400, 'Indiquez le nom de l’agent (2 caractères minimum).');
+      const homonyme = await Agent.findOne({
+        _id: { $ne: agent._id },
+        nom: new RegExp(`^${escapeRegex(nom)}$`, 'i'),
+      });
+      if (homonyme) throw new ApiError(409, `Un autre agent porte déjà ce nom (code ${homonyme.code}).`);
+      agent.nom = nom;
+    }
+    if (req.body?.actif !== undefined) agent.actif = Boolean(req.body.actif);
+
+    await agent.save();
+    res.json({ agent: agent.toPublicJSON() });
+  })
+);
+
+/**
+ * GET /api/admin/agents — tableau des agents de terrain.
+ *
+ * Une seule agrégation calcule, pour chaque code : le nombre de fiches créées,
+ * celles qui sont marquées `aVerifier`, et la date de la dernière création. Le
+ * tableau ne fait donc aucune requête par ligne, même avec 40 agents.
+ *
+ * `codesInconnus` liste les codes présents sur des fiches mais absents du registre
+ * (agent supprimé à la main, faute de frappe, code d'une autre équipe) : ces
+ * fiches ne peuvent pas être payées, il faut le voir AVANT la fin du mois.
+ */
+router.get(
+  '/agents',
+  protectAdmin,
+  asyncHandler(async (req, res) => {
+    const [agents, parCode] = await Promise.all([
+      Agent.find().sort({ actif: -1, nom: 1 }),
+      Establishment.aggregate([
+        { $match: FILTRE_FICHES_TERRAIN },
+        {
+          $group: {
+            _id: '$codeAgent',
+            total: { $sum: 1 },
+            aVerifier: { $sum: { $cond: ['$aVerifier', 1, 0] } },
+            derniereCreation: { $max: '$createdAt' },
+          },
+        },
+      ]),
+    ]);
+
+    const parCodeMap = new Map(parCode.map((ligne) => [ligne._id, ligne]));
+    const codesConnus = new Set(agents.map((agent) => agent.code));
+
+    const liste = agents.map((agent) => {
+      const stats = parCodeMap.get(agent.code);
+      return {
+        ...agent.toPublicJSON(),
+        totalFiches: stats?.total || 0,
+        fichesAVerifier: stats?.aVerifier || 0,
+        // « Dernière activité » = dernière fiche déposée avec ce code. Un agent
+        // enregistré mais qui n'a rien fait affiche « — », pas une date trompeuse.
+        derniereActivite: stats?.derniereCreation || null,
+      };
+    });
+
+    const codesInconnus = parCode
+      .filter((ligne) => !codesConnus.has(ligne._id))
+      .map((ligne) => ({
+        code: ligne._id,
+        totalFiches: ligne.total,
+        fichesAVerifier: ligne.aVerifier,
+        derniereActivite: ligne.derniereCreation || null,
+      }));
+
+    res.json({
+      agents: liste,
+      codesInconnus,
+      totaux: {
+        agents: liste.length,
+        agentsActifs: liste.filter((agent) => agent.actif).length,
+        fiches: liste.reduce((somme, agent) => somme + agent.totalFiches, 0),
+        fichesAVerifier: liste.reduce((somme, agent) => somme + agent.fichesAVerifier, 0),
+      },
+    });
+  })
+);
+
+/**
+ * GET /api/admin/agents/rapport?jours=30 — fiches créées PAR AGENT ET PAR JOUR.
+ *
+ * C'est la vue qui répond à « qui a travaillé, et quel jour ? » : la paie se
+ * discute sur des journées, pas sur un total mensuel. Le regroupement est fait
+ * par la base (fuseau Africa/Abidjan, donc aucune fiche ne bascule de jour à
+ * cause du fuseau du serveur).
+ */
+router.get(
+  '/agents/rapport',
+  protectAdmin,
+  asyncHandler(async (req, res) => {
+    const jours = Math.min(Math.max(Number(req.query.jours) || 30, 1), 180);
+    const depuis = new Date(Date.now() - jours * 24 * 60 * 60 * 1000);
+
+    const [lignes, agents] = await Promise.all([
+      Establishment.aggregate([
+        { $match: { ...FILTRE_FICHES_TERRAIN, createdAt: { $gte: depuis } } },
+        {
+          $group: {
+            _id: {
+              code: '$codeAgent',
+              jour: {
+                $dateToString: {
+                  format: '%Y-%m-%d',
+                  date: '$createdAt',
+                  timezone: 'Africa/Abidjan',
+                },
+              },
+            },
+            total: { $sum: 1 },
+            aVerifier: { $sum: { $cond: ['$aVerifier', 1, 0] } },
+          },
+        },
+        { $sort: { '_id.jour': -1, total: -1, '_id.code': 1 } },
+        { $limit: 2000 },
+      ]),
+      Agent.find().select('code nom actif'),
+    ]);
+
+    const noms = new Map(agents.map((agent) => [agent.code, agent]));
+
+    res.json({
+      jours,
+      depuis,
+      lignes: lignes.map((ligne) => ({
+        code: ligne._id.code,
+        jour: ligne._id.jour,
+        nom: noms.get(ligne._id.code)?.nom || 'Code inconnu',
+        agentConnu: noms.has(ligne._id.code),
+        total: ligne.total,
+        fichesAVerifier: ligne.aVerifier,
+      })),
+      totaux: {
+        fiches: lignes.reduce((somme, ligne) => somme + ligne.total, 0),
+        joursCouverts: new Set(lignes.map((ligne) => ligne._id.jour)).size,
+      },
+    });
+  })
+);
+
+/**
+ * GET /api/admin/agents/export-csv — fichier de PAIE des agents de terrain.
+ *
+ * Colonnes demandées : Date, Nom Agent, Code, Nom Etablissement, Téléphone,
+ * Catégorie, Statut vérification.
+ *
+ * Détails qui font la différence sur le terrain :
+ *   • séparateur `;` (Excel en français) et BOM UTF-8, sinon « Établissement »
+ *     s'ouvre en « Ã‰tablissement » ;
+ *   • une ligne par FICHE (pas par agent) : c'est le justificatif de la paie ;
+ *   • les fiches `test` sont exclues — on ne paie pas des essais ;
+ *   • fichier construit côté serveur, comme l'export de conversation : le
+ *     back-office ne recompose aucune donnée.
+ */
+router.get(
+  '/agents/export-csv',
+  protectAdmin,
+  asyncHandler(async (req, res) => {
+    const [fiches, agents] = await Promise.all([
+      Establishment.find(FILTRE_FICHES_TERRAIN)
+        .sort({ createdAt: 1, _id: 1 })
+        .limit(20000)
+        .select('nom telephone categorie aVerifier codeAgent createdAt'),
+      Agent.find().select('code nom'),
+    ]);
+
+    const noms = new Map(agents.map((agent) => [agent.code, agent.nom]));
+    const entetes = [
+      'Date',
+      'Nom Agent',
+      'Code',
+      'Nom Etablissement',
+      'Telephone',
+      'Categorie',
+      'Statut verification',
+    ];
+
+    const lignes = [entetes.map(celluleCsv).join(';')];
+    for (const fiche of fiches) {
+      lignes.push(
+        [
+          dateHeureCsv(fiche.createdAt),
+          noms.get(fiche.codeAgent) || 'Code inconnu',
+          fiche.codeAgent,
+          fiche.nom,
+          fiche.telephone || '',
+          libelleFamille(fiche.categorie),
+          fiche.aVerifier ? 'À vérifier' : 'Validée',
+        ]
+          .map(celluleCsv)
+          .join(';')
+      );
+    }
+
+    const nomFichier = `agents-terrain-${new Date().toISOString().slice(0, 10)}.csv`;
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${nomFichier}"`);
+    // `\uFEFF` = BOM UTF-8 (voir l'en-tête de la route). `res.send` garde le
+    // Content-Type posé : on n'envoie pas du JSON déguisé en CSV.
+    res.send(`\uFEFF${lignes.join('\r\n')}\r\n`);
+  })
+);
+
+/**
+ * GET /api/admin/fiches-a-verifier?limit=100 — fiches marquées par l'anti-fraude.
+ *
+ * Les plus récentes d'abord : une fiche suspecte perd toute valeur si on la
+ * contrôle trois semaines plus tard (le commerçant a déjà déménagé, le numéro
+ * est déjà réutilisé). `motifsVerification` est renvoyé tel quel : l'écran ne
+ * doit jamais inventer une raison.
+ */
+router.get(
+  '/fiches-a-verifier',
+  protectAdmin,
+  asyncHandler(async (req, res) => {
+    const limite = Math.min(Math.max(Number(req.query.limit) || 100, 1), 300);
+    const base = `${req.protocol}://${req.get('host')}`;
+
+    const [fiches, total] = await Promise.all([
+      Establishment.find({ aVerifier: true }).sort({ createdAt: -1 }).limit(limite),
+      Establishment.countDocuments({ aVerifier: true }),
+    ]);
+
+    res.json({
+      total,
+      items: fiches.map((fiche) => ({
+        ...fiche.toCardJSON({ base }),
+        codeAgent: fiche.codeAgent || '',
+        motifsVerification: fiche.motifsVerification || [],
+        createdAt: fiche.createdAt,
+      })),
+    });
+  })
+);
+
+/**
+ * PATCH /api/admin/etablissements/:id/verification — lever (ou reposer) le doute.
+ * body: { aVerifier?: false }
+ *
+ * Passer `aVerifier` à false enregistre QUI a validé et QUAND : si une fiche
+ * frauduleuse passe au travers, on sait qui l'a laissée passer. Remettre une
+ * fiche en vérification reste possible (`aVerifier: true`).
+ */
+router.patch(
+  '/etablissements/:id/verification',
+  protectAdmin,
+  asyncHandler(async (req, res) => {
+    if (!mongoose.isValidObjectId(req.params.id)) throw new ApiError(404, 'Fiche introuvable.');
+    const fiche = await Establishment.findById(req.params.id);
+    if (!fiche) throw new ApiError(404, 'Fiche introuvable.');
+
+    const aVerifier = req.body?.aVerifier === true;
+    fiche.aVerifier = aVerifier;
+    if (aVerifier) {
+      fiche.aVerifieLe = null;
+      fiche.aVerifieParUserId = null;
+    } else {
+      fiche.aVerifieLe = new Date();
+      fiche.aVerifieParUserId = req.user?._id || null;
+    }
+    await fiche.save();
+
+    res.json({
+      id: String(fiche._id),
+      nom: fiche.nom,
+      aVerifier: fiche.aVerifier,
+      aVerifieLe: fiche.aVerifieLe,
+      // Les motifs restent en base (trace de ce qui avait alerté) mais ne sont
+      // plus affichés une fois la fiche validée : l'écran se fie à `aVerifier`.
+      motifsVerification: fiche.motifsVerification || [],
+    });
   })
 );
 

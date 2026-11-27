@@ -33,7 +33,7 @@ export function setAdminToken(token) {
   }
 }
 
-async function requeteAdmin(chemin, { method = 'GET', body, token } = {}) {
+async function requeteAdmin(chemin, { method = 'GET', body, token, brut = false } = {}) {
   const url = `${BASE}/api/admin${chemin.startsWith('/') ? chemin : `/${chemin}`}`;
   const entetes = { Accept: 'application/json' };
   if (body !== undefined) entetes['Content-Type'] = 'application/json';
@@ -68,11 +68,15 @@ async function requeteAdmin(chemin, { method = 'GET', body, token } = {}) {
     }
   }
 
-  if (!reponse.ok || !donnees) {
+  if (!reponse.ok) {
     // 401/403 : session admin invalide ou compte non admin -> on nettoie le jeton local.
     if (reponse.status === 401 || reponse.status === 403) setAdminToken(null);
     throw new AdminError(reponse.status, donnees?.error || `Erreur ${reponse.status}`, donnees?.details);
   }
+  // Réponse BRUTE (fichier CSV de paie) : on renvoie le texte tel quel. Le parser
+  // en JSON ferait perdre le fichier — la route ne répond pas du JSON, exprès.
+  if (brut) return texte;
+  if (!donnees) throw new AdminError(reponse.status, `Erreur ${reponse.status}`);
   return donnees;
 }
 
@@ -147,6 +151,24 @@ export const adminApi = {
   // objet JSON complet (métadonnées, participants avec numéros, messages datés).
   // Le téléchargement du fichier est fait par l'écran, pas par ce client.
   exportConversation: (id) => requeteAdmin(`/conversations/${id}/export`),
+  // ── Agents de terrain (prompt 9) ──────────────────────────────────────────
+  // Le code de l'agent est TIRÉ AU SORT côté serveur : il n'est jamais choisi ici
+  // (un agent ne doit pas pouvoir s'attribuer le code d'un collègue).
+  agents: () => requeteAdmin('/agents'),
+  creerAgent: (nom) => requeteAdmin('/agents', { method: 'POST', body: { nom } }),
+  modifierAgent: (id, patch) => requeteAdmin(`/agents/${id}`, { method: 'PATCH', body: patch }),
+  // Fiches créées par agent et par jour (30 jours par défaut) : c'est la vue de paie.
+  rapportAgents: (jours = 30) => requeteAdmin(`/agents/rapport${chaineParametres({ jours })}`),
+  // CSV de paie : la route répond un FICHIER (text/csv), pas du JSON — d'où `brut`.
+  exportAgentsCsv: () => requeteAdmin('/agents/export-csv', { brut: true }),
+  // Anti-fraude : fiches marquées `aVerifier` et levée de doute depuis le back-office.
+  fichesAVerifier: (limit = 100) =>
+    requeteAdmin(`/fiches-a-verifier${chaineParametres({ limit })}`),
+  validerFiche: (id) =>
+    requeteAdmin(`/etablissements/${id}/verification`, {
+      method: 'PATCH',
+      body: { aVerifier: false },
+    }),
 };
 
 export default adminApi;

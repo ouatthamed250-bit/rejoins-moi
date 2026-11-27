@@ -65,6 +65,16 @@ const SECTIONS = [
     groupe: 'Suivi',
   },
   {
+    // Prompt 9 : les agents qui inscrivent des commerces sur le terrain. Leur code
+    // à 6 caractères est la seule clé de la paie — d'où un écran dédié, et non un
+    // filtre de plus dans le catalogue.
+    cle: 'agents',
+    libelle: 'Agents de terrain',
+    icone: 'mapPin',
+    sous: 'Codes agents, fiches créées, export CSV de paie et fiches à vérifier',
+    groupe: 'Suivi',
+  },
+  {
     cle: 'activite',
     libelle: 'Activité',
     icone: 'activity',
@@ -838,6 +848,15 @@ export default function Admin() {
               cle={cle}
               stats={stats}
               onNaviguer={setSection}
+              onGererErreur={gererErreur}
+              onRafraichir={rafraichir}
+            />
+          ) : null}
+
+          {section === 'agents' ? (
+            <VueAgentsDeTerrain
+              cle={cle}
+              onMessage={setMessage}
               onGererErreur={gererErreur}
               onRafraichir={rafraichir}
             />
@@ -3213,6 +3232,8 @@ function VueAnnoncesSignalees({ cle, onMessage, onGererErreur, onRafraichir }) {
       )}
     </Panneau>
   );
+}
+
 /* ─── Modération des messages (prompt B) ──────────────────────────────────────
    La messagerie interne est privée par conception : l'administrateur n'y écrit
    jamais et n'a pas de conversation à lui. Cette section est le SEUL accès, et
@@ -3239,6 +3260,31 @@ function telechargerJson(nomFichier, donnees) {
     lien.click();
     lien.remove();
     // Le navigateur a lu l'URL de façon synchrone : on peut la libérer ensuite.
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Télécharge un contenu TEXTE (CSV de paie) sous forme de fichier.
+ *
+ * Même logique que `telechargerJson`, mais sans sérialisation : le serveur a
+ * déjà construit le fichier (BOM UTF-8, séparateur `;`, échappement RFC 4180).
+ * Le recopier tel quel est la seule façon de garantir que ce qui est payé est
+ * exactement ce que le serveur a compté.
+ */
+function telechargerTexte(nomFichier, contenu, type = 'text/plain;charset=utf-8') {
+  try {
+    const blob = new Blob([contenu], { type });
+    const url = URL.createObjectURL(blob);
+    const lien = document.createElement('a');
+    lien.href = url;
+    lien.download = nomFichier;
+    document.body.appendChild(lien);
+    lien.click();
+    lien.remove();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
     return true;
   } catch {
@@ -3527,8 +3573,382 @@ function VueModerationMessages({ cle, onMessage, onGererErreur }) {
   );
 }
 
+/* ─── Agents de terrain (prompt 9) ────────────────────────────────────────────
+   Trois gestes, dans l'ordre où ils servent :
+     1. créer un agent et lui lire son code à 6 caractères (le serveur le tire au
+        sort : personne ne choisit le code d'un collègue) ;
+     2. suivre ce que chaque code a produit, puis télécharger le CSV de paie ;
+     3. vider la file des fiches marquées par l'anti-fraude.
 
+   Aucun écran ne calcule un montant : la paie se fait sur le nombre de fiches
+   par jour et sur le fichier produit par le serveur, jamais sur un total
+   reconstitué ici. Une erreur d'arrondi dans un écran de paie se paie deux fois.
+   --------------------------------------------------------------------------- */
+function VueAgentsDeTerrain({ cle, onMessage, onGererErreur, onRafraichir }) {
+  const [donnees, setDonnees] = useState(null);
+  const [fiches, setFiches] = useState(null);
+  const [rapport, setRapport] = useState(null);
+  const [chargement, setChargement] = useState(true);
+  const [erreur, setErreur] = useState('');
+  const [nom, setNom] = useState('');
+  const [creation, setCreation] = useState(false);
+  // Code du dernier agent créé : affiché en grand une fois, pour qu'on puisse le
+  // recopier sans chercher la ligne dans le tableau (le code est la clé de paie).
+  const [dernierCode, setDernierCode] = useState('');
+  const [exportEnCours, setExportEnCours] = useState(false);
+  const [idEnCours, setIdEnCours] = useState('');
+  const [rechargement, setRechargement] = useState(0);
+
+  useEffect(() => {
+    let vivant = true;
+    setChargement(true);
+    Promise.all([adminApi.agents(), adminApi.fichesAVerifier(100), adminApi.rapportAgents(30)])
+      .then(([agentsReponse, fichesReponse, rapportReponse]) => {
+        if (!vivant) return;
+        setDonnees(agentsReponse);
+        setFiches(fichesReponse);
+        setRapport(rapportReponse);
+        setErreur('');
+      })
+      .catch((err) => {
+        if (!vivant || onGererErreur(err)) return;
+        setErreur(err?.message || 'Les agents de terrain sont indisponibles pour le moment.');
+      })
+      .finally(() => {
+        if (vivant) setChargement(false);
+      });
+    return () => {
+      vivant = false;
+    };
+  }, [cle, rechargement, onGererErreur]);
+
+  function rechargerTout() {
+    setRechargement((n) => n + 1);
+    onRafraichir?.();
+  }
+
+  async function creerAgent(evt) {
+    evt.preventDefault();
+    const valeur = nom.trim();
+    if (valeur.length < 2) {
+      setErreur('Indiquez le nom de l’agent avant de créer son code.');
+      return;
+    }
+    setCreation(true);
+    setErreur('');
+    try {
+      const reponse = await adminApi.creerAgent(valeur);
+      setNom('');
+      setDernierCode(reponse?.agent?.code || '');
+      rechargerTout();
+      onMessage(`Agent « ${reponse?.agent?.nom} » créé — code ${reponse?.agent?.code}.`);
+    } catch (err) {
+      if (!onGererErreur(err)) setErreur(err?.message || 'Création de l’agent impossible.');
+    } finally {
+      setCreation(false);
+    }
+  }
+
+  async function basculerAgent(agent) {
+    setIdEnCours(agent.id);
+    setErreur('');
+    try {
+      await adminApi.modifierAgent(agent.id, { actif: !agent.actif });
+      rechargerTout();
+      onMessage(
+        agent.actif
+          ? `${agent.nom} est désactivé : ses fiches déjà créées restent payables.`
+          : `${agent.nom} est de nouveau actif.`
+      );
+    } catch (err) {
+      if (!onGererErreur(err)) setErreur(err?.message || 'Modification de l’agent impossible.');
+    } finally {
+      setIdEnCours('');
+    }
+  }
+
+  async function validerFiche(fiche) {
+    setIdEnCours(fiche.id);
+    setErreur('');
+    try {
+      await adminApi.validerFiche(fiche.id);
+      rechargerTout();
+      onMessage(`« ${fiche.nom} » est vérifiée : elle sort de la file de contrôle.`);
+    } catch (err) {
+      if (!onGererErreur(err)) setErreur(err?.message || 'Validation impossible sur cette fiche.');
+    } finally {
+      setIdEnCours('');
+    }
+  }
+
+  async function exporterCsv() {
+    setExportEnCours(true);
+    setErreur('');
+    try {
+      const csv = await adminApi.exportAgentsCsv();
+      const nomFichier = `agents-terrain-${new Date().toISOString().slice(0, 10)}.csv`;
+      if (!telechargerTexte(nomFichier, csv, 'text/csv;charset=utf-8')) {
+        throw new Error('Le téléchargement a été bloqué par le navigateur.');
+      }
+      onMessage(`Export de paie téléchargé : ${nomFichier}`);
+    } catch (err) {
+      if (!onGererErreur(err)) setErreur(err?.message || 'Export CSV impossible pour le moment.');
+    } finally {
+      setExportEnCours(false);
+    }
+  }
+
+  const liste = donnees?.agents || [];
+  const codesInconnus = donnees?.codesInconnus || [];
+  const totaux = donnees?.totaux || {};
+  const aVerifier = fiches?.items || [];
+  const lignesRapport = rapport?.lignes || [];
+
+  return (
+    <div className="bo-empile bo-apparition">
+      {erreur ? (
+        <Alerte variante="erreur" icone="alert" onFermer={() => setErreur('')}>
+          {erreur}
+        </Alerte>
+      ) : null}
+
+      {dernierCode ? (
+        <Alerte variante="succes" icone="check" onFermer={() => setDernierCode('')}>
+          Code du nouvel agent : <strong style={{ letterSpacing: 2 }}>{dernierCode}</strong> — recopiez-le sur
+          chaque fiche qu’il fait inscrire. Il reste visible dans le tableau ci-dessous.
+        </Alerte>
+      ) : null}
+
+      <div className="bo-tuiles">
+        <Tuile
+          libelle="Agents actifs"
+          valeur={totaux.agentsActifs || 0}
+          note={`${totaux.agents || 0} code(s) au total`}
+          icone="users"
+        />
+        <Tuile
+          libelle="Fiches attribuées"
+          valeur={totaux.fiches || 0}
+          note="Fiches créées avec un code agent"
+          icone="store"
+        />
+        <Tuile
+          libelle="Fiches à vérifier"
+          valeur={fiches?.total || 0}
+          note="Numéro en double, GPS < 20 m, appareil…"
+          icone="flag"
+          couleur={(fiches?.total || 0) > 0 ? 'accent' : ''}
+        />
+        <Tuile
+          libelle="Fiches (30 jours)"
+          valeur={rapport?.totaux?.fiches || 0}
+          note={`${rapport?.totaux?.joursCouverts || 0} jour(s) d’activité`}
+          icone="activity"
+        />
+      </div>
+
+      <Panneau
+        titre="Agents de terrain"
+        sous="Chaque agent reçoit un code à 6 caractères, recopié sur les fiches qu’il fait inscrire. Ce code est la clé de la paie : sans lui, la fiche n’est attribuée à personne."
+        actions={
+          <button
+            type="button"
+            className="bo-btn bo-btn--petit bo-btn--principal"
+            disabled={exportEnCours || liste.length === 0}
+            onClick={exporterCsv}
+          >
+            <Icon name="download" size={13} />
+            {exportEnCours ? 'Préparation…' : 'Télécharger le CSV'}
+          </button>
+        }
+      >
+        <form className="bo-barre-outils" onSubmit={creerAgent}>
+          <div className="bo-recherche">
+            <input
+              className="bo-entree"
+              type="text"
+              placeholder="Nom de l’agent (ex. « Awa Traoré »)"
+              value={nom}
+              onChange={(e) => setNom(e.target.value)}
+              maxLength={80}
+              aria-label="Nom du nouvel agent"
+            />
+          </div>
+          <button type="submit" className="bo-btn bo-btn--principal" disabled={creation}>
+            <Icon name="plus" size={14} />
+            {creation ? 'Création…' : 'Créer l’agent'}
+          </button>
+        </form>
+
+        {codesInconnus.length > 0 ? (
+          <Alerte variante="alerte" icone="alert">
+            {codesInconnus.length} code(s) figurent sur des fiches sans agent correspondant (
+            {codesInconnus.map((ligne) => ligne.code).join(', ')}) : ces fiches ne peuvent pas être payées.
+          </Alerte>
+        ) : null}
+
+        {chargement && !donnees ? (
+          <EtatChargement texte="Chargement des agents…" />
+        ) : liste.length === 0 ? (
+          <EtatVide
+            texte="Aucun agent pour le moment : créez le premier code ci-dessus, puis recopiez-le sur les fiches."
+            icone="users"
+          />
+        ) : (
+          <div className="bo-tableau-enveloppe">
+            <table className="bo-tableau">
+              <thead>
+                <tr>
+                  <th>Code</th>
+                  <th>Nom</th>
+                  <th>Total fiches</th>
+                  <th>À vérifier</th>
+                  <th>Dernière activité</th>
+                  <th>État</th>
+                </tr>
+              </thead>
+              <tbody>
+                {liste.map((agent) => (
+                  <tr key={agent.id}>
+                    <td>
+                      <strong style={{ letterSpacing: 1.5 }}>{agent.code}</strong>
+                    </td>
+                    <td>{agent.nom}</td>
+                    <td>{agent.totalFiches}</td>
+                    <td>
+                      {agent.fichesAVerifier > 0 ? (
+                        <Badge variante="attente" icone="flag">
+                          {agent.fichesAVerifier}
+                        </Badge>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td>{agent.derniereActivite ? formatDateHeure(agent.derniereActivite) : '—'}</td>
+                    <td className="bo-tableau-actions">
+                      <Badge variante={agent.actif ? 'ok' : 'ko'} icone={agent.actif ? 'check' : 'ban'}>
+                        {agent.actif ? 'Actif' : 'Désactivé'}
+                      </Badge>
+                      <button
+                        type="button"
+                        className="bo-btn bo-btn--petit"
+                        disabled={idEnCours === agent.id}
+                        onClick={() => basculerAgent(agent)}
+                      >
+                        {agent.actif ? 'Désactiver' : 'Réactiver'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panneau>
+
+      <Panneau
+        titre="Fiches à vérifier"
+        sous="Marquées automatiquement à l’inscription : numéro déjà utilisé, position à moins de 20 m, plus de 5 fiches en 24 h sur le même appareil, code agent inconnu. Aucune inscription n’a été bloquée — c’est ici qu’on tranche."
+        serre
+      >
+        {chargement && !fiches ? (
+          <EtatChargement texte="Chargement des fiches à vérifier…" />
+        ) : aVerifier.length === 0 ? (
+          <EtatVide texte="Aucune fiche suspecte : la file de contrôle est vide." icone="check" />
+        ) : (
+          <div className="bo-tableau-enveloppe">
+            <table className="bo-tableau">
+              <thead>
+                <tr>
+                  <th>Fiche</th>
+                  <th>Téléphone</th>
+                  <th>Motifs</th>
+                  <th>Code agent</th>
+                  <th>Créée</th>
+                  <th>Décision</th>
+                </tr>
+              </thead>
+              <tbody>
+                {aVerifier.map((fiche) => (
+                  <tr key={fiche.id}>
+                    <td>
+                      <strong>{fiche.nom}</strong>
+                      <div>{[fiche.quartier, fiche.commune].filter(Boolean).join(', ') || 'quartier non précisé'}</div>
+                    </td>
+                    <td>{fiche.telephone ? formatTelephone(fiche.telephone) : '—'}</td>
+                    <td>
+                      {(fiche.motifsVerification || []).length === 0 ? (
+                        <span className="bo-doux">Aucun motif enregistré</span>
+                      ) : (
+                        <ul style={{ margin: 0, paddingLeft: 16 }}>
+                          {fiche.motifsVerification.map((motif) => (
+                            <li key={motif}>{motif}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </td>
+                    <td>{fiche.codeAgent || '—'}</td>
+                    <td>{formatDateHeure(fiche.createdAt)}</td>
+                    <td className="bo-tableau-actions">
+                      <button
+                        type="button"
+                        className="bo-btn bo-btn--ok"
+                        disabled={idEnCours === fiche.id}
+                        onClick={() => validerFiche(fiche)}
+                      >
+                        Valider la fiche
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panneau>
+
+      <Panneau
+        titre="Fiches créées par jour"
+        sous={`Nombre de fiches par agent et par jour sur les ${rapport?.jours || 30} derniers jours : c’est la base de la paie, et le seul chiffre qu’un agent ne peut pas gonfler depuis son téléphone.`}
+        serre
+      >
+        {chargement && !rapport ? (
+          <EtatChargement texte="Chargement du rapport…" />
+        ) : lignesRapport.length === 0 ? (
+          <EtatVide texte="Aucune fiche créée par un agent sur la période." icone="activity" />
+        ) : (
+          <div className="bo-tableau-enveloppe">
+            <table className="bo-tableau">
+              <thead>
+                <tr>
+                  <th>Jour</th>
+                  <th>Agent</th>
+                  <th>Code</th>
+                  <th>Fiches</th>
+                  <th>À vérifier</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lignesRapport.slice(0, 60).map((ligne) => (
+                  <tr key={`${ligne.jour}-${ligne.code}`}>
+                    <td>{formatDate(`${ligne.jour}T12:00:00Z`)}</td>
+                    <td>{ligne.agentConnu ? ligne.nom : <Badge variante="ko" icone="alert">Code inconnu</Badge>}</td>
+                    <td>
+                      <strong style={{ letterSpacing: 1.5 }}>{ligne.code}</strong>
+                    </td>
+                    <td>{ligne.total}</td>
+                    <td>{ligne.fichesAVerifier > 0 ? ligne.fichesAVerifier : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panneau>
+    </div>
+  );
 }
+
 /* ─── Mises en avant (file d'attente) ─────────────────────────────────────────
    Pendant la période gratuite, la mise en avant est OFFERTE : le bouton du profil
    n'achète rien, il enregistre l'INTÉRÊT d'un artisan ou d'un gérant pour les

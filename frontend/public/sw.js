@@ -263,7 +263,17 @@
 //       ArtisanProfile.jsx et le client admin changent : nouveau nom de cache
 //       obligatoire, sinon un téléphone déjà installé garderait l'ancien écran
 //       « le contact passe par WhatsApp ».
-const VERSION = 'v31';
+// v32 : agents de terrain et anti-fraude (26/11)
+//       — l'inscription accepte un code agent de 6 caractères (facultatif) et
+//       exige une case de consentement « ma fiche, mes photos et mon numéro sont
+//       visibles » ; le back-office gagne l'écran « Agents de terrain » (codes,
+//       fiches créées, export CSV de paie, fiches à vérifier). Les inscriptions
+//       suspectes (numéro en double, GPS < 20 m, plus de 5 fiches en 24 h par
+//       appareil) ne sont pas bloquées : elles sont marquées pour relecture.
+//       Admin.jsx et RegisterEstablishment.jsx changent : nouveau nom de cache
+//       obligatoire, sinon un téléphone déjà installé garderait l'ancien
+//       formulaire — sans champ code agent ni case de consentement.
+const VERSION = 'v32';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

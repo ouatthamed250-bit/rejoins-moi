@@ -14,7 +14,11 @@
 // renvoyés séparément. On n'expose volontairement aucun champ agrégé.
 
 import express from 'express';
+// Empreinte de l'appareil (IP) : un hachage salé, jamais l'adresse en clair
+// (voir `empreinteAppareilDe` plus bas et le champ du modèle).
+import crypto from 'node:crypto';
 import Establishment from '../models/Establishment.js';
+import Agent from '../models/Agent.js';
 import { protect, optionalAuth } from '../middleware/auth.js';
 import { requireDb } from '../config/db.js';
 import { asyncHandler, ApiError } from '../middleware/errorHandler.js';
@@ -25,6 +29,7 @@ import {
   clampNote,
   buildActionLabel,
   escapeRegex,
+  normalizePhone,
 } from '../utils/validators.js';
 import { getDistanceKm, parseCoords } from '../utils/geo.js';
 import {
@@ -213,6 +218,128 @@ async function fichesProchesParNom(nom, coords, rayonMetres, filtre = {}) {
   return trouvees
     .filter((f) => nomsProches(f.nom, nom))
     .map((f) => ({ ...f, distanceMetres: Math.round(f.distanceMetres) }));
+}
+
+/* ─── Agents de terrain et anti-fraude (prompt 9) ─────────────────────────────
+   Une inscription faite sur le terrain n'est JAMAIS refusée pour suspicion : le
+   commerçant est devant l'agent, un refus lui ferait perdre son compte et ses
+   photos. On crée donc la fiche, puis on la MARQUE `aVerifier` en écrivant les
+   motifs. Le back-office tranche ensuite (onglet « Agents de terrain »).
+   ─────────────────────────────────────────────────────────────────────────── */
+
+const RAYON_SUSPICION_POSITION_M = 20;
+const FICHES_MAX_PAR_APPAREIL_24H = 5;
+const FENETRE_APPAREIL_MS = 24 * 60 * 60 * 1000;
+
+/** Code agent normalisé (« ag42x1 » -> « AG42X1 »), ou '' si facultatif/illisible. */
+function codeAgentNormalise(valeur) {
+  const code = String(valeur || '').trim().toUpperCase();
+  return /^[A-Z0-9]{6}$/.test(code) ? code : '';
+}
+
+/**
+ * Empreinte de l'appareil : SHA-256 de l'adresse IP et d'un sel serveur.
+ *
+ * POURQUOI UN HACHAGE : la règle « plus de 5 fiches en 24 h par appareil » exige
+ * de RECONNAÎTRE l'appareil d'une fiche à l'autre, donc de conserver quelque
+ * chose. Conserver l'IP en clair ajouterait une donnée personnelle permanente
+ * pour un simple compteur ; son empreinte salée suffit à compter sans permettre
+ * de remonter à une adresse (et n'est jamais renvoyée par une route).
+ *
+ * @param {object} req requête Express (derrière `trust proxy`, voir index.js).
+ * @returns {string} 64 caractères hexadécimaux, ou '' si l'IP est inconnue.
+ */
+function empreinteAppareilDe(req) {
+  const ip = String(req.ip || req.socket?.remoteAddress || '').trim();
+  if (!ip) return '';
+  const sel = process.env.EMPREINTE_SEL || process.env.JWT_SECRET || 'rejoins-moi-terrain';
+  return crypto.createHash('sha256').update(`${sel}|${ip}`).digest('hex');
+}
+
+/**
+ * Motifs de suspicion d'une fiche qui vient d'être créée (prompt 9).
+ *
+ * Les trois règles demandées, plus une quatrième évidente sur le terrain :
+ *   1. le numéro figure déjà sur une autre fiche (comparaison NORMALISÉE : la
+ *      même ligne saisie « 07 07… » puis « +225 07 07… » est un seul numéro) ;
+ *   2. la position est à moins de 20 m d'une autre fiche (index 2dsphere) ;
+ *   3. l'appareil (IP) a créé plus de 5 fiches dans les dernières 24 h ;
+ *   4. le code agent saisi n'existe pas ou a été désactivé (une fiche payée au
+ *      nom d'un code inconnu ne serait jamais réconciliée).
+ *
+ * @param {{ doc: object, agent: object|null }} p `agent` = Agent trouvé pour `doc.codeAgent`.
+ * @returns {Promise<string[]>} libellés prêts à afficher dans le back-office.
+ */
+async function motifsSuspicion({ doc, agent }) {
+  const motifs = [];
+
+  // 1. Numéro déjà utilisé ailleurs.
+  const telephoneSaisi = String(doc.telephone || doc.whatsapp || '').trim();
+  const telephoneNormalise = normalizePhone(telephoneSaisi);
+  if (telephoneNormalise) {
+    const candidats = await Establishment.find({
+      _id: { $ne: doc._id },
+      $or: [
+        { telephone: telephoneSaisi },
+        { whatsapp: telephoneSaisi },
+        { telephone: telephoneNormalise },
+        { whatsapp: telephoneNormalise },
+      ],
+    })
+      .select('telephone whatsapp')
+      .limit(20);
+    const dejaUtilise = candidats.some((fiche) =>
+      [fiche.telephone, fiche.whatsapp].some(
+        (valeur) => valeur && normalizePhone(valeur) === telephoneNormalise
+      )
+    );
+    if (dejaUtilise) motifs.push('Numéro déjà utilisé sur une autre fiche');
+  }
+
+  // 2. Position à moins de 20 m d'une autre fiche. Le calcul est fait par la base
+  //    ($geoNear sur `position`), pas en mémoire sur tout le catalogue.
+  const lat = Number(doc.localisation?.lat);
+  const lng = Number(doc.localisation?.lng);
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    try {
+      const voisines = await Establishment.aggregate([
+        {
+          $geoNear: {
+            near: { type: 'Point', coordinates: [lng, lat] },
+            key: 'position',
+            distanceField: 'distanceMetres',
+            maxDistance: RAYON_SUSPICION_POSITION_M,
+            query: { _id: { $ne: doc._id } },
+          },
+        },
+        { $limit: 1 },
+        { $project: { _id: 1 } },
+      ]);
+      if (voisines.length) {
+        motifs.push(`Position à moins de ${RAYON_SUSPICION_POSITION_M} m d’une autre fiche`);
+      }
+    } catch {
+      // Index géographique absent ou fiche non indexée : ce contrôle est un PLUS,
+      // il ne doit jamais faire échouer une inscription déjà enregistrée.
+    }
+  }
+
+  // 3. Trop de fiches créées par le même appareil en 24 h.
+  const empreinte = String(doc.empreinteAppareil || '');
+  if (empreinte) {
+    const nombre = await Establishment.countDocuments({
+      empreinteAppareil: empreinte,
+      createdAt: { $gte: new Date(Date.now() - FENETRE_APPAREIL_MS) },
+    });
+    if (nombre > FICHES_MAX_PAR_APPAREIL_24H) {
+      motifs.push(`Plus de ${FICHES_MAX_PAR_APPAREIL_24H} fiches créées en 24 h par cet appareil`);
+    }
+  }
+
+  // 4. Code agent inconnu ou désactivé (le code reste écrit sur la fiche).
+  if (doc.codeAgent && !agent) motifs.push('Code agent inconnu ou désactivé');
+
+  return motifs;
 }
 
 /**
@@ -719,6 +846,9 @@ router.post(
       // de badge « Ouvert / Fermé ».
       horairesStructures = null,
       fermetureTemporaire = undefined,
+      // Code de l'agent qui accompagne l'inscription (prompt 9). Facultatif :
+      // la plupart des gérants s'inscrivent seuls depuis leur téléphone.
+      codeAgent = '',
     } = req.body || {};
 
     if (!nom || !String(nom).trim()) throw new ApiError(400, 'Le nom de l’établissement est obligatoire.');
@@ -802,7 +932,22 @@ router.post(
     // Un libellé non répertorié = une proposition à modérer, quelle que soit la famille.
     const categorieLibre = Boolean(sousCategorieLabel) && !sousCategorieConnue;
 
+    // ── Code agent (prompt 9) ────────────────────────────────────────────────
+    // Un code au mauvais format est ignoré (il ne réconcilierait aucune paie) ;
+    // un code BIEN formé mais inconnu ou désactivé est CONSERVÉ sur la fiche et
+    // la marque `aVerifier` : on ne perd jamais la trace de ce que l'agent a
+    // réellement saisi, et le back-office peut le rappeler.
+    const codeAgentSaisi = codeAgentNormalise(codeAgent);
+    const agentTrouve = codeAgentSaisi ? await Agent.findOne({ code: codeAgentSaisi }) : null;
+    // Un agent désactivé compte comme inconnu : ses fiches doivent être relues
+    // avant d'être payées (il a peut-être quitté l'équipe).
+    const agentTerrain = agentTrouve?.actif ? agentTrouve : null;
+
     const doc = new Establishment({
+      codeAgent: codeAgentSaisi,
+      // Empreinte de l'appareil : sert au compteur « plus de 5 fiches en 24 h »
+      // (voir motifsSuspicion). Jamais publiée, jamais renvoyée.
+      empreinteAppareil: empreinteAppareilDe(req),
       nom: String(nom).trim(),
       categorie: categorieFiche,
       sousCategorie: sousCategorieLabel,
@@ -836,6 +981,24 @@ router.post(
     if (controleFermeture.valeur) doc.fermetureTemporaire = controleFermeture.valeur;
 
     await doc.save();
+
+    // ── Anti-fraude (prompt 9) : contrôles APRÈS création, JAMAIS bloquants.
+    //    Une inscription ne doit pas échouer devant le commerçant ; la fiche est
+    //    simplement marquée pour relecture par le back-office. Toute erreur ici
+    //    (index géographique absent, base lente) est ignorée : la fiche existe.
+    try {
+      const motifs = await motifsSuspicion({ doc, agent: agentTerrain });
+      if (motifs.length > 0) {
+        await Establishment.updateOne(
+          { _id: doc._id },
+          { $set: { aVerifier: true, motifsVerification: motifs } }
+        );
+        doc.aVerifier = true;
+        doc.motifsVerification = motifs;
+      }
+    } catch {
+      /* la levée de doute reste possible à la main depuis le back-office */
+    }
 
     // Rattaché au compte établissement pour permettre les mises à jour ultérieures.
     if (req.user && !req.user.etablissementId) {

@@ -227,6 +227,34 @@ const establishmentSchema = new mongoose.Schema(
     verifie: { type: Boolean, default: false },
     createdByUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 
+    // ── Agents de terrain et anti-fraude (prompt 9) ──────────────────────────
+    // Code de l'agent qui a accompagné l'inscription (facultatif) : c'est la clé
+    // de la paie (export CSV) et des statistiques par agent. Chaîne VIDE et non
+    // null quand personne n'accompagne : une requête { codeAgent: '' } doit
+    // pouvoir lister les fiches non attribuées sans tester deux cas.
+    codeAgent: { type: String, trim: true, uppercase: true, default: '', index: true },
+
+    // Marqueur de SUSPICION, jamais un refus : une inscription de terrain ne doit
+    // pas échouer devant le commerçant (le compte serait perdu). Les motifs sont
+    // écrits à côté pour que le back-office sache POURQUOI la fiche est à vérifier
+    // — un simple booléen obligerait à refaire tout le raisonnement à la main.
+    aVerifier: { type: Boolean, default: false, index: true },
+    motifsVerification: {
+      type: [{ type: String, trim: true, maxlength: 120 }],
+      default: undefined,
+    },
+
+    // Empreinte NON RÉVERSIBLE de l'appareil (IP hachée avec un sel serveur).
+    // Indispensable à la règle « plus de 5 fiches en 24 h par appareil » : compter
+    // exige de reconnaître l'appareil, mais stocker l'IP en clair serait une donnée
+    // personnelle de plus, conservée pour rien. Jamais publiée (absente de
+    // toCardJSON), jamais renvoyée par une route.
+    empreinteAppareil: { type: String, default: '', index: true },
+
+    // Traçabilité de la levée de doute : qui a validé la fiche, et quand.
+    aVerifieLe: { type: Date, default: null },
+    aVerifieParUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+
     // ── Traçabilité des fiches pré-remplies (base publique nettoyée) ──────────
     // Distinguer ce qui vient de la base publique (OSM / data.gouv.ci) de ce qui a
     // été créé par un vrai gérant, et permettre à celui-ci de « réclamer » sa

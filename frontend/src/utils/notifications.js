@@ -6,11 +6,40 @@
 //      notifications (une fois).
 //   2. `souscrireAuxNotifications(registration)` : crée un PushSubscription via le
 //      service worker et l'envoie au backend (POST /api/users/push-subscribe).
-// La clé publique VAPID est récupérée depuis la variable Vite `VITE_VAPID_PUBLIC_KEY`.
+// La clé publique VAPID est récupérée depuis le BACKEND (GET /api/push/public-key),
+// qui détient la clé privée avec laquelle il signe les envois : c'est la seule
+// façon de garantir que l'abonnement créé par le navigateur sera accepté par le
+// service de push. La copie compilée au build (VITE_VAPID_PUBLIC_KEY) ne sert plus
+// que de secours quand l'API est injoignable.
 
 import { api } from './api/client.js';
 
-const CLE_VAPID_PUBLIQUE = import.meta.env?.VITE_VAPID_PUBLIC_KEY || '';
+const CLE_VAPID_COMPILEE = import.meta.env?.VITE_VAPID_PUBLIC_KEY || '';
+/** Dernière clé lue sur le serveur (évite un appel réseau à chaque tentative). */
+let cleVapidServeur = '';
+
+/**
+ * Détermine la clé publique VAPID à utiliser : celle du serveur en priorité,
+ * la copie compilée en secours (API endormie, ancienne version du backend, ou
+ * navigation hors ligne).
+ * @returns {Promise<string>}
+ */
+async function resoudreCleVapidPublique() {
+  if (cleVapidServeur) return cleVapidServeur;
+  try {
+    // Lecture publique : aucun jeton requis, délai court (l'abonnement est
+    // accessoire et ne doit jamais retarder l'écran).
+    const reponse = await api.get('/push/public-key', { auth: false, timeoutMs: 8000 });
+    const cle = String(reponse?.publicKey || '').trim();
+    if (cle) {
+      cleVapidServeur = cle;
+      return cle;
+    }
+  } catch {
+    /* serveur injoignable : on retombe sur la clé compilée */
+  }
+  return CLE_VAPID_COMPILEE;
+}
 
 /**
  * Convertit une clé VAPID encodée en base64 URL-safe en Uint8Array, comme l'exige
@@ -51,14 +80,15 @@ export async function demanderPermissionNotification() {
  * @returns {Promise<{ok: boolean, abonnement?: PushSubscription|null}>}
  */
 export async function souscrireAuxNotifications(registration) {
-  if (!CLE_VAPID_PUBLIQUE) {
+  const clePublique = await resoudreCleVapidPublique();
+  if (!clePublique) {
     console.warn(
-      '[notifications] VITE_VAPID_PUBLIC_KEY manquante : impossible de s\'abonner aux notifications.'
+      '[notifications] aucune clé VAPID publique (serveur muet et VITE_VAPID_PUBLIC_KEY absente) : impossible de s\'abonner aux notifications.'
     );
     return { ok: false, abonnement: null, reason: 'cle-vapid-manquante' };
   }
 
-  const cleServeur = urlBase64ToUint8Array(CLE_VAPID_PUBLIQUE);
+  const cleServeur = urlBase64ToUint8Array(clePublique);
   if (!cleServeur) {
     return { ok: false, abonnement: null, reason: 'cle-vapid-invalide' };
   }

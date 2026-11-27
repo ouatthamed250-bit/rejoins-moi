@@ -31,6 +31,7 @@ import messagesRouter from './routes/messages.js';
 import agentsRouter from './routes/agents.js';
 import adminRouter from './routes/admin.js';
 import { isPaymentConfigured, getUnlockFee } from './services/cinetpay.js';
+import { etatNotifications } from './services/notifications.js';
 import {
   ABONNEMENT,
   getFormules,
@@ -171,6 +172,7 @@ app.get('/api', (req, res) => {
       '/api/health-facilities',
       '/api/messages',
       '/api/agents',
+      '/api/push/public-key',
     ],
   });
 });
@@ -213,8 +215,25 @@ app.get('/api/health', (req, res) => {
       formuleParDefaut: ABONNEMENT.cle,
       prixAConfirmer: estModeGratuit() ? false : ABONNEMENT.aConfirmer,
     },
+    // État des notifications Web Push : `pret` ne vaut true que si les clés VAPID
+    // de l'hébergeur ont été lues ET acceptées par la bibliothèque. Aucune clé
+    // n'est exposée ici (voir GET /api/push/public-key pour la clé publique).
+    notifications: etatNotifications(),
     horodatage: new Date().toISOString(),
   });
+});
+
+// ── Clé publique VAPID (notifications Web Push) ──
+// La clé publique VAPID n'est PAS un secret : chaque navigateur doit la posséder
+// pour s'abonner (`PushManager.subscribe({ applicationServerKey })`). Elle est
+// publiée ici pour qu'une seule source fasse foi : le serveur qui signe les envois
+// avec VAPID_PRIVATE_KEY. Le frontend lit cette clé au lieu d'en figer une copie
+// au moment du build ; remplacer les clés dans le tableau de bord de l'hébergeur
+// ne peut donc plus produire d'abonnements refusés (403 du service de push) tant
+// que le frontend servi est à jour. Aucune clé privée n'est exposée ici.
+app.get('/api/push/public-key', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ publicKey: process.env.VAPID_PUBLIC_KEY || '' });
 });
 
 // ── Routes API ──

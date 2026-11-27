@@ -44,7 +44,7 @@
 
 
 import 'dotenv/config';
-import { randomBytes, randomInt } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 
 import mongoose from 'mongoose';
 import User from '../src/models/User.js';
@@ -57,6 +57,8 @@ import {
   PREFIXE_TELEPHONE_SUPPRIME,
 } from '../src/services/suppressionCompte.js';
 import { normalizePhone } from '../src/utils/validators.js';
+// Convention commune des comptes de test (nom TEST-AUTO- + numéro réservé + purge).
+import { nomTest, telephoneTest, purgerComptesTest } from './utils/comptes-test.js';
 
 const PORT = Number(process.env.PORT_VERIFICATION_EFFACEMENT) || 4106;
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -159,6 +161,9 @@ async function nettoyer() {
     await Establishment.deleteMany(filtre(aNettoyer.etablissements));
   }
   if (aNettoyer.utilisateurs.length) await User.deleteMany(filtre(aNettoyer.utilisateurs));
+  // Filet conventionnel : même si un passage précédent s'est interrompu avant son
+  // nettoyage, aucun compte TEST-AUTO- ne doit rester en base.
+  await purgerComptesTest({ silencieux: true });
 
   aNettoyer.utilisateurs = [];
   aNettoyer.etablissements = [];
@@ -182,22 +187,26 @@ async function arreter(message) {
   process.exit(1);
 }
 
+/** Compteur de numéros réservés : 40, 41, … (bloc +225 00 00 00 00 xx). */
+let numeroTest = 40;
+
 /**
- * Crée un compte de test par l'API, avec un numéro ivoirien VALIDE mais tiré au
- * hasard : `+22507XXXXXXXX`. En cas de collision (un run précédent interrompu),
- * on réessaie — jamais deux fois le même numéro.
+ * Crée un compte de test par l'API, avec un numéro du BLOC RÉSERVÉ
+ * `+225 00 00 00 00 xx` : jamais attribuable à un abonné réel, donc jamais
+ * confondu avec un vrai compte lors d'un audit ultérieur. Le préfixe du nom
+ * (« TEST-AUTO- ») permet en plus une purge automatique en fin de script.
  */
 async function creerCompte(prenom) {
   for (let essai = 0; essai < 6; essai += 1) {
-    const national = `07${String(randomInt(0, 100000000)).padStart(8, '0')}`;
     // Forme CANONIQUE (celle que la base stockera) : le serveur retire les zéros de
     // tête dès la normalisation, comparer avec la saisie brute ferait échouer à tort.
+    const national = telephoneTest(numeroTest + essai);
     const telephone = normalizePhone(national) || national;
     const reponse = await appel('POST', '/api/users/register', {
       body: {
         telephone,
         motDePasse: MOT_DE_PASSE,
-        nom: 'Test Effacement',
+        nom: nomTest('EFFACEMENT'),
         prenom,
         metier: 'Maçon',
         quartier: 'Cocody',
@@ -210,6 +219,8 @@ async function creerCompte(prenom) {
     if (reponse.statut === 201 || reponse.statut === 200) {
       const id = reponse.donnees?.user?.id;
       if (!id) return null;
+      // Le numéro consommé ne doit pas être réutilisé par le compte suivant.
+      numeroTest += essai + 1;
       aNettoyer.utilisateurs.push(id);
       return { id, telephone, token: reponse.donnees?.token || null };
     }
@@ -236,10 +247,13 @@ async function connecter(telephone) {
  */
 async function creerAdminTemporaire() {
   const motDePasse = randomBytes(24).toString('hex');
-  const telephone = normalizePhone(`07${String(randomInt(0, 100000000)).padStart(8, '0')}`);
+  // Numéro du bloc réservé : un administrateur de test ne doit JAMAIS porter un
+  // numéro réel (c'est exactement ainsi qu'un « AdminTemporaire » a pu survivre
+  // en production et apparaître dans l'audit des comptes).
+  const telephone = telephoneTest(49);
   const user = new User({
     telephone,
-    nom: 'Test Effacement',
+    nom: nomTest('EFFACEMENT'),
     prenom: 'AdminTemporaire',
     motDePasseHash: await User.hashMotDePasse(motDePasse),
     estAdmin: true,

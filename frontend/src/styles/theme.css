@@ -34,6 +34,109 @@
   les listes (coût batterie sur smartphone d'entrée de gamme).
 */
 
+/* ══════════════════════════════════════════════════════════════════════════
+   POLICES HÉBERGÉES LOCALEMENT (v45, 27/11) — plus de Google Fonts
+   ══════════════════════════════════════════════════════════════════════════
+   AVANT : index.html chargeait une feuille distante
+   (fonts.googleapis.com/css2?family=Nunito…&family=Poppins…). Coût réel sur le
+   réseau d'Abidjan : deux résolutions DNS + deux connexions TLS vers des
+   domaines tiers AVANT le premier pixel de texte, et un texte INVISIBLE tant
+   que la feuille distante n'est pas arrivée (le `display=swap` de Google ne
+   s'applique qu'une fois… la feuille téléchargée).
+
+   MAINTENANT : six fichiers WOFF2 servis par notre propre origine, dans
+   public/fonts/ (précachés par le service worker dès l'installation) :
+     • Poppins 500 / 600 / 700 — titres, boutons, libellés (--font-family-display) ;
+     • Nunito  400 / 600 / 700 — repli de la même pile (--font-family-base).
+
+   PROVENANCE : Google Fonts, API css2, SOUS-ENSEMBLE « latin » UNIQUEMENT
+   (U+0000-00FF + ponctuation typographique : tout le français y est) et
+   instances STATIQUES par graisse — obtenues en demandant la feuille avec un UA
+   « Chrome 49 » (il comprend woff2 mais pas les polices variables ; avec un UA
+   moderne, Nunito arrive en police variable, une seule URL pour 400/600/700).
+   Résultat : 74 Ko au total, contre ~1,2 Mo pour les jeux complets.
+   Pour régénérer un fichier : demander
+     https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&family=Nunito:wght@400;600;700&display=swap
+   avec cet UA, puis télécharger l'URL du bloc de sous-ensemble « latin » de la
+   graisse voulue (c'est le dernier bloc de chaque graisse dans la feuille).
+
+   POURQUOI CES RÉGLAGES :
+     • `font-display: swap` — le texte s'affiche tout de suite avec la police
+       système puis bascule : jamais de page muette, même si le WOFF2 traîne.
+     • `unicode-range` — le navigateur ne télécharge un fichier que si la page
+       utilise vraiment un caractère de sa plage (copié de Google Fonts pour que
+       le sous-ensemble « latin » corresponde exactement au fichier livré).
+     • Chemins absolus « /fonts/… » — Vite les réécrit avec la base de
+       déploiement (`/rejoins-moi/…` sur GitHub Pages, `/…` ailleurs), ce qu'un
+       chemin relatif ne saurait pas faire depuis un CSS émis dans assets/.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+@font-face {
+  font-family: 'Poppins';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/poppins-500-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Poppins';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/poppins-600-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Poppins';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/poppins-700-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Nunito';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/nunito-400-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Nunito';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/nunito-600-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Nunito';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/nunito-700-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

@@ -28,7 +28,8 @@
     "verifier:demarrage-api": "node scripts/verifier-demarrage-api.js",
     "verifier:poids-listes": "node scripts/verifier-poids-listes.js",
     "mesurer:capacite": "node scripts/mesurer-capacite.js",
-    "auditer:tests": "node scripts/auditer-tests.js"
+    "auditer:tests": "node scripts/auditer-tests.js",
+    "auditer:comptes": "node scripts/audit-comptes.js"
   },
   "engines": {
     "node": ">=20"

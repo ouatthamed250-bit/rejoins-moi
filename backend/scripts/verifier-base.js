@@ -18,12 +18,14 @@
 // Prérequis : MONGODB_URI renseigné dans backend/.env — voir docs/DEPLOIEMENT.md §1.
 
 import 'dotenv/config';
-import { randomInt } from 'node:crypto';
 
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import User from '../src/models/User.js';
 import Subscription from '../src/models/Subscription.js';
+// Convention commune des comptes de test : nom « TEST-AUTO-… » + numéro du bloc
+// réservé +225 00 00 00 00 xx, et purge automatique en fin d'exécution.
+import { nomTest, telephoneTest, purgerComptesTest } from './utils/comptes-test.js';
 
 const PORT = Number(process.env.PORT_VERIFICATION) || 4100;
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -183,13 +185,17 @@ async function principal() {
 
   // ── 3. Inscription : le cœur du sujet ─────────────────────────────────────
   titre('3. Inscription d’un artisan (écriture réelle en base)');
-  const telephone = `+2250701${String(randomInt(100000, 999999))}`;
+  // Compte strictement identifiable comme artefact de test (voir utils/comptes-test.js).
+  // On purge d'abord un éventuel reste d'un passage interrompu : le numéro réservé
+  // est unique, une inscription en double ferait échouer tout le contrôle.
+  await purgerComptesTest({ silencieux: true });
+  const telephone = telephoneTest(1);
   const motDePasse = 'MotDePasseTest2026';
   const inscription = await appel('POST', '/api/users/register', {
     body: {
       telephone,
       motDePasse,
-      nom: 'ZOGBO',
+      nom: nomTest('BASE'),
       prenom: 'Vérification',
       metier: 'Électricien',
       quartier: 'Angré 8e tranche',
@@ -301,11 +307,14 @@ async function principal() {
   titre('6. Nettoyage du compte de test');
   if (GARDER) {
     console.log(`  ℹ Compte conservé (option --garder) : ${inscription.donnees?.user?.telephone} / ${motDePasse}`);
-  } else if (enBase) {
-    await Subscription.deleteMany({ userId: enBase._id });
-    await User.deleteOne({ _id: enBase._id });
-    const reste = await User.countDocuments({ telephone: enBase.telephone });
-    verifier('le compte de test a été supprimé', reste === 0, `${reste} ligne(s) restante(s)`);
+  } else {
+    // Purge conventionnelle : tout compte TEST-AUTO- (y compris celui de ce passage)
+    // et ses données liées — abonnement inclus.
+    await purgerComptesTest();
+    if (enBase) {
+      const reste = await User.countDocuments({ telephone: enBase.telephone });
+      verifier('le compte de test a été supprimé', reste === 0, `${reste} ligne(s) restante(s)`);
+    }
   }
 
   // ── Bilan ─────────────────────────────────────────────────────────────────

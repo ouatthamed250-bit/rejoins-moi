@@ -35,6 +35,8 @@ import mongoose from 'mongoose';
 import User from '../src/models/User.js';
 import Job from '../src/models/Job.js';
 import Depot from '../src/models/Depot.js';
+// Convention commune des comptes de test (nom TEST-AUTO- + numéro réservé + purge).
+import { nomTest, telephoneTest, purgerComptesTest } from './utils/comptes-test.js';
 
 const PORT = Number(process.env.PORT_VERIFICATION_ADMIN_COMPLEMENT) || 4104;
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -119,14 +121,17 @@ async function attendreServeur(maxMs = 25000) {
   return false;
 }
 
-/** Crée un compte de test par l'API (numéros 07 00 00 00 xx : inexistants en production). */
+/** Compteur de numéros réservés : 20, 21, … (bloc +225 00 00 00 00 xx). */
+let numeroTest = 20;
+
+/** Crée un compte de test par l'API (bloc réservé +225 00 00 00 00 xx). */
 async function creerCompte(suffixe, motDePasse) {
-  const telephone = `+2250700000${suffixe}`;
+  const telephone = telephoneTest(numeroTest++);
   const reponse = await appel('POST', '/api/users/register', {
     body: {
       telephone,
       motDePasse,
-      nom: 'Test',
+      nom: nomTest('COMPLEMENT'),
       prenom: `Complement${suffixe.slice(-2)}`,
       metier: 'Maçon',
       quartier: 'Cocody',
@@ -168,6 +173,9 @@ async function nettoyer() {
   if (depots.length) await Depot.deleteMany({ _id: { $in: depots } });
   if (jobs.length) await Job.deleteMany({ _id: { $in: jobs } });
   if (utilisateurs.length) await User.deleteMany({ _id: { $in: utilisateurs } });
+  // Filet conventionnel : purge de tout compte TEST-AUTO- resté d'un passage
+  // interrompu (le compteur « avant/après » du script reste donc fiable).
+  await purgerComptesTest({ silencieux: true });
   return { depots: depots.length, jobs: jobs.length, utilisateurs: utilisateurs.length };
 }
 
@@ -210,6 +218,9 @@ async function principal() {
 
   // ── 1. Photo de la production, AVANT toute écriture ─────────────────────────
   titre('1. Photo de la production (doit être identique à la fin)');
+  // Purge d'abord les restes d'un passage interrompu : la photo « avant » doit
+  // décrire une base propre, sinon la comparaison finale échouerait à tort.
+  await purgerComptesTest({ silencieux: true });
   const avant = await instantaneProduction();
   verifier('le compte du VRAI administrateur est retrouvé', Boolean(avant.adminHash));
   verifier('le dépôt historique est retrouvé', avant.depotStatut !== 'absent', `statut ${avant.depotStatut}`);

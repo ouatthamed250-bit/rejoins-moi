@@ -356,7 +356,25 @@
 //       • Nouveau nom de cache : un téléphone déjà installé doit recevoir le
 //         nouveau bundle, sinon il afficherait encore les anciennes réponses
 //         (WhatsApp au lieu de la messagerie, aucun mot sur l'import).
-const VERSION = 'v43';
+// v44 : notifications push — lien corrigé quand l'app vit dans un sous-dossier
+//       (27/11). Le serveur envoie « /messages », un chemin relatif à la RACINE
+//       du domaine. Sur GitHub Pages, où l'app est servie depuis « /rejoins-moi/ »,
+//       le clic ouvrait donc « https://…github.io/messages » : une 404. Le worker
+//       rattache maintenant tout chemin reçu à sa propre portée
+//       (self.registration.scope) au lieu de la racine du domaine, et réutilise
+//       la fenêtre déjà ouverte (navigate + focus) au lieu d'empiler un onglet.
+//       Nouveau nom de cache obligatoire : sinon un téléphone déjà installé
+//       garderait l'ancien sw.js, donc l'ancien lien cassé.
+// v45 : polices hébergées localement (27/11). Poppins et Nunito ne viennent plus
+//       de fonts.gstatic.com : six WOFF2 (sous-ensemble latin) vivent dans
+//       public/fonts/ et sont déclarés en @font-face dans src/styles/theme.css.
+//       Le worker les précache à l'installation (POLICES) : la première
+//       ouverture hors ligne après une visite affiche la vraie typographie, et
+//       le premier écran ne dépend plus d'un domaine tiers (ni DNS, ni TLS, ni
+//       feuille bloquante). Nouveau nom de cache obligatoire : un téléphone déjà
+//       installé doit recevoir le bundle qui déclare ces @font-face, sinon il
+//       réclamerait encore une feuille Google Fonts avec l'ancien sw.js.
+const VERSION = 'v45';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];
@@ -385,8 +403,58 @@ const APP_SHELL = [
   `${BASE_APPLICATION}icons/apple-touch-icon-180.png`,
 ];
 
+/* Polices de la marque (v45) : sous-ensemble « latin » de Poppins et Nunito,
+ * hébergées par l'application elle-même (public/fonts/). Elles sont précachées à
+ * l'installation comme l'app shell, pour deux raisons :
+ *   1. hors ligne, la première ouverture affiche la VRAIE typographie et pas la
+ *      police système — sans quoi la page « saute » en Poppins au retour du
+ *      réseau, un mouvement désagréable sur un petit écran ;
+ *   2. le premier écran n'a plus AUCUNE requête vers un domaine tiers.
+ * Mêmes noms de fichiers que les @font-face de src/styles/theme.css : les deux
+ * listes doivent être modifiées ensemble. */
+const POLICES = [
+  `${BASE_APPLICATION}fonts/poppins-500-latin.woff2`,
+  `${BASE_APPLICATION}fonts/poppins-600-latin.woff2`,
+  `${BASE_APPLICATION}fonts/poppins-700-latin.woff2`,
+  `${BASE_APPLICATION}fonts/nunito-400-latin.woff2`,
+  `${BASE_APPLICATION}fonts/nunito-600-latin.woff2`,
+  `${BASE_APPLICATION}fonts/nunito-700-latin.woff2`,
+];
+
 /* URL absolue de la page de démarrage : clé unique de la copie hors ligne. */
 const URL_INDEX = new URL(`${BASE_APPLICATION}index.html`, self.location.origin).href;
+
+/* Portée du worker — c'est-à-dire l'ADRESSE DE L'APPLICATION : « / » à la racine
+ * d'un domaine, « /rejoins-moi/ » sur GitHub Pages. Le backend, lui, ignore le
+ * dossier de déploiement : ses notifications portent des chemins relatifs à la
+ * racine du domaine (« /messages »). C'est ici qu'on les rattache à la portée. */
+const PORTEE = self.registration ? self.registration.scope : new URL(BASE_APPLICATION, self.location.origin).href;
+
+/**
+ * Transforme le chemin d'une notification en URL ABSOLUE dans l'application.
+ *   « /messages »               -> « https://…/rejoins-moi/messages »  (Pages)
+ *                               -> « https://…/messages »             (racine)
+ *   « /rejoins-moi/messages »   -> inchangé (déjà préfixé)
+ *   « https://autre-site/… »    -> inchangé (lien externe explicite)
+ * Sans cette étape, un clic sur « /messages » visait la racine du domaine et
+ * tombait sur une 404 dès que l'app est publiée dans un sous-dossier.
+ */
+function urlDansApplication(chemin) {
+  const cible = String(chemin ?? '').trim();
+  if (/^https?:\/\//i.test(cible)) return cible;
+  if (!cible || cible === '/') return PORTEE;
+  // Déjà préfixé par la base de déploiement ? On retire le préfixe avant de le
+  // recoller via `PORTEE` : sinon « /rejoins-moi/messages » deviendrait
+  // « /rejoins-moi/rejoins-moi/messages ».
+  const sansBase = cible.startsWith(BASE_APPLICATION)
+    ? cible.slice(BASE_APPLICATION.length)
+    : cible.replace(/^\/+/, '');
+  try {
+    return new URL(sansBase, PORTEE).href;
+  } catch {
+    return PORTEE;
+  }
+}
 
 /* Références JS/CSS lues dans index.html (`src="…"`, `href="…"`).
  * Volontairement limité à .js et .css : ni images, ni données, ni URL externes.
@@ -476,6 +544,14 @@ self.addEventListener('install', (event) => {
       // ne jamais bloquer l'installation (les icônes de l'app peuvent changer).
       await Promise.all(
         APP_SHELL.map((url) =>
+          cache.add(new Request(url, { cache: 'reload' })).catch(() => null)
+        )
+      );
+      // Polices (v45) : même tolérance qu'au-dessus — une police manquante ne
+      // doit jamais faire échouer l'installation ; le @font-face la réclamera au
+      // réseau et, à défaut, le navigateur utilisera la police système.
+      await Promise.all(
+        POLICES.map((url) =>
           cache.add(new Request(url, { cache: 'reload' })).catch(() => null)
         )
       );
@@ -617,7 +693,9 @@ self.addEventListener('fetch', (event) => {
   // 2) Paiement : jamais d'interception, dans un sens comme dans l'autre.
   if (HOTES_PAIEMENT.some((hote) => url.hostname.includes(hote))) return;
 
-  // 3) Origine différente (API déployée ailleurs, Google Fonts) : hors périmètre.
+  // 3) Origine différente (API déployée ailleurs) : hors périmètre. Les polices,
+  //    elles, sont servies par la même origine depuis la v45 : elles suivent donc
+  //    le cache d'abord du point 7, comme les autres fichiers statiques.
   if (url.origin !== self.location.origin) return;
 
   // 4) Argent / identité : le réseau décide, le cache n'existe pas pour ces URL.
@@ -770,7 +848,9 @@ self.addEventListener('push', (event) => {
     body: String(donnees.corps || ''),
     icon: `${BASE_APPLICATION}icons/icon-192.png`,
     badge: `${BASE_APPLICATION}icons/icon-192.png`,
-    data: { url: donnees.url || '/' },
+    // URL DÉJÀ résolue dans l'application : le clic n'aura plus à deviner la base
+    // de déploiement (voir urlDansApplication).
+    data: { url: urlDansApplication(donnees.url) },
     // `tag` permet de remplacer une notification précédente du même tag plutôt
     // que d'en afficher plusieurs (ex. plusieurs messages non lus).
     tag: 'rejoinsmoi-notification',
@@ -783,12 +863,45 @@ self.addEventListener('push', (event) => {
 
 /**
  * Écouteur « notificationclick » : l'utilisateur clique sur la notification.
- * On la ferme et on ouvre l'URL de destination (ex. /messages) dans l'app.
+ * On la ferme, puis :
+ *   1. si une fenêtre de l'app est déjà ouverte, on la ramène au premier plan et
+ *      on la fait NAVIGUER vers la page demandée (pas de second onglet) ;
+ *   2. sinon on ouvre une fenêtre sur cette page.
+ * L'URL est toujours résolue dans la portée du worker (voir urlDansApplication) :
+ * « /messages » envoyé par le serveur devient « …/rejoins-moi/messages » sur
+ * GitHub Pages, et « …/messages » quand l'app est à la racine du domaine.
+ * Les notifications déjà affichées avant cette version portent encore une URL
+ * absolue (« https://…/messages ») : elle est conservée telle quelle.
  */
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = event.notification.data?.url || BASE_APPLICATION;
-  event.waitUntil(clients.openWindow(url));
+  const url = urlDansApplication(event.notification.data?.url);
+
+  event.waitUntil(
+    (async () => {
+      const fenetres = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+      const dejaOuverte = fenetres.find((client) => client.url.startsWith(PORTEE));
+
+      if (dejaOuverte) {
+        // Même page ? Un simple focus suffit ; sinon on navigue puis on focalise.
+        if (dejaOuverte.url === url) {
+          if ('focus' in dejaOuverte) return dejaOuverte.focus();
+          return undefined;
+        }
+        if ('navigate' in dejaOuverte) {
+          const navigue = await dejaOuverte.navigate(url).catch(() => null);
+          const fenetre = navigue || dejaOuverte;
+          if ('focus' in fenetre) return fenetre.focus();
+          return undefined;
+        }
+        if ('focus' in dejaOuverte) return dejaOuverte.focus();
+        return undefined;
+      }
+
+      if (clients.openWindow) return clients.openWindow(url);
+      return undefined;
+    })()
+  );
 });
 
 /* Message du front (« mise à jour disponible ») : on active tout de suite. */

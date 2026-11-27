@@ -169,7 +169,11 @@ export function cleVapidPublique() {
  * @param {string|ObjectId} userId identifiant du destinataire
  * @param {string} titre titre de la notification
  * @param {string} corps corps de la notification
- * @param {string} [url] URL ouverte quand l'utilisateur clique sur la notification
+ * @param {string} [url] Page à ouvrir au clic sur la notification, écrite comme un
+ *   chemin relatif à la RACINE du domaine (ex. « /messages ») : le backend ne
+ *   connaît pas le dossier de déploiement du front. C'est le service worker
+ *   (frontend/public/sw.js, `urlDansApplication`) qui rattache ce chemin à sa
+ *   propre portée, par exemple « /rejoins-moi/messages » sur GitHub Pages.
  * @returns {Promise<{ok: boolean, abonnementSupprime?: boolean}>}
  */
 export async function envoyerNotification(userId, titre, corps, url = '/') {

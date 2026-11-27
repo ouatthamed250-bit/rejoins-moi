@@ -33,6 +33,8 @@ import mongoose from 'mongoose';
 import User from '../src/models/User.js';
 import Job from '../src/models/Job.js';
 import Depot from '../src/models/Depot.js';
+// Convention commune des comptes de test (nom TEST-AUTO- + numéro réservé + purge).
+import { nomTest, telephoneTest, purgerComptesTest } from './utils/comptes-test.js';
 
 const PORT = Number(process.env.PORT_VERIFICATION_ADMIN) || 4103;
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -105,14 +107,17 @@ async function attendreServeur(maxMs = 25000) {
   return false;
 }
 
+/** Compteur de numéros réservés : 10, 11, … (bloc +225 00 00 00 00 xx). */
+let numeroTest = 10;
+
 /** Crée un compte de test par l'API et renvoie son téléphone, son mot de passe et la réponse. */
 async function creerCompte(suffixe, motDePasse) {
-  const telephone = `+2250703${suffixe}`;
+  const telephone = telephoneTest(numeroTest++);
   const reponse = await appel('POST', '/api/users/register', {
     body: {
       telephone,
       motDePasse,
-      nom: 'Suivi',
+      nom: nomTest('ADMIN'),
       prenom: `Admin${suffixe.slice(-3)}`,
       metier: 'Électricien',
       quartier: 'Yopougon',
@@ -582,6 +587,9 @@ async function principal() {
     await Depot.deleteMany({ _id: { $in: idsDepots } });
     await Job.deleteMany({ _id: { $in: idsJobs } });
     await User.deleteMany({ _id: { $in: idsUtilisateurs } });
+    // Filet conventionnel : aucun compte TEST-AUTO- (même d'un passage interrompu)
+    // ni ses données ne doivent rester en base.
+    await purgerComptesTest();
     const restes = await Promise.all([
       Depot.countDocuments({ _id: { $in: idsDepots } }),
       Job.countDocuments({ _id: { $in: idsJobs } }),

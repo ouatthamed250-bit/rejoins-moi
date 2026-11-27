@@ -33,6 +33,8 @@ import Establishment from '../src/models/Establishment.js';
 import User from '../src/models/User.js';
 import DemandeRevendication from '../src/models/DemandeRevendication.js';
 import { normalizePhone } from '../src/utils/validators.js';
+// Convention commune des comptes de test (nom TEST-AUTO- + purge automatique).
+import { nomTest, purgerComptesTest } from './utils/comptes-test.js';
 import { errorHandler, notFound } from '../src/middleware/errorHandler.js';
 
 const PORT = Number(process.env.PORT_VERIFICATION_RECLAMATIONS) || 4109;
@@ -102,7 +104,7 @@ async function creerCompte(telephone, prenom, { admin = false } = {}) {
 
   const inscription = await appel('/api/users/register', {
     methode: 'POST',
-    corps: { telephone: enregistre, motDePasse: MOT_DE_PASSE, prenom, nom: 'Test D' },
+    corps: { telephone: enregistre, motDePasse: MOT_DE_PASSE, prenom, nom: nomTest('DEMANDE') },
   });
   const id = inscription.corps?.user?.id || null;
   if (!admin) return { token: inscription.corps?.token || null, id, statuts: `inscription ${inscription.statut}` };
@@ -415,6 +417,8 @@ async function principal() {
     const { deletedCount: comptesSupprimes } = await User.deleteMany({
       $or: [{ _id: { $in: comptesCrees } }, { telephone: { $regex: '070000000[123]$' } }],
     }).catch(() => ({ deletedCount: 0 }));
+    // Filet conventionnel : aucun compte TEST-AUTO- (ni ses données) ne doit rester.
+    await purgerComptesTest({ silencieux: true }).catch(() => {});
     const reste = await Establishment.countDocuments({ nom: new RegExp(`^${PREFIXE_TEST}`) }).catch(() => 0);
     console.log(
       `\n  Nettoyage : ${deletedCount} fiche(s), ${comptesSupprimes} compte(s) et ${demandesSupprimees} demande(s) de test supprimés.`

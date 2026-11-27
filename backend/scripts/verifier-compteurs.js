@@ -21,6 +21,8 @@ import establishmentsRouter from '../src/routes/establishments.js';
 import Establishment from '../src/models/Establishment.js';
 import CompteurJournalier from '../src/models/CompteurJournalier.js';
 import User from '../src/models/User.js';
+// Convention commune des comptes de test (nom TEST-AUTO- + numéro réservé + purge).
+import { nomTest, telephoneTest, purgerComptesTest } from './utils/comptes-test.js';
 
 let reussis = 0;
 const echecs = [];
@@ -35,11 +37,10 @@ function verifier(libelle, condition, detail = '') {
   }
 }
 
-/** Numéro ivoirien aléatoire (jamais deux fois le même). */
-function telephoneAleatoire() {
-  const n = Math.floor(100000 + Math.random() * 899999);
-  return `+22507${n}0`;
-}
+/**
+ * Deux numéros du bloc réservé +225 00 00 00 00 xx (voir utils/comptes-test.js) :
+ * jamais attribuables à un abonné réel, donc jamais confondus avec un vrai compte.
+ */
 
 const app = express();
 app.use(express.json());
@@ -81,12 +82,16 @@ async function principal() {
   const comptesTest = [];
 
 try {
+    // On repart d'un état propre : un passage interrompu ne doit pas laisser de
+    // compte derrière lui, et les numéros réservés sont uniques.
+    await purgerComptesTest({ silencieux: true });
+
     // Deux comptes de test (l'un servira de « même utilisateur », l'autre d'« autre »).
     const u1 = await appel('POST', '/api/users/register', {
-      body: { telephone: telephoneAleatoire(), motDePasse: 'motdepasse', nom: 'TestCompteur1' },
+      body: { telephone: telephoneTest(2), motDePasse: 'motdepasse', nom: nomTest('COMPTEUR-1') },
     });
     const u2 = await appel('POST', '/api/users/register', {
-      body: { telephone: telephoneAleatoire(), motDePasse: 'motdepasse', nom: 'TestCompteur2' },
+      body: { telephone: telephoneTest(3), motDePasse: 'motdepasse', nom: nomTest('COMPTEUR-2') },
     });
     if (u1.donnees?.user?.id) comptesTest.push(u1.donnees.user.id);
     if (u2.donnees?.user?.id) comptesTest.push(u2.donnees.user.id);
@@ -155,12 +160,14 @@ try {
       `visites=${enBase?.compteurVisites}, utilisateurs=${enBase?.compteurUtilisateurs}`
     );
   } finally {
-    // Nettoyage systématique.
+    // Nettoyage systématique, y compris après Ctrl+C ou échec : fiche, compteurs,
+    // puis TOUS les comptes TEST-AUTO- et leurs données liées.
     if (etab) {
       await CompteurJournalier.deleteMany({ etablissement: etab._id }).catch(() => {});
       await Establishment.deleteOne({ _id: etab._id }).catch(() => {});
     }
     if (comptesTest.length) await User.deleteMany({ _id: { $in: comptesTest } }).catch(() => {});
+    await purgerComptesTest().catch(() => {});
     await mongoose.disconnect().catch(() => {});
   }
 

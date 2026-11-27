@@ -58,12 +58,36 @@
     <meta name="apple-mobile-web-app-title" content="Rejoins'Moi" />
     <meta name="mobile-web-app-capable" content="yes" />
 
-    <!-- Typographie : Poppins (titres) + Nunito (texte), cohérente avec le theme.css -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Typographie (v45, 27/11) : Poppins (titres ET texte courant) + Nunito
+         (repli), servies par NOTRE origine depuis public/fonts/.
+         Les <link> vers fonts.googleapis.com / fonts.gstatic.com ont été
+         retirés : deux domaines tiers à résoudre, deux connexions TLS à ouvrir
+         AVANT le premier pixel de texte — un surcoût absurde sur un réseau
+         mobile d'Abidjan, et la feuille distante bloquait l'affichage du texte.
+         Les six fichiers WOFF2 sont déclarés en @font-face dans
+         src/styles/theme.css et précachés par le service worker (public/sw.js).
+         `rel="preload"` : Poppins est la police PRINCIPALE (à la fois
+         --font-family-base et --font-family-display) ; 500 habille le texte
+         courant, 600 les titres et les boutons — les deux seules graisses du
+         premier écran, 15 Ko à elles deux.
+         `crossorigin` est OBLIGATOIRE : une police est toujours récupérée en
+         mode CORS, même depuis sa propre origine ; sans cet attribut le
+         navigateur téléchargerait le fichier deux fois (preload + @font-face).
+         Chemins relatifs (sans « / » au début), comme le manifeste et les icônes
+         ci-dessus : ils suivent la base de déploiement (racine ou /rejoins-moi/). -->
     <link
-      href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&family=Poppins:wght@500;600;700&display=swap"
-      rel="stylesheet"
+      rel="preload"
+      href="fonts/poppins-500-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="fonts/poppins-600-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
     />
 
     <!-- Open Graph / Twitter (migration Cloudflare Pages) : c'est ce que lit

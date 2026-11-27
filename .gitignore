@@ -46,6 +46,22 @@ captures-demarrage/
 # Preuves de l'autorisation de localisation (bloc B) : captures d'écran du parcours
 # réel et _rapport.json, tous deux régénérables par `npm run verifier:permissions`.
 captures-permissions/
+# ── Sorties brutes de scripts (journaux) ─────────────────────────────────────
+# Redirections `> sortie.out` / `2> erreurs.err` écrites à côté de l'outil qui
+# les produit (ex. `backend/sauvegarde-run.out` après `npm run sauvegarder:base`,
+# `frontend/perm.out` après une recette). Régénérables, jamais du code : sans ces
+# motifs ils réapparaissent en « fichiers non suivis » à chaque `git status`,
+# et un `git add .` les pousserait sur GitHub.
+*.out
+*.err
+*.pid
+
+# ── Dossiers de vérification visuelle ponctuels ──────────────────────────────
+# Captures et rapports produits par les scripts de recette dans un dossier jetable
+# (`frontend/_verif-medaillon/`, `frontend/_verif-visites/`…). Ce sont des preuves
+# visuelles de quelques mégaoctets, pas du code, et elles se régénèrent.
+frontend/_verif-*/
+
 # ── Divers ───────────────────────────────────────────────────────────────────
 npm-debug.log*
 yarn-error.log*

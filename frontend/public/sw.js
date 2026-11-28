@@ -374,7 +374,16 @@
 //       feuille bloquante). Nouveau nom de cache obligatoire : un téléphone déjà
 //       installé doit recevoir le bundle qui déclare ces @font-face, sinon il
 //       réclamerait encore une feuille Google Fonts avec l'ancien sw.js.
-const VERSION = 'v45';
+// v46 : lien « Ouvrir l’application » du back-office réparé (28/11). Il faisait
+//       `window.location.assign('/')` — une URL ABSOLUE, donc la racine du
+//       domaine. Sur GitHub Pages, où l’app est servie depuis « /rejoins-moi/ »,
+//       le bouton menait à https://…github.io/ : une 404 (même famille de bug
+//       que le lien des notifications en v44). Il passe désormais par le routeur
+//       (navigate('/')), qui respecte la base de déploiement et change d’écran
+//       sans recharger la page. Nouveau nom de cache obligatoire : un poste déjà
+//       ouvert doit recevoir le bundle Admin.jsx corrigé, sinon il garderait
+//       l’ancien bouton cassé.
+const VERSION = 'v46';
 const CACHE_APP = `rejoinsmoi-app-${VERSION}`;
 const CACHE_DONNEES = `rejoinsmoi-donnees-${VERSION}`;
 const CACHES_ACTUELS = [CACHE_APP, CACHE_DONNEES];

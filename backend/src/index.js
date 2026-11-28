@@ -49,10 +49,23 @@ const PORT = Number(process.env.PORT) || 4000;
 // Express voit l'IP du proxy (journaux et rate-limiting faux).
 app.set('trust proxy', 1);
 
-// ── En-têtes de sécurité (helmet, bloc F du 12/10) ──
+// ── En-têtes de sécurité (helmet, bloc F du 12/10 ; CSP explicite le 28/11) ──
 // L'API ne sert que du JSON et des images binaires (GET /api/establishments/:id/photo/:role) :
-//   • `contentSecurityPolicy: false` : aucun HTML n'est servi ici ; une CSP n'aurait
-//     donc aucun effet, et la valeur par défaut de helmet n'apporterait rien.
+//   • CSP EXPLICITE depuis la v46 : helmet garde ses directives par défaut
+//     (`useDefaults: true`) et on y AJOUTE les trois origines de la traduction
+//     automatique du navigateur — Google Translate charge sa feuille de style
+//     depuis gstatic.com, sa bibliothèque depuis translate.googleapis.com /
+//     translate.google.com et ses requêtes XHR depuis translate.googleapis.com.
+//     Sans ces origines, la traduction échoue en console (« Refused to load … »).
+//     Rien n'est retiré : on ajoute ces domaines, les autres protections
+//     (`object-src`, `frame-ancestors`, `base-uri`…) gardent leur valeur par défaut.
+//     Comme aucune page HTML n'est servie ici, cette politique ne s'applique à
+//     aucun document aujourd'hui : elle documente les origines tierces tolérées et
+//     protège d'avance si une page venait à être servie par ce serveur.
+//     `upgradeInsecureRequests: null` : la directive par défaut de helmet réécrit
+//     toute URL en https, ce qui casserait la consultation de l'API depuis un
+//     navigateur en développement (http://localhost:4000). Inutile ici : l'API est
+//     déjà servie en HTTPS en production.
 //   • `crossOriginResourcePolicy: { policy: 'cross-origin' }` : INDISPENSABLE — les
 //     photos sont chargées par le frontend, servi depuis un AUTRE domaine (Vercel,
 //     GitHub Pages). La valeur par défaut (« same-origin ») ferait disparaître
@@ -61,7 +74,19 @@ app.set('trust proxy', 1);
 // et consorts restent posés par les réglages par défaut.
 app.use(
   helmet({
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: {
+      useDefaults: true,
+      directives: {
+        // Feuille de style du traducteur (widget Google Translate).
+        styleSrc: ["'self'", "'unsafe-inline'", 'https://www.gstatic.com'],
+        // Bibliothèque du traducteur.
+        scriptSrc: ["'self'", 'https://translate.googleapis.com', 'https://translate.google.com'],
+        // Requêtes XHR / fetch du traducteur.
+        connectSrc: ["'self'", 'https://translate.googleapis.com'],
+        // Voir le commentaire ci-dessus : utile en développement seulement.
+        upgradeInsecureRequests: null,
+      },
+    },
     crossOriginResourcePolicy: { policy: 'cross-origin' },
   })
 );

@@ -26,6 +26,7 @@
 // Job.contactDebloquePar côté serveur. Le front déclenche, il ne décide pas.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import { Icon } from '../components/Icons.jsx';
 import { api } from '../utils/api/client.js';
@@ -608,6 +609,11 @@ function StatutDepot({ statut }) {
 /* ─────────────────────────── Écran principal du back-office ─────────────────────────── */
 
 export default function Admin() {
+  // Le bouton « Ouvrir l’application » passe par le routeur : « / » est une URL
+  // ABSOLUE, donc à la racine du domaine. Sur GitHub Pages, où l’app vit dans
+  // « /rejoins-moi/ », elle tombait sur https://…github.io/ → 404. `navigate`
+  // respecte la base de déploiement et change d’écran sans recharger la page.
+  const navigate = useNavigate();
   const [jeton, setJeton] = useState(() => getAdminToken());
   const [admin, setAdmin] = useState(null);
   const [verification, setVerification] = useState(Boolean(getAdminToken()));
@@ -781,10 +787,12 @@ export default function Admin() {
                 <Icon name="refresh" size={14} className={chargementStats ? 'bo-tourne' : ''} />
                 Actualiser
               </button>
+              {/* Routeur, jamais `window.location` : « / » est absolu et sort de la
+                  base de déploiement. Ici l’écran d’accueil s’ouvre en SPA. */}
               <button
                 type="button"
                 className="bo-btn bo-btn--petit"
-                onClick={() => window.location.assign('/')}
+                onClick={() => navigate('/')}
               >
                 <Icon name="home" size={14} />
                 Ouvrir l’application

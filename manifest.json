@@ -1,0 +1,59 @@
+{
+  "id": "./",
+  "name": "Rejoins'Moi",
+  "short_name": "Rejoins'Moi",
+  "description": "Trouvez un artisan de quartier à Abidjan et connectez-vous à la main-d'œuvre locale.",
+  "lang": "fr",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait",
+  "background_color": "#FFFCF8",
+  "theme_color": "#FFE5D0",
+  "categories": ["social", "business", "lifestyle"],
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Jobs — offres & demandes",
+      "short_name": "Jobs",
+      "url": "jobs"
+    },
+    {
+      "name": "Demandes de main-d'œuvre",
+      "short_name": "Main-d'œuvre",
+      "url": "main-doeuvre"
+    },
+    {
+      "name": "Explorer les artisans",
+      "short_name": "Explorer",
+      "url": "recherche"
+    }
+  ]
+}

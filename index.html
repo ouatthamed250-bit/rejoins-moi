@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Viewport accessible (bloc F du 12/10) : `maximum-scale=1.0` et
+         `user-scalable=no` empêchaient le pincement pour zoomer, ce qui est un
+         obstacle réel pour un utilisateur qui voit mal — et un critère d'échec
+         WCAG 1.4.4. On les retire : le zoom du navigateur reste possible.
+         `viewport-fit=cover` est conservé (encoches et barres système). -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <!-- Couleur de la barre d'état / du splash (PWA). v2 du 30/09 : la valeur est
+         le MÉLANGE EXACT du haut du dégradé d'en-tête (--gradient-header, orange
+         à 18 %) sur le fond ivoire — un aplat orange vif au-dessus d'un en-tête
+         adouci aurait recréé la bande agressive que la refonte supprime. -->
+    <meta name="theme-color" content="#FFE5D0" />
+    <meta
+      name="description"
+      content="Rejoins'Moi — Trouvez un artisan de quartier à Abidjan et connectez-vous à la main-d'œuvre locale."
+    />
+
+    <!-- PWA légère : l'app doit s'installer sur l'écran d'accueil d'un smartphone.
+         Le manifeste décrit le nom, l'icône et le mode « standalone » ; c'est lui
+         qui rend le bouton « Installer » du navigateur disponible.
+         Chemins VOLONTAIREMENT relatifs (sans « / » au début) : l'app fonctionne
+         aussi bien à la racine d'un domaine (Vercel) que dans un sous-dossier
+         (GitHub Pages : /rejoins-moi/). Avec un « / », le manifeste et les icônes
+         seraient cherchés à la racine et l'installation échouerait.
+
+         ICÔNES (correctif du 30/09 — « carré orange en trop » sur l'écran
+         d'accueil Android) : le manifeste déclare DEUX jeux, dans cet ordre —
+           1. `purpose: "any"` (icon-192.png, icon-512.png) : le logo seul, coins
+              transparents, aucun fond ajouté. C'est la référence de l'illustration.
+           2. `purpose: "maskable"` (icon-maskable-192/512.png) : la MÊME
+              illustration remplie jusqu'aux bords, pour les lanceurs qui
+              découpent l'icône à leur forme (cercle, goutte, squircle) ; elle sert
+              donc de secours. Elle est désormais FABRIQUÉE à partir de
+              l'illustration (scripts/generer-icones.mjs) au lieu d'être posée sur
+              un aplat orange : quel que soit le jeu retenu par le téléphone, il
+              n'y a plus de cadre orange collé derrière le logo.
+         Un lanceur qui ne sait pas découper les icônes maskable affiche la
+         seconde telle quelle : c'est une tuile pleine, comme les autres apps. -->
+    <link rel="manifest" href="manifest.json" />
+    <!-- Favicons : uniquement le jeu PNG (logo définitif du fondateur).
+         L'ancien `icon.svg` provisoire a été retiré volontairement : un SVG
+         déclaré ici l'emportait sur les PNG dans Chrome et Firefox, si bien que
+         l'onglet continuait d'afficher l'ancien logo malgré les nouvelles images. -->
+    <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+    <!-- Apple ignore le manifeste pour ces points : il faut ses propres balises,
+         sinon l'app ajoutée à l'écran d'accueil s'ouvre dans Safari (barre d'adresse). -->
+    <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon-180.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Rejoins'Moi" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <!-- Typographie (v45, 27/11) : Poppins (titres ET texte courant) + Nunito
+         (repli), servies par NOTRE origine depuis public/fonts/.
+         Les deux <link> vers la feuille de style distante de Google Fonts
+         (preconnect + stylesheet) ont été retirés : deux domaines tiers à
+         résoudre, deux connexions TLS à ouvrir AVANT le premier pixel de texte —
+         un surcoût absurde sur un réseau mobile d'Abidjan, et la feuille
+         distante bloquait l'affichage du texte.
+         Les six fichiers WOFF2 sont déclarés en @font-face dans
+         src/styles/theme.css et précachés par le service worker (public/sw.js).
+         `rel="preload"` : Poppins est la police PRINCIPALE (à la fois
+         --font-family-base et --font-family-display) ; 500 habille le texte
+         courant, 600 les titres et les boutons — les deux seules graisses du
+         premier écran, 15 Ko à elles deux.
+         `crossorigin` est OBLIGATOIRE : une police est toujours récupérée en
+         mode CORS, même depuis sa propre origine ; sans cet attribut le
+         navigateur téléchargerait le fichier deux fois (preload + @font-face).
+         Chemins relatifs (sans « / » au début), comme le manifeste et les icônes
+         ci-dessus : ils suivent la base de déploiement (racine ou /rejoins-moi/). -->
+    <link
+      rel="preload"
+      href="fonts/poppins-500-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="fonts/poppins-600-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+
+    <!-- Open Graph / Twitter (migration Cloudflare Pages) : c'est ce que lit
+         WhatsApp quand un lien est partagé (titre, phrase, vignette). L'image est
+         déclarée en URL ABSOLUE sur le domaine publié — un chemin relatif ne donne
+         aucune vignette aux robots de WhatsApp/Facebook, qui ne connaissent pas la
+         page d'où vient le lien. `summary_large_image` = grande vignette.
+
+         ⚠️ Ces valeurs sont le REPLI GÉNÉRIQUE (accueil, ou fiche introuvable).
+         Pour une fiche précise, elles sont réécrites à la volée par la fonction
+         Cloudflare Pages `functions/etablissement/[id].js` : nom de
+         l'établissement, sa phrase et sa photo. `og:site_name` et `og:locale`,
+         eux, restent identiques partout. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Rejoins'Moi" />
+    <meta property="og:locale" content="fr_CI" />
+    <meta property="og:title" content="Rejoins'Moi — Découvre les artisans de ton quartier à Abidjan" />
+    <meta property="og:description" content="Trouvez un artisan de quartier à Abidjan et connectez-vous à la main-d'œuvre locale." />
+    <meta property="og:image" content="https://rejoins-moi.pages.dev/icons/icon-512.png" />
+    <meta property="og:url" content="https://rejoins-moi.pages.dev/" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <!-- Doublons volontaires côté Twitter/X : le réseau ne retombe pas toujours
+         sur og:* et affiche alors un aperçu sans image. -->
+    <meta name="twitter:title" content="Rejoins'Moi — Découvre les artisans de ton quartier à Abidjan" />
+    <meta name="twitter:description" content="Trouvez un artisan de quartier à Abidjan et connectez-vous à la main-d'œuvre locale." />
+    <meta name="twitter:image" content="https://rejoins-moi.pages.dev/icons/icon-512.png" />
+
+
+    <title>Rejoins'Moi — Découvre · Soutiens · Connecte-toi</title>
+    <script type="module" crossorigin src="/rejoins-moi/assets/index-C8j7AhTY.js"></script>
+    <link rel="stylesheet" crossorigin href="/rejoins-moi/assets/index-UqkzNgsm.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
